@@ -8,6 +8,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx src/seed/index.ts",
+    "db:seed-test": "tsx src/seed/test-periods.ts",
     "typecheck": "tsc --noEmit",
     "lint": "echo 'lint ok'"
   },
