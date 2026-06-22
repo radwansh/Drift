@@ -7,7 +7,7 @@ import { Providers } from "./providers";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "SalaryCompare - Payroll Variance Analysis",
+  title: "Drift - Payroll Variance Analysis",
   description: "Compare employee salaries between payroll periods. Spot variances, anomalies, and trends.",
 };
 

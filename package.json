@@ -1,5 +1,5 @@
 {
-  "name": "saas-salary-compare",
+  "name": "drift",
   "version": "1.0.0",
   "private": true,
   "description": "Multi-tenant SAAS for payroll salary comparison between periods",

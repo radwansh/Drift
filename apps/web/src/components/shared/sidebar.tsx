@@ -30,7 +30,7 @@ export function Sidebar() {
         <div className="flex items-center gap-2 px-6 py-5 border-b border-white/10">
           <BarChart3 className="h-6 w-6 text-primary" />
           <div>
-            <h2 className="text-lg font-bold">SalaryCompare</h2>
+            <h2 className="text-lg font-bold">Drift</h2>
             <p className="text-xs text-white/60">Payroll Variance Analysis</p>
           </div>
         </div>

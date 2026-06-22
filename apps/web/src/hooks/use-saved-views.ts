@@ -15,7 +15,7 @@ export interface SavedView {
   createdAt: string;
 }
 
-const STORAGE_KEY = "salarycompare_saved_views";
+const STORAGE_KEY = "drift_saved_views";
 
 function loadViews(): SavedView[] {
   if (typeof window === "undefined") return [];

@@ -1,4 +1,4 @@
-export const APP_NAME = "SalaryCompare";
+export const APP_NAME = "Drift";
 export const APP_TAGLINE = "Payroll variance analysis, simplified";
 export const COMPANY_EMPLOYEE_RANGES = [
   { label: "1-50 employees", value: "1-50" },
