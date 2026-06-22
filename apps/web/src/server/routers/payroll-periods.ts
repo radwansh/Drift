@@ -107,6 +107,25 @@ export const payrollPeriodsRouter = router({
       return deleted;
     }),
 
+  getLatestTwoReady: protectedProcedure
+    .query(async ({ ctx }) => {
+      const currentUser = await ctx.db.query.users.findFirst({
+        where: eq(users.clerkUserId, ctx.userId),
+      });
+      if (!currentUser) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const periods = await ctx.db.select()
+        .from(payrollPeriods)
+        .where(and(
+          eq(payrollPeriods.companyId, currentUser.companyId),
+          eq(payrollPeriods.status, "ready"),
+        ))
+        .orderBy(desc(payrollPeriods.periodStart))
+        .limit(2);
+
+      return periods;
+    }),
+
   getUploadUrl: protectedProcedure
     .input(z.object({
       filename: z.string().min(1),

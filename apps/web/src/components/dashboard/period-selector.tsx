@@ -14,9 +14,10 @@ interface PeriodSelectorProps {
   onPreviousPeriodChange: (label: string) => void;
   onCompare: () => void;
   loading?: boolean;
+  periodOptions?: { value: string; label: string }[];
 }
 
-const PERIOD_OPTIONS = [
+const DEFAULT_PERIOD_OPTIONS = [
   { value: "May 2026", label: "May 2026" },
   { value: "April 2026", label: "April 2026" },
   { value: "March 2026", label: "March 2026" },
@@ -33,7 +34,9 @@ export function PeriodSelector({
   onPreviousPeriodChange,
   onCompare,
   loading,
+  periodOptions,
 }: PeriodSelectorProps) {
+  const options = periodOptions ?? DEFAULT_PERIOD_OPTIONS;
   return (
     <div className="rounded-xl border bg-card p-6 shadow-sm">
       <div className="flex flex-wrap items-end gap-4">
@@ -61,7 +64,7 @@ export function PeriodSelector({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {PERIOD_OPTIONS.map((opt) => (
+              {options.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
                   {opt.label}
                 </SelectItem>
@@ -82,7 +85,7 @@ export function PeriodSelector({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {PERIOD_OPTIONS.map((opt) => (
+              {options.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
                   {opt.label}
                 </SelectItem>

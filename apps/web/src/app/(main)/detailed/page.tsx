@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
+import { format, parse } from "date-fns";
 import { runComparison, type EmployeeRecord, type ComparisonOutput } from "@saas/payroll-core";
+import { trpc } from "@/lib/trpc";
 import { PeriodSelector } from "@/components/dashboard/period-selector";
 import { ComparisonTable } from "@/components/detailed-view/comparison-table";
 import { ColumnPicker, type ColumnConfig } from "@/components/detailed-view/column-picker";
@@ -16,6 +18,11 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { Search, Filter } from "lucide-react";
+
+function formatPeriodLabel(periodStart: string): string {
+  const d = parse(periodStart, "yyyy-MM-dd", new Date());
+  return format(d, "MMM yyyy");
+}
 
 function buildMockEmployees(): { current: EmployeeRecord[]; previous: EmployeeRecord[] } {
   const current: EmployeeRecord[] = [
@@ -88,6 +95,22 @@ export default function DetailedViewPage() {
 
   const [columnConfig, setColumnConfig] = useState<ColumnConfig[]>([]);
 
+  const { data: latestPeriods } = trpc.payrollPeriods.getLatestTwoReady.useQuery();
+
+  useEffect(() => {
+    if (latestPeriods && latestPeriods.length >= 2) {
+      setCurrentPeriodLabel(formatPeriodLabel(latestPeriods[0].periodStart));
+      setPreviousPeriodLabel(formatPeriodLabel(latestPeriods[1].periodStart));
+    } else if (latestPeriods && latestPeriods.length === 1) {
+      setCurrentPeriodLabel(formatPeriodLabel(latestPeriods[0].periodStart));
+    }
+  }, [latestPeriods]);
+
+  const periodOptions = latestPeriods?.map((p) => ({
+    value: formatPeriodLabel(p.periodStart),
+    label: formatPeriodLabel(p.periodStart),
+  }));
+
   const runComparisonHandler = useCallback(() => {
     setLoading(true);
     const { current, previous } = buildMockEmployees();
@@ -146,6 +169,7 @@ export default function DetailedViewPage() {
         onPreviousPeriodChange={setPreviousPeriodLabel}
         onCompare={runComparisonHandler}
         loading={loading}
+        periodOptions={periodOptions}
       />
 
       {results.length > 0 && (

@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { format, parse } from "date-fns";
 import { runComparison, type EmployeeRecord, type AggregatedSummary } from "@saas/payroll-core";
 import type { AiNarrative } from "@saas/types";
+import { trpc } from "@/lib/trpc";
 import { PeriodSelector } from "@/components/dashboard/period-selector";
 import { AiSummaryBanner } from "@/components/dashboard/ai-summary-banner";
 import { KpiCards } from "@/components/dashboard/kpi-cards";
@@ -13,6 +15,11 @@ import { DepartmentBreakdown } from "@/components/dashboard/department-breakdown
 import { TopMovers } from "@/components/dashboard/top-movers";
 import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
+
+function formatPeriodLabel(periodStart: string): string {
+  const d = parse(periodStart, "yyyy-MM-dd", new Date());
+  return format(d, "MMM yyyy");
+}
 
 function buildMockEmployees(): { current: EmployeeRecord[]; previous: EmployeeRecord[] } {
   const current: EmployeeRecord[] = [
@@ -64,6 +71,22 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<AggregatedSummary | null>(null);
   const [narrative, setNarrative] = useState<AiNarrative | null>(null);
 
+  const { data: latestPeriods } = trpc.payrollPeriods.getLatestTwoReady.useQuery();
+
+  useEffect(() => {
+    if (latestPeriods && latestPeriods.length >= 2) {
+      setCurrentPeriodLabel(formatPeriodLabel(latestPeriods[0].periodStart));
+      setPreviousPeriodLabel(formatPeriodLabel(latestPeriods[1].periodStart));
+    } else if (latestPeriods && latestPeriods.length === 1) {
+      setCurrentPeriodLabel(formatPeriodLabel(latestPeriods[0].periodStart));
+    }
+  }, [latestPeriods]);
+
+  const periodOptions = latestPeriods?.map((p) => ({
+    value: formatPeriodLabel(p.periodStart),
+    label: formatPeriodLabel(p.periodStart),
+  }));
+
   const runComparisonHandler = useCallback(() => {
     setLoading(true);
     const { current, previous } = buildMockEmployees();
@@ -104,6 +127,7 @@ export default function DashboardPage() {
           onPreviousPeriodChange={setPreviousPeriodLabel}
           onCompare={runComparisonHandler}
           loading={loading}
+          periodOptions={periodOptions}
         />
       </div>
     );
