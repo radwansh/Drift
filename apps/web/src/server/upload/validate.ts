@@ -137,7 +137,7 @@ export function validateRows(
     totalGross,
     totalNet,
     employeeCount,
-    detectedCurrency: currencyCandidates.size === 1 ? currencyCandidates.values().next().value : null,
+    detectedCurrency: currencyCandidates.size === 1 ? (currencyCandidates.values().next().value ?? null) : null,
   };
 }
 

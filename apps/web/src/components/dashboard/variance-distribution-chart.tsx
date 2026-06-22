@@ -65,9 +65,9 @@ export function VarianceDistributionChart({ distribution }: VarianceDistribution
               />
               <Tooltip
                 contentStyle={{ fontSize: 13, borderRadius: 8 }}
-                formatter={(value: number, _name: string, props: { payload: DistributionItem }) => [
+                formatter={(value: number, _name: string) => [
                   `${value} employee${value !== 1 ? "s" : ""}`,
-                  props.payload.label,
+                  _name,
                 ]}
               />
               <Bar dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={60}>

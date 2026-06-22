@@ -51,8 +51,8 @@ export const aiRouter = router({
         .where(eq(comparisonResults.comparisonRunId, input.comparisonRunId));
 
       const ruleBasedAnomalies = results
-        .filter((r) => r.anomalyFlags)
-        .flatMap((r) => {
+        .filter((r: typeof results[number]) => r.anomalyFlags)
+        .flatMap((r: typeof results[number]) => {
           const flags = r.anomalyFlags as Array<{ type: string; severity: "info" | "warning" | "critical"; description: string }> | null;
           if (!flags) return [];
           return flags.map((f) => ({
@@ -65,8 +65,8 @@ export const aiRouter = router({
         });
 
       const refined = await refineAnomalies(
-        ruleBasedAnomalies,
-        results as Parameters<typeof refineAnomalies>[1],
+        ruleBasedAnomalies as Parameters<typeof refineAnomalies>[0],
+        results as unknown as Parameters<typeof refineAnomalies>[1],
       );
 
       return refined;

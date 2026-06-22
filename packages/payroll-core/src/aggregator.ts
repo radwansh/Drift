@@ -25,8 +25,8 @@ export function aggregateResults(results: ComparisonOutput[]): AggregatedSummary
     else if (r.status === "decreased") decreased++;
     else if (r.status === "unchanged") unchanged++;
 
-    const prevNet = Object.values(r.previousComponents).reduce((s, v) => s + (v ?? 0), 0);
-    const currNet = Object.values(r.currentComponents).reduce((s, v) => s + (v ?? 0), 0);
+    const prevNet = Object.values(r.previousComponents).reduce<number>((s, v) => s + (v ?? 0), 0);
+    const currNet = Object.values(r.currentComponents).reduce<number>((s, v) => s + (v ?? 0), 0);
     totalPrevious += prevNet;
     totalCurrent += currNet;
   }
@@ -49,7 +49,7 @@ export function aggregateResults(results: ComparisonOutput[]): AggregatedSummary
 
   const pctDeltas = resultsWithDelta
     .map((r) => {
-      const prevNet = Object.values(r.previousComponents).reduce((s, v) => s + (v ?? 0), 0);
+      const prevNet = Object.values(r.previousComponents).reduce<number>((s, v) => s + (v ?? 0), 0);
       return prevNet !== 0 ? (r.netDelta! / prevNet) * 100 : null;
     })
     .filter((p): p is number => p !== null);
@@ -121,7 +121,7 @@ function computeDistribution(results: ComparisonOutput[]) {
       continue;
     }
 
-    const prevNet = Object.values(r.previousComponents).reduce((s, v) => s + (v ?? 0), 0);
+    const prevNet = Object.values(r.previousComponents).reduce<number>((s, v) => s + (v ?? 0), 0);
     const pct = prevNet !== 0 ? (r.netDelta / prevNet) * 100 : 0;
 
     if (Math.abs(pct) <= 0.01) {
@@ -192,13 +192,13 @@ function computeDepartmentBreakdown(results: ComparisonOutput[]) {
 
     if (r.status !== "departed") {
       deptMap[dept].headcountCurrent.add(r.employeeExternalId);
-      const currTotal = Object.values(r.currentComponents).reduce((s, v) => s + (v ?? 0), 0);
+      const currTotal = Object.values(r.currentComponents).reduce<number>((s, v) => s + (v ?? 0), 0);
       deptMap[dept].totalCurrent += currTotal;
     }
 
     if (r.status !== "new") {
       deptMap[dept].headcountPrevious.add(r.employeeExternalId);
-      const prevTotal = Object.values(r.previousComponents).reduce((s, v) => s + (v ?? 0), 0);
+      const prevTotal = Object.values(r.previousComponents).reduce<number>((s, v) => s + (v ?? 0), 0);
       deptMap[dept].totalPrevious += prevTotal;
     }
   }
@@ -226,7 +226,7 @@ function computeTopMovers(results: ComparisonOutput[]) {
   const movers = results
     .filter((r) => r.netDelta !== null && r.status !== "new" && r.status !== "departed")
     .map((r) => {
-      const prevNet = Object.values(r.previousComponents).reduce((s, v) => s + (v ?? 0), 0);
+      const prevNet = Object.values(r.previousComponents).reduce<number>((s, v) => s + (v ?? 0), 0);
       const changePercentage = prevNet !== 0
         ? Math.round((r.netDelta! / prevNet) * 10000) / 100
         : null;
@@ -234,7 +234,7 @@ function computeTopMovers(results: ComparisonOutput[]) {
         employeeName: r.employeeName,
         department: r.department,
         previousNet: prevNet,
-        currentNet: Object.values(r.currentComponents).reduce((s, v) => s + (v ?? 0), 0),
+        currentNet: Object.values(r.currentComponents).reduce<number>((s, v) => s + (v ?? 0), 0),
         changeAmount: r.netDelta!,
         changePercentage,
       };

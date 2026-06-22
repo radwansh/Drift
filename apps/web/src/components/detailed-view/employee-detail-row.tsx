@@ -23,11 +23,11 @@ const severityColor = {
 
 export function EmployeeDetailRow({ data }: EmployeeDetailRowProps) {
   const grossTotalPrev = Object.values(data.previousComponents).reduce(
-    (s, v) => s + (v ?? 0),
+    (s: number, v) => s + (v ?? 0),
     0,
   );
   const grossTotalCurr = Object.values(data.currentComponents).reduce(
-    (s, v) => s + (v ?? 0),
+    (s: number, v) => s + (v ?? 0),
     0,
   );
 
@@ -105,10 +105,10 @@ export function EmployeeDetailRow({ data }: EmployeeDetailRowProps) {
             <tr className="border-t bg-muted/30 font-semibold">
               <td className="px-3 py-2">Gross Total</td>
               <td className="px-3 py-2 text-right tabular-nums">
-                {formatCurrency(grossTotalPrev)}
+                {formatCurrency(grossTotalPrev ?? 0)}
               </td>
               <td className="px-3 py-2 text-right tabular-nums">
-                {formatCurrency(grossTotalCurr)}
+                {formatCurrency(grossTotalCurr ?? 0)}
               </td>
               <td
                 className={`px-3 py-2 text-right tabular-nums ${
@@ -130,10 +130,10 @@ export function EmployeeDetailRow({ data }: EmployeeDetailRowProps) {
             <tr className="border-t bg-muted/30 font-semibold">
               <td className="px-3 py-2">Net Total</td>
               <td className="px-3 py-2 text-right tabular-nums">
-                {formatCurrency(grossTotalPrev - (data.netDelta ?? 0))}
+                {formatCurrency((grossTotalPrev ?? 0) - (data.netDelta ?? 0))}
               </td>
               <td className="px-3 py-2 text-right tabular-nums">
-                {formatCurrency(grossTotalCurr)}
+                {formatCurrency(grossTotalCurr ?? 0)}
               </td>
               <td
                 className={`px-3 py-2 text-right tabular-nums ${

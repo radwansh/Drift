@@ -1,7 +1,6 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import { auth } from "@clerk/nextjs/server";
-import { db } from "@saas/db";
-import { eq } from "drizzle-orm";
+import { db, requireDb } from "@saas/db";
 
 export async function createContext() {
   const authResult = await auth();
@@ -15,7 +14,7 @@ export const publicProcedure = t.procedure;
 
 const isAuthenticated = t.middleware(async ({ ctx, next }) => {
   if (!ctx.userId) throw new TRPCError({ code: "UNAUTHORIZED" });
-  return next({ ctx: { ...ctx, userId: ctx.userId } });
+  return next({ ctx: { userId: ctx.userId, db: requireDb() } });
 });
 
 export const protectedProcedure = t.procedure.use(isAuthenticated);

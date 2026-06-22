@@ -338,15 +338,16 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Start Date</label>
                 <Input
-                  type="date"
+                  type="text"
                   value={dateFrom}
                   onChange={(e) => setDateFrom(e.target.value)}
+                  placeholder="YYYY-MM-DD"
                 />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">End Date</label>
                 <Input
-                  type="date"
+                  type="text"
                   value={dateTo}
                   onChange={(e) => setDateTo(e.target.value)}
                 />

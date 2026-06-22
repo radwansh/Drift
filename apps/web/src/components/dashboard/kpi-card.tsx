@@ -36,7 +36,7 @@ export function KpiCard({ title, value, subtext, iconName, trend = "neutral", on
 
   let IconComponent: React.ReactNode = null;
   if (iconName && isLucideIcon(iconName)) {
-    const Icon = Icons[iconName];
+    const Icon = Icons[iconName] as React.ComponentType<{ className?: string }>;
     IconComponent = <Icon className="h-5 w-5 text-muted-foreground" />;
   }
 

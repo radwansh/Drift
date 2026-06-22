@@ -44,9 +44,6 @@ export function useColumnMappings(companyId?: string) {
 
   const listQuery = trpc.columnMappings.list.useQuery(undefined, {
     enabled: false,
-    onSuccess: (data) => {
-      if (data && data.length > 0) setMappings(data as ColumnMapping[]);
-    },
   });
 
   const saveMutation = trpc.columnMappings.save.useMutation({

@@ -56,7 +56,7 @@ function checkLargeNetChangeWithoutComponentChange(
   if (comp.netDelta === null || comp.grossDelta === null) return;
 
   const absNet = Math.abs(comp.netDelta);
-  const previousNet = Object.values(comp.previousComponents).reduce(
+  const previousNet = Object.values(comp.previousComponents).reduce<number>(
     (sum, v) => sum + (v ?? 0),
     0,
   );

@@ -1,6 +1,8 @@
-import { db } from "@saas/db";
+import { requireDb } from "@saas/db";
 import { eq } from "drizzle-orm";
 import { payrollPeriods, employeeSnapshots, uploadSessions } from "@saas/db";
+
+const db = requireDb();
 
 interface Mapping {
   sourceColumn: string;

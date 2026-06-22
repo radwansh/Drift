@@ -19,6 +19,7 @@ interface EditableMapping {
   isDepartment: boolean;
   isGrossSalary: boolean;
   isNetSalary: boolean;
+  isAiSuggested: boolean;
 }
 
 export default function ColumnMappingsPage() {
@@ -38,6 +39,7 @@ export default function ColumnMappingsPage() {
         isDepartment: m.isDepartment,
         isGrossSalary: m.isGrossSalary,
         isNetSalary: m.isNetSalary,
+        isAiSuggested: m.isAiSuggested,
       })),
     );
     setIsEditing(true);
@@ -58,7 +60,7 @@ export default function ColumnMappingsPage() {
   const addMapping = () => {
     setLocalMappings((prev) => [
       ...prev,
-      { sourceColumn: "", mappedComponent: "", isEmployeeId: false, isEmployeeName: false, isDepartment: false, isGrossSalary: false, isNetSalary: false },
+      { sourceColumn: "", mappedComponent: "", isEmployeeId: false, isEmployeeName: false, isDepartment: false, isGrossSalary: false, isNetSalary: false, isAiSuggested: false },
     ]);
     setEditIndex(localMappings.length);
   };

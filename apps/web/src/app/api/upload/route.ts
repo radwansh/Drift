@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { db } from "@saas/db";
+import { requireDb } from "@saas/db";
 import { eq } from "drizzle-orm";
 import { uploadSessions, users } from "@saas/db";
+
+const db = requireDb();
 
 export async function POST(req: NextRequest) {
   try {

@@ -163,7 +163,7 @@ function ruleBasedAnswer(intent: QuestionIntent, comparisonRun: any): AiQueryRes
       return {
         answer: `${anomalies.length} anomaly(ies) detected: ${parts.join(", ")}.`,
         confidence: "high",
-        relatedEmployees: [...new Set(anomalies.map((a: any) => a.employeeName))],
+        relatedEmployees: [...new Set(anomalies.map((a: any) => a.employeeName))] as string[],
       };
     }
     case "top_mover": {

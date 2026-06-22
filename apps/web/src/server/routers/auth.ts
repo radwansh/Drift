@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
-import { users, companies } from "@saas/db";
+import { users, companies, requireDb } from "@saas/db";
 import { protectedProcedure, publicProcedure, router } from "../trpc";
 
 export const authRouter = router({
@@ -26,19 +26,20 @@ export const authRouter = router({
     }))
     .mutation(async ({ ctx, input }) => {
       if (!ctx.userId) throw new TRPCError({ code: "UNAUTHORIZED" });
+      const db = requireDb();
 
-      const existing = await ctx.db.query.companies.findFirst({
+      const existing = await db.query.companies.findFirst({
         where: eq(companies.slug, input.slug),
       });
       if (existing) throw new TRPCError({ code: "CONFLICT", message: "Company slug already taken" });
 
-      const [company] = await ctx.db.insert(companies).values({
+      const [company] = await db.insert(companies).values({
         name: input.name,
         slug: input.slug,
         currencyCode: input.currencyCode,
       }).returning();
 
-      const [user] = await ctx.db.insert(users).values({
+      const [user] = await db.insert(users).values({
         companyId: company.id,
         email: "",
         name: input.name,
