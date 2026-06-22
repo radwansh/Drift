@@ -47,7 +47,7 @@ async function seed() {
           periodStart,
           periodEnd,
           currencyCode: demo.currencyCode,
-          status: "ready",
+          status: "completed",
         })
         .returning();
       console.log(`  Period: ${periodStart} - ${periodEnd}`);
