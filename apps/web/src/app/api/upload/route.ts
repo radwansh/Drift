@@ -4,9 +4,8 @@ import { requireDb } from "@saas/db";
 import { eq } from "drizzle-orm";
 import { uploadSessions, users } from "@saas/db";
 
-const db = requireDb();
-
 export async function POST(req: NextRequest) {
+  const db = requireDb();
   try {
     const authResult = await auth();
     if (!authResult.userId) {
