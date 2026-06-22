@@ -13,7 +13,7 @@ function createDbClient() {
     console.warn(
       "\n⚠️  DATABASE_URL not configured.\n" +
       "   Set it in C:\\SAAS\\.env or create a free Neon DB at https://neon.tech\n" +
-      "   Example: DATABASE_URL=postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/saas_salary_compare?sslmode=require\n"
+       "   Example: DATABASE_URL=postgresql://user:pass@ep-xxx.us-east-2.aws.neon.tech/drift?sslmode=require\n"
     );
     return null;
   }
