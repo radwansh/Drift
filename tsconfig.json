@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "baseUrl": ".",
+    "paths": {
+      "@saas/types": ["packages/types/src"],
+      "@saas/types/*": ["packages/types/src/*"],
+      "@saas/db": ["packages/db/src"],
+      "@saas/db/*": ["packages/db/src/*"],
+      "@saas/payroll-core": ["packages/payroll-core/src"],
+      "@saas/payroll-core/*": ["packages/payroll-core/src/*"],
+      "@saas/ai": ["packages/ai/src"],
+      "@saas/ai/*": ["packages/ai/src/*"]
+    }
+  },
+  "include": ["apps/**/*", "packages/**/*"],
+  "exclude": ["**/node_modules", "**/dist", "**/.next"]
+}
