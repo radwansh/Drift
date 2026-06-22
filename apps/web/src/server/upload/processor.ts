@@ -32,6 +32,7 @@ interface ProcessResult {
 }
 
 export async function processUpload(input: ProcessInput): Promise<ProcessResult> {
+  const db = requireDb();
   const empIdMapping = input.mappings.find((m) => m.isEmployeeId);
   const empNameMapping = input.mappings.find((m) => m.isEmployeeName);
   const deptMapping = input.mappings.find((m) => m.isDepartment);
