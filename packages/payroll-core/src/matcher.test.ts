@@ -104,4 +104,28 @@ describe("matchEmployees", () => {
     expect(result.pairs[0].employeeName).toBe("Bob");
     expect(result.pairs[0].department).toBe("Eng");
   });
+
+  // New tests for normalization and deterministic selection
+  it("normalizes externalId (trims whitespace) before matching", () => {
+    const current = [makeRecord({ externalId: "  123 ", name: "Trim" })];
+    const previous = [makeRecord({ externalId: "123", name: "Trim Prev" })];
+
+    const result = matchEmployees(current, previous);
+    expect(result.pairs).toHaveLength(1);
+    expect(result.pairs[0].employeeExternalId).toBe("123");
+  });
+
+  it("selects preferred record deterministically when duplicates exist", () => {
+    const better = makeRecord({ externalId: "9", name: "Preferred", grossSalary: 5000, netSalary: 4500 });
+    const worse = makeRecord({ externalId: "9", name: "", grossSalary: NaN as unknown as number, netSalary: NaN as unknown as number });
+    const current = [better, worse];
+    const previous: EmployeeRecord[] = [];
+
+    const result = matchEmployees(current, previous);
+    // duplicateIds should include '9'
+    expect(result.duplicateIds).toContain("9");
+    // selected record in pair should be the better one (has a name and numeric salaries)
+    const pair = result.pairs.find((p) => p.employeeExternalId === "9")!;
+    expect(pair.current?.name).toBe("Preferred");
+  });
 });
