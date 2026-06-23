@@ -28,8 +28,8 @@ export function matchEmployees(
       duplicateIds.push(id);
     }
 
-    const current = currentList.length > 0 ? currentList[0] : null;
-    const previous = previousList.length > 0 ? previousList[0] : null;
+    const current = selectPreferredRecord(currentList);
+    const previous = selectPreferredRecord(previousList);
 
     const employeeName = current?.name ?? previous?.name ?? "Unknown";
     const department = current?.department ?? previous?.department ?? null;
@@ -56,10 +56,35 @@ function groupByExternalId(
 ): Record<string, EmployeeRecord[]> {
   const grouped: Record<string, EmployeeRecord[]> = {};
   for (const record of records) {
-    if (!grouped[record.externalId]) {
-      grouped[record.externalId] = [];
+    const id = normalizeExternalId(record.externalId);
+    if (!grouped[id]) {
+      grouped[id] = [];
     }
-    grouped[record.externalId].push(record);
+    grouped[id].push(record);
   }
   return grouped;
+}
+
+function normalizeExternalId(id: string): string {
+  return id.trim();
+}
+
+function selectPreferredRecord(records: EmployeeRecord[]): EmployeeRecord | null {
+  if (!records || records.length === 0) return null;
+  if (records.length === 1) return records[0];
+
+  // Prefer records with non-null name/gross/net; otherwise stable sort
+  const scored = records.map((r, idx) => ({
+    score:
+      (r.name ? 1 : 0) + (typeof r.grossSalary === "number" ? 1 : 0) + (typeof r.netSalary === "number" ? 1 : 0),
+    idx,
+    rec: r,
+  }));
+
+  scored.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return a.idx - b.idx; // stable fallback
+  });
+
+  return scored[0].rec;
 }
