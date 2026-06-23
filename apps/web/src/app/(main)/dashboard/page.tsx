@@ -13,6 +13,7 @@ import { DepartmentBreakdown } from "@/components/dashboard/department-breakdown
 import { TopMovers } from "@/components/dashboard/top-movers";
 import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
+import { usePayrollStore } from "@/lib/payroll-store";
 
 function buildMockEmployees(): { current: EmployeeRecord[]; previous: EmployeeRecord[] } {
   const current: EmployeeRecord[] = [
@@ -57,8 +58,9 @@ function buildMockEmployees(): { current: EmployeeRecord[]; previous: EmployeeRe
 }
 
 export default function DashboardPage() {
+  const { periods } = usePayrollStore();
   const [periodType, setPeriodType] = useState<string>("monthly");
-  const [currentPeriodLabel, setCurrentPeriodLabel] = useState("Jun 2026");
+  const [currentPeriodLabel, setCurrentPeriodLabel] = useState("June 2026");
   const [previousPeriodLabel, setPreviousPeriodLabel] = useState("May 2026");
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState<AggregatedSummary | null>(null);
@@ -66,7 +68,14 @@ export default function DashboardPage() {
 
   const runComparisonHandler = useCallback(() => {
     setLoading(true);
-    const { current, previous } = buildMockEmployees();
+    const currentPeriod = periods.find((p) => p.label === currentPeriodLabel);
+    const previousPeriod = periods.find((p) => p.label === previousPeriodLabel);
+    const current = currentPeriod?.employees ?? [];
+    const previous = previousPeriod?.employees ?? [];
+    if (current.length === 0 || previous.length === 0) {
+      const mock = buildMockEmployees();
+      return setSummary(runComparison(mock.current, mock.previous).summary);
+    }
     const result = runComparison(current, previous);
     setSummary(result.summary);
 
@@ -86,7 +95,7 @@ export default function DashboardPage() {
     });
 
     setLoading(false);
-  }, []);
+  }, [currentPeriodLabel, previousPeriodLabel, periods]);
 
   if (!summary) {
     return (

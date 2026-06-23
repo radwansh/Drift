@@ -84,8 +84,8 @@ export function MappingRow({
   ];
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border bg-card px-3 py-2.5">
-      <div className="flex w-44 items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card px-3 py-2.5">
+      <div className="flex w-36 items-center gap-2">
         <span className="flex-1 truncate text-sm font-medium" title={sourceColumn}>
           {sourceColumn}
         </span>
@@ -131,47 +131,37 @@ export function MappingRow({
         </Select>
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
-        {identifierFields.map(({ key, label }) => (
-          <label
-            key={key}
-            className={cn(
-              "flex cursor-pointer items-center gap-1 rounded px-1.5 py-1 text-[10px] font-medium transition-colors",
-              (() => {
-                const val = (() => {
-                  switch (key) {
-                    case "isEmployeeId": return isEmployeeId;
-                    case "isEmployeeName": return isEmployeeName;
-                    case "isDepartment": return isDepartment;
-                    case "isGrossSalary": return isGrossSalary;
-                    case "isNetSalary": return isNetSalary;
-                  }
-                })();
-                return val
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-muted";
-              })(),
-            )}
-          >
-            <input
-              type="checkbox"
-              checked={(() => {
-                switch (key) {
-                  case "isEmployeeId": return isEmployeeId;
-                  case "isEmployeeName": return isEmployeeName;
-                  case "isDepartment": return isDepartment;
-                  case "isGrossSalary": return isGrossSalary;
-                  case "isNetSalary": return isNetSalary;
-                }
-              })()}
-              onChange={(e) =>
-                update({ [key]: e.target.checked })
-              }
-              className="h-3 w-3 rounded"
-            />
-            {label}
-          </label>
-        ))}
+      <div className="flex shrink-0 flex-wrap items-center gap-1">
+        {identifierFields.map(({ key, label }) => {
+          const checked = (() => {
+            switch (key) {
+              case "isEmployeeId": return isEmployeeId;
+              case "isEmployeeName": return isEmployeeName;
+              case "isDepartment": return isDepartment;
+              case "isGrossSalary": return isGrossSalary;
+              case "isNetSalary": return isNetSalary;
+            }
+          })();
+          return (
+            <label
+              key={key}
+              className={cn(
+                "flex cursor-pointer select-none items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
+                checked
+                  ? "bg-primary/10 text-primary ring-1 ring-primary/20"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={(e) => update({ [key]: e.target.checked })}
+                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/30"
+              />
+              {label}
+            </label>
+          );
+        })}
       </div>
 
       <div className="shrink-0">

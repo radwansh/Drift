@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/select";
 import {
   AlertDialog,
-  AlertDialogTrigger,
   AlertDialogContent,
   AlertDialogHeader,
   AlertDialogTitle,
@@ -25,6 +24,7 @@ import {
   AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
 import { Search, Filter, SlidersHorizontal, Upload } from "lucide-react";
+import { usePayrollStore } from "@/lib/payroll-store";
 
 function buildMockPeriods(): PayrollPeriod[] {
   return [
@@ -86,7 +86,8 @@ function buildMockPeriods(): PayrollPeriod[] {
 }
 
 export default function PayrollPeriodsPage() {
-  const [periods, setPeriods] = useState<PayrollPeriod[]>(buildMockPeriods());
+  const { periods: storePeriods, removePeriod } = usePayrollStore();
+  const [mockPeriods, setMockPeriods] = useState<PayrollPeriod[]>(buildMockPeriods());
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [periodTypeFilter, setPeriodTypeFilter] = useState<string>("all");
@@ -94,8 +95,33 @@ export default function PayrollPeriodsPage() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
+  const allPeriods = useMemo(() => {
+    const storeAsPayroll: PayrollPeriod[] = storePeriods.map((sp) => ({
+      id: sp.id,
+      companyId: "c1",
+      periodType: sp.periodType as PeriodType,
+      dateRange: { from: sp.dateFrom, to: sp.dateTo },
+      source: "upload" as const,
+      sourceFilename: sp.fileName,
+      currencyCode: "USD",
+      status: "ready" as PeriodStatus,
+      totalEmployees: sp.employees.length,
+      totalGross: sp.employees.reduce((sum, e) => sum + e.grossSalary, 0),
+      totalNet: sp.employees.reduce((sum, e) => sum + e.netSalary, 0),
+      rawFileKey: null,
+      errorMessage: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }));
+    const seenLabels = new Set(storePeriods.map((sp) => `${sp.dateFrom}-${sp.dateTo}`));
+    const filteredMock = mockPeriods.filter(
+      (mp) => !seenLabels.has(`${mp.dateRange.from}-${mp.dateRange.to}`),
+    );
+    return [...storeAsPayroll, ...filteredMock];
+  }, [storePeriods, mockPeriods]);
+
   const filteredPeriods = useMemo(() => {
-    let filtered = periods;
+    let filtered = allPeriods;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter((p) => {
@@ -110,11 +136,16 @@ export default function PayrollPeriodsPage() {
       filtered = filtered.filter((p) => p.status === statusFilter);
     }
     return filtered;
-  }, [periods, searchQuery, periodTypeFilter, statusFilter]);
+  }, [allPeriods, searchQuery, periodTypeFilter, statusFilter]);
 
   const handleDelete = () => {
     if (!deleteId) return;
-    setPeriods((prev) => prev.filter((p) => p.id !== deleteId));
+    const target = allPeriods.find((p) => p.id === deleteId);
+    if (target && storePeriods.some((sp) => sp.id === target.id)) {
+      removePeriod(deleteId);
+    } else {
+      setMockPeriods((prev) => prev.filter((p) => p.id !== deleteId));
+    }
     setDeleteId(null);
   };
 
@@ -184,11 +215,11 @@ export default function PayrollPeriodsPage() {
           </div>
           <h3 className="mt-4 text-lg font-semibold">No periods found</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            {periods.length === 0
+            {allPeriods.length === 0
               ? "Upload your first payroll period to get started."
               : "No periods match your current filters."}
           </p>
-          {periods.length === 0 && (
+          {allPeriods.length === 0 && (
             <Button className="mt-4" onClick={() => setUploadOpen(true)}>
               <Upload className="h-4 w-4 mr-2" />
               Upload New Period

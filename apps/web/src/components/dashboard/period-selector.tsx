@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { CalendarDays, ArrowRight } from "lucide-react";
 import { PERIOD_TYPE_LABELS } from "@/lib/constants";
 
+import { usePayrollStore } from "@/lib/payroll-store";
+
 interface PeriodSelectorProps {
   periodType: string;
   onPeriodTypeChange: (value: string) => void;
@@ -16,7 +18,8 @@ interface PeriodSelectorProps {
   loading?: boolean;
 }
 
-const PERIOD_OPTIONS = [
+const FALLBACK_OPTIONS = [
+  { value: "June 2026", label: "June 2026" },
   { value: "May 2026", label: "May 2026" },
   { value: "April 2026", label: "April 2026" },
   { value: "March 2026", label: "March 2026" },
@@ -34,6 +37,15 @@ export function PeriodSelector({
   onCompare,
   loading,
 }: PeriodSelectorProps) {
+  const { periods } = usePayrollStore();
+  const seen = new Set<string>();
+  const periodOptions = [...FALLBACK_OPTIONS, ...periods.map((p) => ({ value: p.label, label: p.label }))]
+    .filter((opt) => {
+      if (seen.has(opt.value)) return false;
+      seen.add(opt.value);
+      return true;
+    });
+
   return (
     <div className="rounded-xl border bg-card p-6 shadow-sm">
       <div className="flex flex-wrap items-end gap-4">
@@ -61,7 +73,7 @@ export function PeriodSelector({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {PERIOD_OPTIONS.map((opt) => (
+              {periodOptions.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
                   {opt.label}
                 </SelectItem>
@@ -82,7 +94,7 @@ export function PeriodSelector({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {PERIOD_OPTIONS.map((opt) => (
+              {periodOptions.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
                   {opt.label}
                 </SelectItem>

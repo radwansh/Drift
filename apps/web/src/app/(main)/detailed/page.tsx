@@ -16,6 +16,7 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { Search, Filter } from "lucide-react";
+import { usePayrollStore } from "@/lib/payroll-store";
 
 function buildMockEmployees(): { current: EmployeeRecord[]; previous: EmployeeRecord[] } {
   const current: EmployeeRecord[] = [
@@ -78,8 +79,9 @@ function buildColumnConfig(results: ComparisonOutput[]): ColumnConfig[] {
 }
 
 export default function DetailedViewPage() {
+  const { periods } = usePayrollStore();
   const [periodType, setPeriodType] = useState<string>("monthly");
-  const [currentPeriodLabel, setCurrentPeriodLabel] = useState("Jun 2026");
+  const [currentPeriodLabel, setCurrentPeriodLabel] = useState("June 2026");
   const [previousPeriodLabel, setPreviousPeriodLabel] = useState("May 2026");
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<ComparisonOutput[]>([]);
@@ -90,14 +92,26 @@ export default function DetailedViewPage() {
 
   const runComparisonHandler = useCallback(() => {
     setLoading(true);
-    const { current, previous } = buildMockEmployees();
+    const currentPeriod = periods.find((p) => p.label === currentPeriodLabel);
+    const previousPeriod = periods.find((p) => p.label === previousPeriodLabel);
+    const current = currentPeriod?.employees ?? [];
+    const previous = previousPeriod?.employees ?? [];
+    if (current.length === 0 || previous.length === 0) {
+      const mock = buildMockEmployees();
+      const { results: compResults } = runComparison(mock.current, mock.previous);
+      setResults(compResults);
+      if (columnConfig.length === 0) {
+        setColumnConfig(buildColumnConfig(compResults));
+      }
+      return setLoading(false);
+    }
     const { results: compResults } = runComparison(current, previous);
     setResults(compResults);
     if (columnConfig.length === 0) {
       setColumnConfig(buildColumnConfig(compResults));
     }
     setLoading(false);
-  }, []);
+  }, [currentPeriodLabel, previousPeriodLabel, periods]);
 
   const filteredResults = useMemo(() => {
     let filtered = results;
