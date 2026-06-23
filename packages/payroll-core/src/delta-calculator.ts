@@ -7,13 +7,15 @@ export function calculateDelta(
   }
 
   if (current === null) {
+    // Departed employee: absolute is negative of previous
     const abs = -(previous as number);
+    // Treat departing from non-zero as -100% change; if previous === 0, percentage is undefined
     const pct = previous !== 0 ? -100 : null;
     return { absolute: round2(abs), percentage: pct !== null ? round2(pct) : null };
   }
 
   if (previous === null) {
-    const pct = current !== 0 ? null : null;
+    // New employee: absolute is the current amount; percentage undefined (can't compute)
     return { absolute: round2(current), percentage: null };
   }
 
