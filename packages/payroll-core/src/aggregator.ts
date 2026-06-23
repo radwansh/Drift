@@ -1,17 +1,34 @@
-import type { ComparisonOutput, AggregatedSummary, ComponentDelta } from "./types";
-import { calculateDelta } from "./delta-calculator";
+import type { ComparisonOutput, AggregatedSummary } from "./types";
 import { collectAnomalies } from "./anomaly-detector";
-import type { AnomalyResult } from "./anomaly-detector";
 
-const DISTRIBUTION_COLORS: Record<string, string> = {
-  "decreased >10%": "#ef4444",
-  "decreased 1-10%": "#f97316",
-  unchanged: "#6b7280",
-  "increased 1-10%": "#22c55e",
-  "increased >10%": "#16a34a",
+export interface DistributionConfig {
+  unchangedThresholdPct: number; // fraction expressed as percent (e.g., 0.01 for 0.01%)
+  increased1Pct: number; // e.g., 5 for 5%
+  increased2Pct: number; // e.g., 10 for 10%
+  decreased1Pct: number; // e.g., -5
+  decreased2Pct: number; // e.g., -10
+  colors?: Record<string, string>;
+}
+
+export const DEFAULT_DISTRIBUTION_CONFIG: DistributionConfig = {
+  unchangedThresholdPct: 0.01,
+  increased1Pct: 5,
+  increased2Pct: 10,
+  decreased1Pct: -5,
+  decreased2Pct: -10,
+  colors: {
+    "decreased >10%": "#ef4444",
+    "decreased 1-10%": "#f97316",
+    unchanged: "#6b7280",
+    "increased 1-10%": "#22c55e",
+    "increased >10%": "#16a34a",
+  },
 };
 
-export function aggregateResults(results: ComparisonOutput[]): AggregatedSummary {
+export function aggregateResults(
+  results: ComparisonOutput[],
+  distConfig: DistributionConfig = DEFAULT_DISTRIBUTION_CONFIG,
+): AggregatedSummary {
   const total = results.length;
   let increased = 0;
   let decreased = 0;
@@ -35,9 +52,7 @@ export function aggregateResults(results: ComparisonOutput[]): AggregatedSummary
   const departedEmployees = results.filter((r) => r.status === "departed").length;
 
   const absoluteVariance = totalCurrent - totalPrevious;
-  const variancePct = totalPrevious !== 0
-    ? (absoluteVariance / totalPrevious) * 100
-    : null;
+  const variancePct = totalPrevious !== 0 ? (absoluteVariance / totalPrevious) * 100 : null;
 
   const resultsWithDelta = results.filter(
     (r) => r.netDelta !== null && r.status !== "new" && r.status !== "departed",
@@ -54,9 +69,7 @@ export function aggregateResults(results: ComparisonOutput[]): AggregatedSummary
     })
     .filter((p): p is number => p !== null);
 
-  const avgPct = pctDeltas.length > 0
-    ? pctDeltas.reduce((s, v) => s + v, 0) / pctDeltas.length
-    : null;
+  const avgPct = pctDeltas.length > 0 ? pctDeltas.reduce((s, v) => s + v, 0) / pctDeltas.length : null;
 
   const largestIncrease = resultsWithDelta
     .filter((r) => (r.netDelta ?? 0) > 0)
@@ -66,15 +79,13 @@ export function aggregateResults(results: ComparisonOutput[]): AggregatedSummary
     .filter((r) => (r.netDelta ?? 0) < 0)
     .sort((a, b) => (a.netDelta ?? 0) - (b.netDelta ?? 0))[0] ?? null;
 
-  const distribution = computeDistribution(results);
+  const distribution = computeDistribution(results, distConfig);
   const componentBreakdown = computeComponentBreakdown(results);
   const departmentBreakdown = computeDepartmentBreakdown(results);
   const topMovers = computeTopMovers(results);
   const anomalies = collectAnomalies(results);
 
-  const aggregateAvgAbs = netDeltas.length > 0
-    ? totalDeltaSum / netDeltas.length
-    : 0;
+  const aggregateAvgAbs = netDeltas.length > 0 ? totalDeltaSum / netDeltas.length : 0;
 
   return {
     totalPayrollVariance: {
@@ -102,7 +113,7 @@ export function aggregateResults(results: ComparisonOutput[]): AggregatedSummary
   };
 }
 
-function computeDistribution(results: ComparisonOutput[]) {
+function computeDistribution(results: ComparisonOutput[], cfg: DistributionConfig) {
   const buckets: Record<string, number> = {
     "decreased >10%": 0,
     "decreased 1-10%": 0,
@@ -124,13 +135,13 @@ function computeDistribution(results: ComparisonOutput[]) {
     const prevNet = Object.values(r.previousComponents).reduce<number>((s, v) => s + (v ?? 0), 0);
     const pct = prevNet !== 0 ? (r.netDelta / prevNet) * 100 : 0;
 
-    if (Math.abs(pct) <= 0.01) {
+    if (Math.abs(pct) <= cfg.unchangedThresholdPct) {
       buckets["unchanged"]++;
-    } else if (pct > 10) {
+    } else if (pct > cfg.increased2Pct) {
       buckets["increased >10%"]++;
     } else if (pct > 0) {
       buckets["increased 1-10%"]++;
-    } else if (pct < -10) {
+    } else if (pct < cfg.decreased2Pct) {
       buckets["decreased >10%"]++;
     } else {
       buckets["decreased 1-10%"]++;
@@ -140,7 +151,7 @@ function computeDistribution(results: ComparisonOutput[]) {
   return Object.entries(buckets).map(([label, count]) => ({
     label,
     count,
-    color: DISTRIBUTION_COLORS[label] ?? "#6b7280",
+    color: (cfg.colors && cfg.colors[label]) ?? DEFAULT_DISTRIBUTION_CONFIG.colors![label] ?? "#6b7280",
   }));
 }
 
