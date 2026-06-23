@@ -20,6 +20,7 @@ interface MappingRowProps {
   isGrossSalary: boolean;
   isNetSalary: boolean;
   availableComponents: string[];
+  onCreateComponent?: (sourceColumn: string) => void;
   onChange: (mapping: {
     sourceColumn: string;
     mappedComponent: string;
@@ -41,11 +42,13 @@ export function MappingRow({
   isGrossSalary,
   isNetSalary,
   availableComponents,
+  onCreateComponent,
   onChange,
 }: MappingRowProps) {
   const isRequiredMissing =
     !mappedComponent ||
     mappedComponent === "ignore" ||
+    mappedComponent === "__create__" ||
     (!isEmployeeId &&
       !isEmployeeName &&
       !isDepartment &&
@@ -112,7 +115,13 @@ export function MappingRow({
       <div className="flex-1">
         <Select
           value={mappedComponent || ""}
-          onValueChange={(val) => update({ mappedComponent: val })}
+          onValueChange={(val) => {
+            if (val === "__create__") {
+              onCreateComponent?.(sourceColumn);
+            } else {
+              update({ mappedComponent: val });
+            }
+          }}
         >
           <SelectTrigger
             className={cn(
@@ -126,10 +135,16 @@ export function MappingRow({
           <SelectContent>
             <SelectItem value="ignore">Ignore column</SelectItem>
             {availableComponents.map((comp) => (
-              <SelectItem key={comp} value={comp} className="capitalize">
+              <SelectItem key={comp} value={comp}>
                 {comp}
               </SelectItem>
             ))}
+            <SelectItem
+              value="__create__"
+              className="border-t text-primary font-medium"
+            >
+              + Create salary component
+            </SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -168,7 +183,7 @@ export function MappingRow({
       </div>
 
       <div className="shrink-0">
-        {isRequiredMissing ? (
+        {isRequiredMissing || mappedComponent === "__create__" ? (
           <XCircle className="h-4 w-4 text-destructive" />
         ) : mappedComponent && mappedComponent !== "ignore" ? (
           <CheckCircle2 className="h-4 w-4 text-green-500" />

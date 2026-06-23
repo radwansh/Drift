@@ -57,19 +57,6 @@ interface UploadModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const AVAILABLE_COMPONENTS = [
-  "salary",
-  "bonus",
-  "benefits",
-  "overtime",
-  "commission",
-  "allowance",
-  "deduction",
-  "reimbursement",
-  "stipend",
-  "other",
-];
-
 const PERIOD_TYPE_OPTIONS = Object.entries(PERIOD_TYPE_LABELS).map(
   ([value, label]) => ({ value, label }),
 );
@@ -176,46 +163,37 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
   } | null>(null);
   const [dropActive, setDropActive] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [createComponentColumn, setCreateComponentColumn] = useState<string | null>(null);
+  const [newComponentName, setNewComponentName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const simulateAiSuggestions = useCallback((headers: string[]) => {
-    const aiMap: Record<string, Partial<ColumnMappingState>> = {
-      "Employee ID": { mappedComponent: "", isEmployeeId: true },
-      "Employee Name": { mappedComponent: "", isEmployeeName: true },
-      "Full Name": { mappedComponent: "", isEmployeeName: true },
-      "Department": { mappedComponent: "", isDepartment: true },
-      "Gross Salary": { mappedComponent: "", isGrossSalary: true },
-      "Net Salary": { mappedComponent: "", isNetSalary: true },
-      "Base Salary": { mappedComponent: "salary" },
-      Salary: { mappedComponent: "salary" },
-      Bonus: { mappedComponent: "bonus" },
-      Benefits: { mappedComponent: "benefits" },
-      Overtime: { mappedComponent: "overtime" },
-      Commission: { mappedComponent: "commission" },
-      Allowance: { mappedComponent: "allowance" },
-      "Housing Allowance": { mappedComponent: "allowance" },
-      "Transport Allowance": { mappedComponent: "allowance" },
-      Deduction: { mappedComponent: "deduction" },
-      "Tax Deduction": { mappedComponent: "deduction" },
-      "Insurance Deduction": { mappedComponent: "deduction" },
-      Reimbursement: { mappedComponent: "reimbursement" },
-      Stipend: { mappedComponent: "stipend" },
+    const identifierHeaders: Record<string, Partial<ColumnMappingState>> = {
+      "Employee ID": { isEmployeeId: true },
+      "Employee Name": { isEmployeeName: true },
+      "Full Name": { isEmployeeName: true },
+      "Department": { isDepartment: true },
+      "Gross Salary": { isGrossSalary: true },
+      "Net Salary": { isNetSalary: true },
     };
 
-    return headers.map((header) => {
+    const result = headers.map((header) => {
       const trimmed = header.trim();
-      const ai = aiMap[trimmed] ?? {};
+      const ident = identifierHeaders[trimmed] ?? {};
+      const isIdent = !!(ident.isEmployeeId || ident.isEmployeeName || ident.isDepartment || ident.isGrossSalary || ident.isNetSalary);
       return {
-        sourceColumn: trimmed || header,
-        mappedComponent: ai.mappedComponent ?? "",
-        isEmployeeId: ai.isEmployeeId ?? false,
-        isEmployeeName: ai.isEmployeeName ?? false,
-        isDepartment: ai.isDepartment ?? false,
-        isGrossSalary: ai.isGrossSalary ?? false,
-        isNetSalary: ai.isNetSalary ?? false,
+        sourceColumn: trimmed,
+        mappedComponent: isIdent ? "" : trimmed,
+        isEmployeeId: ident.isEmployeeId ?? false,
+        isEmployeeName: ident.isEmployeeName ?? false,
+        isDepartment: ident.isDepartment ?? false,
+        isGrossSalary: ident.isGrossSalary ?? false,
+        isNetSalary: ident.isNetSalary ?? false,
       };
     });
+
+    return result;
   }, []);
 
   const handleFile = useCallback(
@@ -344,6 +322,31 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
         setProcessing(false);
         setStep(5);
       }, 2500);
+    }
+  };
+
+  const availableComponents = useMemo(() => {
+    return mappings
+      .filter((m) => !m.isEmployeeId && !m.isEmployeeName && !m.isDepartment && !m.isGrossSalary && !m.isNetSalary)
+      .map((m) => m.sourceColumn);
+  }, [mappings]);
+
+  const handleCreateComponent = (sourceColumn: string) => {
+    setCreateComponentColumn(sourceColumn);
+    setNewComponentName("");
+  };
+
+  const handleConfirmCreateComponent = () => {
+    if (createComponentColumn && newComponentName.trim()) {
+      setMappings((prev) =>
+        prev.map((m) =>
+          m.sourceColumn === createComponentColumn
+            ? { ...m, mappedComponent: newComponentName.trim() }
+            : m,
+        ),
+      );
+      setCreateComponentColumn(null);
+      setNewComponentName("");
     }
   };
 
@@ -580,7 +583,7 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
                 <MappingRow
                   key={mapping.sourceColumn}
                   {...mapping}
-                  availableComponents={AVAILABLE_COMPONENTS}
+                  availableComponents={availableComponents}
                   aiConfidence={0.75 + (idx % 3) * 0.08}
                   onChange={(updated) =>
                     setMappings((prev) =>
@@ -589,6 +592,7 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
                       ),
                     )
                   }
+                  onCreateComponent={handleCreateComponent}
                 />
               ))}
             </div>
@@ -678,6 +682,34 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
                 </p>
               </>
             )}
+          </div>
+        )}
+
+        {createComponentColumn && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setCreateComponentColumn(null)}>
+            <div className="w-full max-w-sm rounded-lg border bg-card p-6 shadow-lg" onClick={(e) => e.stopPropagation()}>
+              <h3 className="mb-1 text-sm font-medium">Create salary component</h3>
+              <p className="mb-3 text-xs text-muted-foreground">
+                Enter a name for the new salary component mapped from &ldquo;{createComponentColumn}&rdquo;
+              </p>
+              <input
+                type="text"
+                value={newComponentName}
+                onChange={(e) => setNewComponentName(e.target.value)}
+                placeholder="Component name..."
+                className="mb-4 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                onKeyDown={(e) => { if (e.key === "Enter") handleConfirmCreateComponent(); }}
+                autoFocus
+              />
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" size="sm" onClick={() => setCreateComponentColumn(null)}>
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={handleConfirmCreateComponent} disabled={!newComponentName.trim()}>
+                  Create
+                </Button>
+              </div>
+            </div>
           </div>
         )}
 
