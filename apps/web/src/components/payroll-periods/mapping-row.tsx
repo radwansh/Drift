@@ -7,7 +7,7 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-import { AlertCircle, CheckCircle2, Brain } from "lucide-react";
+import { AlertCircle, CheckCircle2, XCircle, Brain } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface MappingRowProps {
@@ -84,7 +84,10 @@ export function MappingRow({
   ];
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card px-3 py-2.5">
+    <div className={cn(
+      "flex flex-wrap items-center gap-2 rounded-lg border bg-card px-3 py-2.5 transition-colors",
+      isRequiredMissing && "border-destructive/30 bg-destructive/[0.02]",
+    )}>
       <div className="flex w-36 items-center gap-2">
         <span className="flex-1 truncate text-sm font-medium" title={sourceColumn}>
           {sourceColumn}
@@ -165,7 +168,9 @@ export function MappingRow({
       </div>
 
       <div className="shrink-0">
-        {mappedComponent && mappedComponent !== "ignore" ? (
+        {isRequiredMissing ? (
+          <XCircle className="h-4 w-4 text-destructive" />
+        ) : mappedComponent && mappedComponent !== "ignore" ? (
           <CheckCircle2 className="h-4 w-4 text-green-500" />
         ) : (
           <AlertCircle className="h-4 w-4 text-amber-500" />

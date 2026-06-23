@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import type { PayrollPeriod, PeriodType, PeriodStatus } from "@saas/types";
 import { PeriodCard, PeriodCardSkeleton } from "@/components/payroll-periods/period-card";
 import { UploadModal } from "@/components/payroll-periods/upload-modal";
@@ -86,6 +87,7 @@ function buildMockPeriods(): PayrollPeriod[] {
 }
 
 export default function PayrollPeriodsPage() {
+  const router = useRouter();
   const { periods: storePeriods, removePeriod } = usePayrollStore();
   const [mockPeriods, setMockPeriods] = useState<PayrollPeriod[]>(buildMockPeriods());
   const [loading, setLoading] = useState(false);
@@ -150,7 +152,7 @@ export default function PayrollPeriodsPage() {
   };
 
   const handleCompare = (id: string) => {
-    console.log("Compare period:", id);
+    router.push(`/dashboard?periodId=${encodeURIComponent(id)}`);
   };
 
   return (

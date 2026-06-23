@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback, useRef, useMemo } from "react";
+import { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { usePayrollStore } from "@/lib/payroll-store";
 import type { EmployeeRecord } from "@saas/payroll-core";
+import * as XLSX from "xlsx";
 import {
   Dialog,
   DialogTrigger,
@@ -73,6 +74,27 @@ const PERIOD_TYPE_OPTIONS = Object.entries(PERIOD_TYPE_LABELS).map(
   ([value, label]) => ({ value, label }),
 );
 
+const MONTH_OPTIONS = [
+  { value: "01", label: "January" },
+  { value: "02", label: "February" },
+  { value: "03", label: "March" },
+  { value: "04", label: "April" },
+  { value: "05", label: "May" },
+  { value: "06", label: "June" },
+  { value: "07", label: "July" },
+  { value: "08", label: "August" },
+  { value: "09", label: "September" },
+  { value: "10", label: "October" },
+  { value: "11", label: "November" },
+  { value: "12", label: "December" },
+];
+
+const currentYear = new Date().getFullYear();
+const YEAR_OPTIONS = Array.from({ length: 5 }, (_, i) => {
+  const y = currentYear - 2 + i;
+  return { value: String(y), label: String(y) };
+});
+
 function parseEmployeesFromData(
   data: string[][],
   mappings: ColumnMappingState[],
@@ -103,6 +125,7 @@ function parseEmployeesFromData(
       !m.isNetSalary,
   );
 
+  let rowCounter = 0;
   return rows.map((row) => {
     const getVal = (col: string | undefined) => {
       if (!col) return undefined;
@@ -116,9 +139,12 @@ function parseEmployeesFromData(
       components[m.mappedComponent] = val ? (parseFloat(val) || 0) : null;
     });
 
+    const externalId = getVal(employeeIdCol) || `row-${++rowCounter}`;
+    const name = getVal(employeeNameCol) || `Employee ${externalId}`;
+
     return {
-      externalId: getVal(employeeIdCol) || "",
-      name: getVal(employeeNameCol) || "",
+      externalId,
+      name,
       department: getVal(departmentCol) || null,
       components,
       grossSalary: parseFloat(getVal(grossSalaryCol) || "0") || 0,
@@ -133,11 +159,11 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileData, setFileData] = useState<string[][] | null>(null);
   const [periodType, setPeriodType] = useState<PeriodType>("monthly");
-  const [monthPicker, setMonthPicker] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState("");
+  const [selectedYear, setSelectedYear] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [mappings, setMappings] = useState<ColumnMappingState[]>([]);
-  const [saveMapping, setSaveMapping] = useState(false);
   const [validating, setValidating] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [validationResult, setValidationResult] = useState<{
@@ -151,21 +177,30 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
   const [dropActive, setDropActive] = useState(false);
   const [saved, setSaved] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const simulateAiSuggestions = useCallback((headers: string[]) => {
     const aiMap: Record<string, Partial<ColumnMappingState>> = {
       "Employee ID": { mappedComponent: "", isEmployeeId: true },
       "Employee Name": { mappedComponent: "", isEmployeeName: true },
+      "Full Name": { mappedComponent: "", isEmployeeName: true },
       "Department": { mappedComponent: "", isDepartment: true },
       "Gross Salary": { mappedComponent: "", isGrossSalary: true },
       "Net Salary": { mappedComponent: "", isNetSalary: true },
+      "Base Salary": { mappedComponent: "salary" },
       Salary: { mappedComponent: "salary" },
       Bonus: { mappedComponent: "bonus" },
       Benefits: { mappedComponent: "benefits" },
       Overtime: { mappedComponent: "overtime" },
       Commission: { mappedComponent: "commission" },
       Allowance: { mappedComponent: "allowance" },
+      "Housing Allowance": { mappedComponent: "allowance" },
+      "Transport Allowance": { mappedComponent: "allowance" },
       Deduction: { mappedComponent: "deduction" },
+      "Tax Deduction": { mappedComponent: "deduction" },
+      "Insurance Deduction": { mappedComponent: "deduction" },
+      Reimbursement: { mappedComponent: "reimbursement" },
+      Stipend: { mappedComponent: "stipend" },
     };
 
     return headers.map((header) => {
@@ -192,9 +227,24 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
 
       const reader = new FileReader();
       reader.onload = (e) => {
-        const text = e.target?.result as string;
-        const lines = text.split("\n").filter((l) => l.trim());
-        const data = lines.map((l) => l.split(",").map((c) => c.trim()));
+        let data: string[][] = [];
+
+        if (ext === "csv") {
+          const text = e.target?.result as string;
+          const lines = text.split("\n").filter((l) => l.trim());
+          data = lines.map((l) => l.split(",").map((c) => c.trim()));
+        } else {
+          const arrayBuf = e.target?.result as ArrayBuffer;
+          const workbook = XLSX.read(arrayBuf, { type: "array" });
+          const sheetName = workbook.SheetNames[0];
+          if (sheetName) {
+            const sheet = workbook.Sheets[sheetName];
+            const raw = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "" }) as unknown[][];
+            data = raw
+              .filter((row) => row.some((cell) => cell !== ""))
+              .map((row) => row.map((cell) => String(cell ?? "").trim()));
+          }
+        }
 
         if (data.length > 0) {
           const headers = data[0];
@@ -208,14 +258,7 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
       if (ext === "csv") {
         reader.readAsText(file);
       } else {
-        setTimeout(() => {
-          const mockHeaders = ["Employee ID", "Employee Name", "Department", "Salary", "Bonus", "Benefits"];
-          setFileName(file.name);
-          setFileData([mockHeaders]);
-          setMappings(simulateAiSuggestions(mockHeaders));
-          setValidationResult(null);
-          setStep(2);
-        }, 500);
+        reader.readAsArrayBuffer(file);
       }
     },
     [simulateAiSuggestions],
@@ -240,33 +283,39 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
 
   const handleNextStep = () => {
     if (step === 2) {
-      if (periodType === "monthly" && !monthPicker) return;
+      if (periodType === "monthly" && (!selectedMonth || !selectedYear)) return;
       if (periodType !== "monthly" && (!dateFrom || !dateTo)) return;
       setStep(3);
     } else if (step === 3) {
       setValidating(true);
-      setTimeout(() => {
+      timeoutRef.current = setTimeout(() => {
+        const tempEmployees = fileData
+          ? parseEmployeesFromData(fileData, mappings)
+          : [];
+        const totalRowCount = fileData ? fileData.length - 1 : 0;
+        const totalGross = tempEmployees.reduce((s, e) => s + e.grossSalary, 0);
+        const totalNet = tempEmployees.reduce((s, e) => s + e.netSalary, 0);
         setValidationResult({
-          totalRows: 16,
-          employeeCount: 16,
-          totalGross: 1620000,
-          totalNet: 1182000,
+          totalRows: totalRowCount,
+          employeeCount: tempEmployees.length,
+          totalGross,
+          totalNet,
           errors: 0,
-          warnings: 2,
+          warnings: 0,
         });
         setValidating(false);
         setStep(4);
       }, 1000);
     } else if (step === 4) {
       setProcessing(true);
-      setTimeout(() => {
-        const effectiveFrom = periodType === "monthly" && monthPicker
-          ? `${monthPicker}-01`
+      timeoutRef.current = setTimeout(() => {
+        const effectiveFrom = periodType === "monthly" && selectedYear && selectedMonth
+          ? `${selectedYear}-${selectedMonth}-01`
           : dateFrom;
-        const effectiveTo = periodType === "monthly" && monthPicker
+        const effectiveTo = periodType === "monthly" && selectedYear && selectedMonth
           ? new Date(
-              parseInt(monthPicker.split("-")[0] ?? "2026"),
-              parseInt(monthPicker.split("-")[1] ?? "1"),
+              parseInt(selectedYear),
+              parseInt(selectedMonth),
               0,
             )
               .toISOString()
@@ -276,10 +325,10 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
           ? parseEmployeesFromData(fileData, mappings)
           : [];
         const label =
-          periodType === "monthly" && monthPicker
+          periodType === "monthly" && selectedYear && selectedMonth
             ? new Date(
-                parseInt(monthPicker.split("-")[0] ?? "2026"),
-                parseInt(monthPicker.split("-")[1] ?? "1") - 1,
+                parseInt(selectedYear),
+                parseInt(selectedMonth) - 1,
               ).toLocaleString("en-US", { month: "long", year: "numeric" })
             : `${dateFrom} – ${dateTo}`;
         addPeriod({
@@ -298,6 +347,12 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
     }
   };
 
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
+
   const handlePrevStep = () => {
     if (step > 1) setStep(step - 1);
   };
@@ -307,11 +362,11 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
     setFileName(null);
     setFileData(null);
     setPeriodType("monthly");
-    setMonthPicker("");
+    setSelectedMonth("");
+    setSelectedYear("");
     setDateFrom("");
     setDateTo("");
     setMappings([]);
-    setSaveMapping(false);
     setValidating(false);
     setProcessing(false);
     setValidationResult(null);
@@ -446,14 +501,37 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
             </div>
 
             {periodType === "monthly" ? (
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Month</label>
-                <input
-                  type="month"
-                  value={monthPicker}
-                  onChange={(e) => setMonthPicker(e.target.value)}
-                  className="flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Month</label>
+                  <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select month..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MONTH_OPTIONS.map((m) => (
+                        <SelectItem key={m.value} value={m.value}>
+                          {m.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Year</label>
+                  <Select value={selectedYear} onValueChange={setSelectedYear}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select year..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {YEAR_OPTIONS.map((y) => (
+                        <SelectItem key={y.value} value={y.value}>
+                          {y.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-4">
@@ -514,15 +592,6 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
                 />
               ))}
             </div>
-            <label className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
-              <input
-                type="checkbox"
-                checked={saveMapping}
-                onChange={(e) => setSaveMapping(e.target.checked)}
-                className="h-4 w-4 rounded"
-              />
-              Skip mapping for future uploads
-            </label>
           </div>
         )}
 
@@ -633,8 +702,9 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
                 onClick={handleNextStep}
                 disabled={
                   (step === 2 && (
-                    periodType === "monthly" ? !monthPicker : (!dateFrom || !dateTo)
+                    periodType === "monthly" ? (!selectedMonth || !selectedYear) : (!dateFrom || !dateTo)
                   )) ||
+                  (step === 3 && !mappings.some((m) => m.isEmployeeId || m.isEmployeeName)) ||
                   validating ||
                   processing
                 }
