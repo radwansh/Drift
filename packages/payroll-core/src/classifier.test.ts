@@ -15,17 +15,28 @@ describe("classifyEmployeeStatus", () => {
     expect(classifyEmployeeStatus(null, 5000)).toBe("departed");
   });
 
-  it("returns unchanged when diff is below threshold", () => {
-    expect(classifyEmployeeStatus(5000, 5000)).toBe("unchanged");
-    expect(classifyEmployeeStatus(5000.005, 5000)).toBe("unchanged");
+  it("returns unchanged when diff is below absolute threshold", () => {
+    // diff is 0.5 which is below default absoluteThreshold=1.0
+    expect(classifyEmployeeStatus(5000.5, 5000)).toBe("unchanged");
   });
 
-  it("returns increased when net increased", () => {
+  it("returns unchanged when diff is below relative threshold", () => {
+    // relative diff is 0.3% which is below default relativeThreshold=0.5%
+    expect(classifyEmployeeStatus(5015, 5000)).toBe("unchanged");
+  });
+
+  it("returns increased when net increased beyond thresholds", () => {
     expect(classifyEmployeeStatus(6000, 5000)).toBe("increased");
   });
 
-  it("returns decreased when net decreased", () => {
+  it("returns decreased when net decreased beyond thresholds", () => {
     expect(classifyEmployeeStatus(4000, 5000)).toBe("decreased");
+  });
+
+  it("handles previous=0 by only using absoluteThreshold", () => {
+    // previous 0 -> relative threshold can't be computed; absolute diff 1 triggers unchanged
+    expect(classifyEmployeeStatus(0.5, 0)).toBe("unchanged");
+    expect(classifyEmployeeStatus(2, 0)).toBe("increased");
   });
 });
 
