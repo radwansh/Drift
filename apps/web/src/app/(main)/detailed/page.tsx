@@ -100,16 +100,12 @@ export default function DetailedViewPage() {
       const mock = buildMockEmployees();
       const { results: compResults } = runComparison(mock.current, mock.previous);
       setResults(compResults);
-      if (columnConfig.length === 0) {
-        setColumnConfig(buildColumnConfig(compResults));
-      }
+      setColumnConfig(buildColumnConfig(compResults));
       return setLoading(false);
     }
     const { results: compResults } = runComparison(current, previous);
     setResults(compResults);
-    if (columnConfig.length === 0) {
-      setColumnConfig(buildColumnConfig(compResults));
-    }
+    setColumnConfig(buildColumnConfig(compResults));
     setLoading(false);
   }, [currentPeriodLabel, previousPeriodLabel, periods]);
 

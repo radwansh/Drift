@@ -45,7 +45,7 @@ export function VarianceDistributionChart({ distribution }: VarianceDistribution
           <ResponsiveContainer width="100%" height={280}>
             <BarChart
               data={distribution.map((d) => ({ ...d, displayLabel: LABEL_MAP[d.label] ?? d.label }))}
-              margin={{ top: 10, right: 10, left: 10, bottom: 20 }}
+              margin={{ top: 10, right: 10, left: 10, bottom: 40 }}
             >
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis
@@ -53,9 +53,9 @@ export function VarianceDistributionChart({ distribution }: VarianceDistribution
                 tick={{ fontSize: 11 }}
                 tickLine={false}
                 axisLine={false}
-                angle={-20}
+                angle={-30}
                 textAnchor="end"
-                height={60}
+                height={80}
               />
               <YAxis
                 tick={{ fontSize: 11 }}

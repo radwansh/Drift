@@ -82,6 +82,38 @@ const YEAR_OPTIONS = Array.from({ length: 5 }, (_, i) => {
   return { value: String(y), label: String(y) };
 });
 
+function parseCsvLine(line: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (inQuotes) {
+      if (char === '"') {
+        if (i + 1 < line.length && line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        current += char;
+      }
+    } else {
+      if (char === '"') {
+        inQuotes = true;
+      } else if (char === ",") {
+        result.push(current.trim());
+        current = "";
+      } else {
+        current += char;
+      }
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
 function parseEmployeesFromData(
   data: string[][],
   mappings: ColumnMappingState[],
@@ -209,8 +241,9 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
 
         if (ext === "csv") {
           const text = e.target?.result as string;
-          const lines = text.split("\n").filter((l) => l.trim());
-          data = lines.map((l) => l.split(",").map((c) => c.trim()));
+          const rawLines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+          const lines = rawLines.filter((l) => l.trim());
+          data = lines.map((l) => parseCsvLine(l));
         } else {
           const arrayBuf = e.target?.result as ArrayBuffer;
           const workbook = XLSX.read(arrayBuf, { type: "array" });

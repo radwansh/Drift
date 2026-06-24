@@ -103,7 +103,7 @@ export function EmployeeDetailRow({ data }: EmployeeDetailRowProps) {
           </tbody>
           <tfoot>
             <tr className="border-t bg-muted/30 font-semibold">
-              <td className="px-3 py-2">Gross Total</td>
+              <td className="px-3 py-2">Components Total</td>
               <td className="px-3 py-2 text-right tabular-nums">
                 {formatCurrency(grossTotalPrev ?? 0)}
               </td>
@@ -128,28 +128,13 @@ export function EmployeeDetailRow({ data }: EmployeeDetailRowProps) {
               <td className="px-3 py-2 text-right"></td>
             </tr>
             <tr className="border-t bg-muted/30 font-semibold">
-              <td className="px-3 py-2">Net Total</td>
-              <td className="px-3 py-2 text-right tabular-nums">
-                {formatCurrency((grossTotalPrev ?? 0) - (data.netDelta ?? 0))}
-              </td>
-              <td className="px-3 py-2 text-right tabular-nums">
-                {formatCurrency(grossTotalCurr ?? 0)}
-              </td>
-              <td
-                className={`px-3 py-2 text-right tabular-nums ${
-                  data.netDelta !== null
-                    ? data.netDelta > 0
-                      ? "text-green-600"
-                      : data.netDelta < 0
-                        ? "text-red-600"
-                        : ""
-                    : ""
-                }`}
-              >
+              <td className="px-3 py-2">Net Salary &Delta;</td>
+              <td className="px-3 py-2 text-right tabular-nums" colSpan={2}>
                 {data.netDelta !== null
-                  ? `${data.netDelta > 0 ? "+" : ""}${formatCurrency(Math.abs(data.netDelta))}`
+                  ? `${data.netDelta > 0 ? "+" : ""}${formatCurrency(data.netDelta)}`
                   : "\u2014"}
               </td>
+              <td className="px-3 py-2 text-right"></td>
               <td className="px-3 py-2 text-right"></td>
             </tr>
           </tfoot>

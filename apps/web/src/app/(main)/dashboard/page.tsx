@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { runComparison, type EmployeeRecord, type AggregatedSummary } from "@saas/payroll-core";
 import type { AiNarrative } from "@saas/types";
 import { PeriodSelector } from "@/components/dashboard/period-selector";
@@ -66,6 +66,19 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<AggregatedSummary | null>(null);
   const [narrative, setNarrative] = useState<AiNarrative | null>(null);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const periodId = params.get("periodId");
+    if (periodId && periods.length > 0) {
+      const period = periods.find((p) => p.id === periodId);
+      if (period) {
+        setCurrentPeriodLabel(period.label);
+        const other = periods.find((p) => p.id !== periodId);
+        if (other) setPreviousPeriodLabel(other.label);
+      }
+    }
+  }, [periods]);
+
   const runComparisonHandler = useCallback(() => {
     setLoading(true);
     const currentPeriod = periods.find((p) => p.label === currentPeriodLabel);
@@ -74,7 +87,9 @@ export default function DashboardPage() {
     const previous = previousPeriod?.employees ?? [];
     if (current.length === 0 || previous.length === 0) {
       const mock = buildMockEmployees();
-      return setSummary(runComparison(mock.current, mock.previous).summary);
+      setSummary(runComparison(mock.current, mock.previous).summary);
+      setNarrative(null);
+      return setLoading(false);
     }
     const result = runComparison(current, previous);
     setSummary(result.summary);

@@ -56,7 +56,7 @@ export function ComponentBreakdown({ components }: ComponentBreakdownProps) {
             <BarChart
               data={components}
               layout="vertical"
-              margin={{ top: 10, right: 40, left: 60, bottom: 10 }}
+              margin={{ top: 10, right: 100, left: 60, bottom: 10 }}
             >
               <CartesianGrid strokeDasharray="3 3" horizontal={false} />
               <XAxis
