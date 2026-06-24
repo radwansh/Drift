@@ -47,12 +47,12 @@ export function PeriodSelector({
     });
 
   return (
-    <div className="rounded-xl border bg-card p-6 shadow-sm">
-      <div className="flex flex-wrap items-end gap-4">
-        <div className="space-y-1.5">
+    <div className="rounded-xl border bg-card p-4 sm:p-6 shadow-sm">
+      <div className="flex flex-wrap items-end gap-3 sm:gap-4">
+        <div className="space-y-1.5 w-full sm:w-auto">
           <label className="text-sm font-medium text-foreground">Period Type</label>
           <Select value={periodType} onValueChange={onPeriodTypeChange}>
-            <SelectTrigger className="w-56">
+            <SelectTrigger className="w-full sm:w-44 lg:w-56">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -65,11 +65,11 @@ export function PeriodSelector({
           </Select>
         </div>
 
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 w-full sm:w-auto">
           <label className="text-sm font-medium text-foreground">Previous Period</label>
           <Select value={previousPeriodLabel} onValueChange={onPreviousPeriodChange}>
-            <SelectTrigger className="w-44">
-              <CalendarDays className="h-4 w-4 mr-2 text-muted-foreground" />
+            <SelectTrigger className="w-full sm:w-40 lg:w-44">
+              <CalendarDays className="h-4 w-4 mr-2 text-muted-foreground shrink-0" />
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -82,15 +82,15 @@ export function PeriodSelector({
           </Select>
         </div>
 
-        <div className="flex items-center pb-2">
+        <div className="flex items-center pb-2 w-full sm:w-auto justify-center sm:justify-start">
           <ArrowRight className="h-5 w-5 text-muted-foreground" />
         </div>
 
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 w-full sm:w-auto">
           <label className="text-sm font-medium text-foreground">Current Period</label>
           <Select value={currentPeriodLabel} onValueChange={onCurrentPeriodChange}>
-            <SelectTrigger className="w-44">
-              <CalendarDays className="h-4 w-4 mr-2 text-muted-foreground" />
+            <SelectTrigger className="w-full sm:w-40 lg:w-44">
+              <CalendarDays className="h-4 w-4 mr-2 text-muted-foreground shrink-0" />
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -103,7 +103,7 @@ export function PeriodSelector({
           </Select>
         </div>
 
-        <Button onClick={onCompare} disabled={loading}>
+        <Button onClick={onCompare} disabled={loading} className="w-full sm:w-auto">
           {loading ? "Comparing..." : "Compare"}
         </Button>
       </div>

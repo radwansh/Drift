@@ -114,7 +114,7 @@ export default function DashboardPage() {
 
   if (!summary) {
     return (
-      <div>
+      <div className="space-y-6">
         <div className="mb-6">
           <h2 className="text-2xl font-bold">Payroll Variance Dashboard</h2>
           <p className="text-muted-foreground mt-1">Compare payroll data between periods to spot trends and anomalies</p>
@@ -129,6 +129,19 @@ export default function DashboardPage() {
           onCompare={runComparisonHandler}
           loading={loading}
         />
+        {periods.length === 0 && (
+          <div className="flex flex-col items-center justify-center rounded-xl border bg-card py-16">
+            <div className="rounded-full bg-muted p-4">
+              <RefreshCw className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <h3 className="mt-4 text-lg font-semibold">No payroll data yet</h3>
+            <p className="mt-1 text-sm text-muted-foreground text-center max-w-md">
+              Upload your first payroll period to start comparing variance between periods.
+              Select two periods above and click Compare to view the dashboard, or go to
+              Payroll Periods to upload data.
+            </p>
+          </div>
+        )}
       </div>
     );
   }

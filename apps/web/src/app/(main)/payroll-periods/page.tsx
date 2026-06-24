@@ -115,10 +115,8 @@ export default function PayrollPeriodsPage() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }));
-    const seenLabels = new Set(storePeriods.map((sp) => `${sp.dateFrom}-${sp.dateTo}`));
-    const filteredMock = mockPeriods.filter(
-      (mp) => !seenLabels.has(`${mp.dateRange.from}-${mp.dateRange.to}`),
-    );
+    const storedIds = new Set(storePeriods.map((sp) => sp.id));
+    const filteredMock = mockPeriods.filter((mp) => !storedIds.has(mp.id));
     return [...storeAsPayroll, ...filteredMock];
   }, [storePeriods, mockPeriods]);
 
@@ -168,7 +166,7 @@ export default function PayrollPeriodsPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
+        <div className="relative w-full sm:flex-1 sm:min-w-[200px] sm:max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search periods..."
@@ -178,8 +176,8 @@ export default function PayrollPeriodsPage() {
           />
         </div>
         <Select value={periodTypeFilter} onValueChange={setPeriodTypeFilter}>
-          <SelectTrigger className="w-40">
-            <Filter className="h-4 w-4 mr-2" />
+          <SelectTrigger className="w-full sm:w-40">
+            <Filter className="h-4 w-4 mr-2 shrink-0" />
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -191,8 +189,8 @@ export default function PayrollPeriodsPage() {
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-36">
-            <SlidersHorizontal className="h-4 w-4 mr-2" />
+          <SelectTrigger className="w-full sm:w-36">
+            <SlidersHorizontal className="h-4 w-4 mr-2 shrink-0" />
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

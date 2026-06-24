@@ -2,7 +2,7 @@
 
 import type { AggregatedSummary } from "@saas/payroll-core";
 import { KpiCard } from "@/components/dashboard/kpi-card";
-import { formatCurrency, formatPercentage } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
 
 interface KpiCardsProps {
   summary: AggregatedSummary | null;
@@ -29,7 +29,6 @@ export function KpiCards({ summary }: KpiCardsProps) {
       subtext: variance.percentage !== null ? `${isPositive ? "+" : ""}${variance.percentage.toFixed(1)}%` : "N/A",
       iconName: isPositive ? "TrendingUp" : "TrendingDown",
       trend: isPositive ? "up" as const : "down" as const,
-      onClick: () => console.log("Filter by total variance"),
     },
     {
       title: "Employees Affected",
@@ -37,7 +36,6 @@ export function KpiCards({ summary }: KpiCardsProps) {
       subtext: `${summary.employeesAffected.increased} ↑ · ${summary.employeesAffected.decreased} ↓`,
       iconName: "Users",
       trend: "neutral" as const,
-      onClick: () => console.log("Filter by affected employees"),
     },
     {
       title: "New Employees",
@@ -45,7 +43,6 @@ export function KpiCards({ summary }: KpiCardsProps) {
       subtext: "Added this period",
       iconName: "UserPlus",
       trend: "up" as const,
-      onClick: () => console.log("Filter by new employees"),
     },
     {
       title: "Departed Employees",
@@ -53,7 +50,6 @@ export function KpiCards({ summary }: KpiCardsProps) {
       subtext: "Removed this period",
       iconName: "UserMinus",
       trend: "down" as const,
-      onClick: () => console.log("Filter by departed employees"),
     },
     {
       title: "Largest Increase",
@@ -61,7 +57,6 @@ export function KpiCards({ summary }: KpiCardsProps) {
       subtext: summary.largestIncrease ? `${summary.largestIncrease.employeeName} (${summary.largestIncrease.department ?? "N/A"})` : "None",
       iconName: "ArrowUpCircle",
       trend: "up" as const,
-      onClick: () => console.log("Filter by largest increase"),
     },
     {
       title: "Largest Decrease",
@@ -69,7 +64,6 @@ export function KpiCards({ summary }: KpiCardsProps) {
       subtext: summary.largestDecrease ? `${summary.largestDecrease.employeeName} (${summary.largestDecrease.department ?? "N/A"})` : "None",
       iconName: "ArrowDownCircle",
       trend: "down" as const,
-      onClick: () => console.log("Filter by largest decrease"),
     },
   ];
 

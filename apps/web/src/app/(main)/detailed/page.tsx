@@ -161,7 +161,7 @@ export default function DetailedViewPage() {
       {results.length > 0 && (
         <>
           <div className="flex flex-wrap items-center gap-3">
-            <div className="relative flex-1 min-w-[200px] max-w-sm">
+            <div className="relative w-full sm:flex-1 sm:min-w-[200px] sm:max-w-sm">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search by name or ID..."
@@ -171,8 +171,8 @@ export default function DetailedViewPage() {
               />
             </div>
             <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-              <SelectTrigger className="w-44">
-                <Filter className="h-4 w-4 mr-2" />
+              <SelectTrigger className="w-full sm:w-44">
+                <Filter className="h-4 w-4 mr-2 shrink-0" />
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

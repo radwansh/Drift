@@ -1,7 +1,7 @@
 "use client";
 
 import type { ComparisonOutput } from "@saas/payroll-core";
-import { formatCurrency, formatPercentage } from "@/lib/utils";
+import { formatCurrency, formatPercentage, formatComponentName } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, Info, AlertCircle } from "lucide-react";
 
@@ -57,7 +57,7 @@ export function EmployeeDetailRow({ data }: EmployeeDetailRowProps) {
           <tbody>
             {data.componentDeltas.map((delta) => (
               <tr key={delta.component} className="border-b last:border-0">
-                <td className="px-3 py-2 font-medium capitalize">{delta.component}</td>
+                <td className="px-3 py-2 font-medium">{formatComponentName(delta.component)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">
                   {delta.previousValue !== null
                     ? formatCurrency(delta.previousValue)

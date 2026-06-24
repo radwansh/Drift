@@ -59,14 +59,13 @@ export function KpiCard({ title, value, subtext, iconName, trend = "neutral", on
 
   return (
     <Card
-      className={cn("transition-shadow hover:shadow-md", onClick && "cursor-pointer")}
-      onClick={onClick}
+      className="transition-shadow hover:shadow-md"
     >
       <CardContent className="p-5">
         <div className="flex items-start justify-between">
           <div className="space-y-1 min-w-0">
             <p className="text-sm text-muted-foreground truncate">{title}</p>
-            <p className={cn("text-2xl font-bold tracking-tight", trendColors[trend])}>
+            <p className={cn("text-xl sm:text-2xl font-bold tracking-tight truncate", trendColors[trend])}>
               {value}
             </p>
             {subtext && (

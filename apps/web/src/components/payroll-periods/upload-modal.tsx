@@ -359,9 +359,15 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
   };
 
   const availableComponents = useMemo(() => {
-    return mappings
-      .filter((m) => !m.isEmployeeId && !m.isEmployeeName && !m.isDepartment && !m.isGrossSalary && !m.isNetSalary)
-      .map((m) => m.sourceColumn);
+    const comps = new Set<string>();
+    mappings.forEach((m) => {
+      if (m.isEmployeeId || m.isEmployeeName || m.isDepartment || m.isGrossSalary || m.isNetSalary) return;
+      comps.add(m.sourceColumn);
+      if (m.mappedComponent && m.mappedComponent !== "ignore" && m.mappedComponent !== "__create__") {
+        comps.add(m.mappedComponent);
+      }
+    });
+    return Array.from(comps);
   }, [mappings]);
 
   const handleCreateComponent = (sourceColumn: string) => {

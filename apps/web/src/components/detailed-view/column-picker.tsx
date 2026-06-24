@@ -10,7 +10,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Columns, Eye, EyeOff } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatComponentName } from "@/lib/utils";
 
 export type ColumnMode = "current" | "previous" | "side_by_side" | "delta_only";
 
@@ -110,8 +110,8 @@ export function ColumnPicker({ columns, onChange }: ColumnPickerProps) {
                   onChange={() => toggleColumn(col.component)}
                   className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
                 />
-                <span className="flex-1 text-sm font-medium capitalize">
-                  {col.component}
+                <span className="flex-1 text-sm font-medium">
+                  {formatComponentName(col.component)}
                 </span>
                 {col.visible ? (
                   <Eye className="h-3.5 w-3.5 text-muted-foreground" />

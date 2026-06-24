@@ -13,6 +13,14 @@ export function formatCurrency(amount: number, currencyCode: string = "USD"): st
   }
 }
 
+export function formatComponentName(key: string): string {
+  return key
+    .replace(/[_-]/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim();
+}
+
 export function formatPercentage(value: number | null): string {
   if (value === null || value === undefined) return "—";
   const sign = value >= 0 ? "+" : "";

@@ -12,7 +12,7 @@ import {
   type ExpandedState,
 } from "@tanstack/react-table";
 import type { ComparisonOutput, ComponentDelta } from "@saas/payroll-core";
-import { formatCurrency, formatPercentage } from "@/lib/utils";
+import { formatCurrency, formatPercentage, formatComponentName } from "@/lib/utils";
 import {
   Table,
   TableHeader,
@@ -176,7 +176,7 @@ export function ComparisonTable({ data, columnConfig, loading }: ComparisonTable
     },
     ...visibleComponents.map((component): ColumnDef<ComparisonOutput> => ({
       id: component,
-      header: () => <span className="capitalize">{component}</span>,
+      header: () => <span>{formatComponentName(component)}</span>,
       cell: ({ row }) => {
         const delta = row.original.componentDeltas.find(
           (d) => d.component === component,
@@ -255,7 +255,7 @@ export function ComparisonTable({ data, columnConfig, loading }: ComparisonTable
   }
 
   return (
-    <div className="rounded-xl border bg-card">
+    <div className="rounded-xl border bg-card overflow-x-auto">
       <Table>
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
