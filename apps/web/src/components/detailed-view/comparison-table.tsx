@@ -106,6 +106,28 @@ function DeltaOnlyCell({ delta }: { delta: ComponentDelta }) {
   );
 }
 
+function getComponentDelta(row: ComparisonOutput, component: string): ComponentDelta | undefined {
+  if (component === "gross_salary") {
+    return {
+      component: "gross_salary",
+      previousValue: row.previousGross ?? null,
+      currentValue: row.currentGross ?? null,
+      absoluteDiff: row.grossDelta,
+      percentageDiff: row.previousGross && row.currentGross ? ((row.currentGross - row.previousGross) / row.previousGross) * 100 : null,
+    };
+  }
+  if (component === "net_salary") {
+    return {
+      component: "net_salary",
+      previousValue: row.previousNet ?? null,
+      currentValue: row.currentNet ?? null,
+      absoluteDiff: row.netDelta,
+      percentageDiff: row.previousNet && row.currentNet ? ((row.currentNet - row.previousNet) / row.previousNet) * 100 : null,
+    };
+  }
+  return row.componentDeltas.find((d) => d.component === component);
+}
+
 export function ComparisonTable({ data, columnConfig, loading }: ComparisonTableProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [expanded, setExpanded] = useState<ExpandedState>({});
@@ -178,9 +200,7 @@ export function ComparisonTable({ data, columnConfig, loading }: ComparisonTable
       id: component,
       header: () => <span>{formatComponentName(component)}</span>,
       cell: ({ row }) => {
-        const delta = row.original.componentDeltas.find(
-          (d) => d.component === component,
-        );
+        const delta = getComponentDelta(row.original, component);
         if (!delta) {
           const val =
             row.original.currentComponents[component] ??
@@ -206,12 +226,8 @@ export function ComparisonTable({ data, columnConfig, loading }: ComparisonTable
         }
       },
       sortingFn: (a, b) => {
-        const aDelta =
-          a.original.componentDeltas.find((d) => d.component === component)
-            ?.absoluteDiff ?? 0;
-        const bDelta =
-          b.original.componentDeltas.find((d) => d.component === component)
-            ?.absoluteDiff ?? 0;
+        const aDelta = getComponentDelta(a.original, component)?.absoluteDiff ?? 0;
+        const bDelta = getComponentDelta(b.original, component)?.absoluteDiff ?? 0;
         return aDelta - bDelta;
       },
     })),

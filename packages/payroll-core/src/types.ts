@@ -38,6 +38,10 @@ export interface ComparisonOutput {
   currentComponents: Record<string, number | null>;
   previousComponents: Record<string, number | null>;
   componentDeltas: ComponentDelta[];
+  currentGross: number | null;
+  previousGross: number | null;
+  currentNet: number | null;
+  previousNet: number | null;
   grossDelta: number | null;
   netDelta: number | null;
   status: "unchanged" | "increased" | "decreased" | "new" | "departed";

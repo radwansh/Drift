@@ -631,7 +631,6 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
                       ),
                     )
                   }
-                  onCreateComponent={handleCreateComponent}
                 />
               ))}
             </div>

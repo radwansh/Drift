@@ -29,11 +29,20 @@ function extractAllComponents(results: ComparisonOutput[]): string[] {
 
 function buildColumnConfig(results: ComparisonOutput[]): ColumnConfig[] {
   const components = extractAllComponents(results);
-  return components.map((component) => ({
-    component,
-    visible: true,
-    mode: "side_by_side" as const,
-  }));
+  const specials = results.length > 0
+    ? [
+        { component: "gross_salary", visible: true, mode: "side_by_side" as const },
+        { component: "net_salary", visible: true, mode: "side_by_side" as const },
+      ]
+    : [];
+  return [
+    ...specials,
+    ...components.map((component) => ({
+      component,
+      visible: true,
+      mode: "side_by_side" as const,
+    })),
+  ];
 }
 
 export default function DetailedViewPage() {
