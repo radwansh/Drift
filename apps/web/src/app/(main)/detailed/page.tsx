@@ -27,26 +27,26 @@ function extractAllComponents(results: ComparisonOutput[]): string[] {
   return Array.from(comps).sort();
 }
 
-function buildColumnConfig(results: ComparisonOutput[]): ColumnConfig[] {
+function buildColumnConfig(results: ComparisonOutput[], visibility: Record<string, boolean>): ColumnConfig[] {
   const components = extractAllComponents(results);
   const specials = results.length > 0
     ? [
-        { component: "gross_salary", visible: true, mode: "side_by_side" as const },
-        { component: "net_salary", visible: true, mode: "side_by_side" as const },
+        { component: "gross_salary", visible: visibility["gross_salary"] !== false, mode: "side_by_side" as const },
+        { component: "net_salary", visible: visibility["net_salary"] !== false, mode: "side_by_side" as const },
       ]
     : [];
   return [
     ...specials,
     ...components.map((component) => ({
       component,
-      visible: true,
+      visible: visibility[component] !== false,
       mode: "side_by_side" as const,
     })),
   ];
 }
 
 export default function DetailedViewPage() {
-  const { periods } = usePayrollStore();
+  const { periods, componentVisibility } = usePayrollStore();
   const [periodType, setPeriodType] = useState<string>("monthly");
   const [currentPeriodLabel, setCurrentPeriodLabel] = useState("");
   const [previousPeriodLabel, setPreviousPeriodLabel] = useState("");
@@ -79,9 +79,9 @@ export default function DetailedViewPage() {
     }
     const { results: compResults } = runComparison(current, previous);
     setResults(compResults);
-    setColumnConfig(buildColumnConfig(compResults));
+    setColumnConfig(buildColumnConfig(compResults, componentVisibility));
     setLoading(false);
-  }, [currentPeriodLabel, previousPeriodLabel, periods]);
+  }, [currentPeriodLabel, previousPeriodLabel, periods, componentVisibility]);
 
   const filteredResults = useMemo(() => {
     let filtered = results;

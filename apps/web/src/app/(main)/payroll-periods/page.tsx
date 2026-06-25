@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import type { PayrollPeriod, PeriodType, PeriodStatus } from "@saas/types";
+import type { PayrollPeriod, PeriodType, PeriodStatus, CurrencyCode } from "@saas/types";
 import { PeriodCard, PeriodCardSkeleton } from "@/components/payroll-periods/period-card";
 import { UploadModal } from "@/components/payroll-periods/upload-modal";
 import { Input } from "@/components/ui/input";
@@ -24,88 +24,29 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
-import { Search, Filter, SlidersHorizontal, Upload } from "lucide-react";
+import { Search, Filter, SlidersHorizontal, Upload, Trash2 } from "lucide-react";
 import { usePayrollStore } from "@/lib/payroll-store";
-
-function buildMockPeriods(): PayrollPeriod[] {
-  return [
-    {
-      id: "1", companyId: "c1", periodType: "monthly",
-      dateRange: { from: "2026-06-01", to: "2026-06-30" },
-      source: "upload", sourceFilename: "payroll_jun2026.csv",
-      currencyCode: "USD", status: "ready",
-      totalEmployees: 16, totalGross: 1620000, totalNet: 1182000,
-      rawFileKey: null, errorMessage: null,
-      createdAt: "2026-06-21T00:00:00Z", updatedAt: "2026-06-21T00:00:00Z",
-    },
-    {
-      id: "2", companyId: "c1", periodType: "monthly",
-      dateRange: { from: "2026-05-01", to: "2026-05-31" },
-      source: "upload", sourceFilename: "payroll_may2026.xlsx",
-      currencyCode: "USD", status: "ready",
-      totalEmployees: 16, totalGross: 1550000, totalNet: 1130000,
-      rawFileKey: null, errorMessage: null,
-      createdAt: "2026-05-21T00:00:00Z", updatedAt: "2026-05-21T00:00:00Z",
-    },
-    {
-      id: "3", companyId: "c1", periodType: "monthly",
-      dateRange: { from: "2026-04-01", to: "2026-04-30" },
-      source: "integration", sourceFilename: null,
-      currencyCode: "USD", status: "ready",
-      totalEmployees: 15, totalGross: 1480000, totalNet: 1080000,
-      rawFileKey: null, errorMessage: null,
-      createdAt: "2026-04-22T00:00:00Z", updatedAt: "2026-04-22T00:00:00Z",
-    },
-    {
-      id: "4", companyId: "c1", periodType: "bi_weekly",
-      dateRange: { from: "2026-06-08", to: "2026-06-21" },
-      source: "upload", sourceFilename: "payroll_biweekly_jun21.xlsx",
-      currencyCode: "USD", status: "processing",
-      totalEmployees: 16, totalGross: 810000, totalNet: 590000,
-      rawFileKey: null, errorMessage: null,
-      createdAt: "2026-06-21T00:00:00Z", updatedAt: "2026-06-21T00:00:00Z",
-    },
-    {
-      id: "5", companyId: "c1", periodType: "monthly",
-      dateRange: { from: "2026-03-01", to: "2026-03-31" },
-      source: "integration", sourceFilename: null,
-      currencyCode: "USD", status: "error",
-      totalEmployees: 15, totalGross: 1500000, totalNet: 1090000,
-      rawFileKey: null, errorMessage: "Failed to parse salary data for 2 employees",
-      createdAt: "2026-03-20T00:00:00Z", updatedAt: "2026-03-20T00:00:00Z",
-    },
-    {
-      id: "6", companyId: "c1", periodType: "monthly",
-      dateRange: { from: "2026-02-01", to: "2026-02-28" },
-      source: "upload", sourceFilename: "payroll_feb2026.csv",
-      currencyCode: "USD", status: "ready",
-      totalEmployees: 14, totalGross: 1420000, totalNet: 1040000,
-      rawFileKey: null, errorMessage: null,
-      createdAt: "2026-02-20T00:00:00Z", updatedAt: "2026-02-20T00:00:00Z",
-    },
-  ];
-}
 
 export default function PayrollPeriodsPage() {
   const router = useRouter();
-  const { periods: storePeriods, removePeriod } = usePayrollStore();
-  const [mockPeriods, setMockPeriods] = useState<PayrollPeriod[]>(buildMockPeriods());
+  const { periods: storePeriods, removePeriod, clearPeriods } = usePayrollStore();
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [periodTypeFilter, setPeriodTypeFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [uploadOpen, setUploadOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
 
   const allPeriods = useMemo(() => {
-    const storeAsPayroll: PayrollPeriod[] = storePeriods.map((sp) => ({
+    return storePeriods.map((sp) => ({
       id: sp.id,
       companyId: "c1",
       periodType: sp.periodType as PeriodType,
-      dateRange: { from: sp.dateFrom, to: sp.dateTo },
+      dateRange: { from: sp.dateFrom, to: sp.dateTo } as { from: string; to: string },
       source: "upload" as const,
       sourceFilename: sp.fileName,
-      currencyCode: "USD",
+      currencyCode: "USD" as CurrencyCode,
       status: "ready" as PeriodStatus,
       totalEmployees: sp.employees.length,
       totalGross: sp.employees.reduce((sum, e) => sum + e.grossSalary, 0),
@@ -115,10 +56,7 @@ export default function PayrollPeriodsPage() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }));
-    const storedIds = new Set(storePeriods.map((sp) => sp.id));
-    const filteredMock = mockPeriods.filter((mp) => !storedIds.has(mp.id));
-    return [...storeAsPayroll, ...filteredMock];
-  }, [storePeriods, mockPeriods]);
+  }, [storePeriods]);
 
   const filteredPeriods = useMemo(() => {
     let filtered = allPeriods;
@@ -140,13 +78,13 @@ export default function PayrollPeriodsPage() {
 
   const handleDelete = () => {
     if (!deleteId) return;
-    const target = allPeriods.find((p) => p.id === deleteId);
-    if (target && storePeriods.some((sp) => sp.id === target.id)) {
-      removePeriod(deleteId);
-    } else {
-      setMockPeriods((prev) => prev.filter((p) => p.id !== deleteId));
-    }
+    removePeriod(deleteId);
     setDeleteId(null);
+  };
+
+  const handleClearAll = () => {
+    clearPeriods();
+    setClearConfirmOpen(false);
   };
 
   const handleCompare = (id: string) => {
@@ -162,7 +100,15 @@ export default function PayrollPeriodsPage() {
             Manage and view all your payroll periods
           </p>
         </div>
-        <UploadModal open={uploadOpen} onOpenChange={setUploadOpen} />
+        <div className="flex items-center gap-2">
+          {storePeriods.length > 0 && (
+            <Button variant="outline" size="sm" onClick={() => setClearConfirmOpen(true)}>
+              <Trash2 className="h-4 w-4 mr-2" />
+              Clear All
+            </Button>
+          )}
+          <UploadModal open={uploadOpen} onOpenChange={setUploadOpen} />
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -260,6 +206,32 @@ export default function PayrollPeriodsPage() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={clearConfirmOpen}
+        onOpenChange={setClearConfirmOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear All Payroll Periods</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete all payroll periods and associated
+              employee data. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setClearConfirmOpen(false)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleClearAll}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Clear All
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -17,12 +17,16 @@ interface PayrollStoreContextValue {
   periods: StoredPeriod[];
   addPeriod: (period: StoredPeriod) => void;
   removePeriod: (id: string) => void;
+  clearPeriods: () => void;
+  componentVisibility: Record<string, boolean>;
+  setComponentVisibility: (component: string, visible: boolean) => void;
 }
 
 const PayrollStoreContext = createContext<PayrollStoreContextValue | null>(null);
 
 export function PayrollStoreProvider({ children }: { children: ReactNode }) {
   const [periods, setPeriods] = useState<StoredPeriod[]>([]);
+  const [componentVisibility, setComponentVisibilityState] = useState<Record<string, boolean>>({});
 
   const addPeriod = useCallback((period: StoredPeriod) => {
     setPeriods((prev) => [...prev, period]);
@@ -32,8 +36,16 @@ export function PayrollStoreProvider({ children }: { children: ReactNode }) {
     setPeriods((prev) => prev.filter((p) => p.id !== id));
   }, []);
 
+  const clearPeriods = useCallback(() => {
+    setPeriods([]);
+  }, []);
+
+  const setComponentVisibility = useCallback((component: string, visible: boolean) => {
+    setComponentVisibilityState((prev) => ({ ...prev, [component]: visible }));
+  }, []);
+
   return (
-    <PayrollStoreContext.Provider value={{ periods, addPeriod, removePeriod }}>
+    <PayrollStoreContext.Provider value={{ periods, addPeriod, removePeriod, clearPeriods, componentVisibility, setComponentVisibility }}>
       {children}
     </PayrollStoreContext.Provider>
   );

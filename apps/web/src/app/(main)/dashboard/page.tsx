@@ -125,7 +125,7 @@ export default function DashboardPage() {
 
       <KpiCards summary={summary} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6">
         <VarianceDistributionChart distribution={summary.distribution} />
         <ComponentBreakdown components={summary.componentBreakdown} />
       </div>

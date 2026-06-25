@@ -85,59 +85,71 @@ export function MappingRow({
 
   return (
     <div className={cn(
-      "flex flex-wrap items-center gap-2 rounded-lg border bg-card px-3 py-2.5 transition-colors",
+      "rounded-lg border bg-card px-3 py-2.5 transition-colors space-y-2",
       isRequiredMissing && "border-destructive/30 bg-destructive/[0.02]",
     )}>
-      <div className="flex w-36 items-center gap-2">
-        <span className="flex-1 truncate text-sm font-medium" title={sourceColumn}>
-          {sourceColumn}
-        </span>
-        {aiConfidence !== null && (
-          <span
-            className={cn(
-              "flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-medium",
-              aiConfidence >= 0.8
-                ? "bg-green-100 text-green-700"
-                : aiConfidence >= 0.5
-                  ? "bg-amber-100 text-amber-700"
-                  : "bg-red-100 text-red-700",
-            )}
-          >
-            <Brain className="h-3 w-3" />
-            {Math.round(aiConfidence * 100)}%
+      <div className="flex items-center gap-2">
+        <div className="flex w-36 items-center gap-2">
+          <span className="flex-1 truncate text-sm font-medium" title={sourceColumn}>
+            {sourceColumn}
           </span>
-        )}
-      </div>
+          {aiConfidence !== null && (
+            <span
+              className={cn(
+                "flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-medium",
+                aiConfidence >= 0.8
+                  ? "bg-green-100 text-green-700"
+                  : aiConfidence >= 0.5
+                    ? "bg-amber-100 text-amber-700"
+                    : "bg-red-100 text-red-700",
+              )}
+            >
+              <Brain className="h-3 w-3" />
+              {Math.round(aiConfidence * 100)}%
+            </span>
+          )}
+        </div>
 
-      <div className="flex-1">
-        <Select
-          value={mappedComponent || ""}
-          onValueChange={(val) => {
-            update({ mappedComponent: val });
-          }}
-        >
-          <SelectTrigger
-            className={cn(
-              "w-full",
-              !mappedComponent && "text-muted-foreground",
-              mappedComponent === "ignore" && "border-dashed",
-            )}
+        <div className="flex-1">
+          <Select
+            value={mappedComponent || ""}
+            onValueChange={(val) => {
+              update({ mappedComponent: val });
+            }}
           >
-            <SelectValue placeholder="Select mapping..." />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ignore">Ignore column</SelectItem>
-            {availableComponents.map((comp) => (
-              <SelectItem key={comp} value={comp}>
-                {formatComponentName(comp)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+            <SelectTrigger
+              className={cn(
+                "w-full",
+                !mappedComponent && "text-muted-foreground",
+                mappedComponent === "ignore" && "border-dashed",
+              )}
+            >
+              <SelectValue placeholder="Select mapping..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ignore">Ignore column</SelectItem>
+              {availableComponents.map((comp) => (
+                <SelectItem key={comp} value={comp}>
+                  {formatComponentName(comp)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="shrink-0">
+          {isRequiredMissing ? (
+            <XCircle className="h-4 w-4 text-destructive" />
+          ) : mappedComponent && mappedComponent !== "ignore" ? (
+            <CheckCircle2 className="h-4 w-4 text-green-500" />
+          ) : (
+            <AlertCircle className="h-4 w-4 text-amber-500" />
+          )}
+        </div>
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-1">
-        <span className="w-full text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-0.5">Fixed Columns</span>
+      <div className="flex flex-wrap items-center gap-1">
+        <span className="w-full text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Identifiers</span>
         {identifierFields.map(({ key, label }) => {
           const checked = (() => {
             switch (key) {
@@ -168,16 +180,6 @@ export function MappingRow({
             </label>
           );
         })}
-      </div>
-
-      <div className="shrink-0">
-        {isRequiredMissing ? (
-          <XCircle className="h-4 w-4 text-destructive" />
-        ) : mappedComponent && mappedComponent !== "ignore" ? (
-          <CheckCircle2 className="h-4 w-4 text-green-500" />
-        ) : (
-          <AlertCircle className="h-4 w-4 text-amber-500" />
-        )}
       </div>
     </div>
   );

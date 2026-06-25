@@ -8,8 +8,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useColumnMappings } from "@/hooks/use-column-mappings";
-import { Plus, Trash2, Save, Download, Upload, TestTube, Check, X, Edit3 } from "lucide-react";
+import { Plus, Trash2, Save, Download, Upload, TestTube, Check, X, Edit3, Eye, EyeOff } from "lucide-react";
 import type { ColumnMapping } from "@saas/types";
+import { usePayrollStore } from "@/lib/payroll-store";
 
 interface EditableMapping {
   sourceColumn: string;
@@ -24,6 +25,7 @@ interface EditableMapping {
 
 export default function ColumnMappingsPage() {
   const { mappings, saveMappings, isMapping } = useColumnMappings();
+  const { componentVisibility, setComponentVisibility } = usePayrollStore();
   const [editIndex, setEditIndex] = useState<number | null>(null);
   const [deleteIndex, setDeleteIndex] = useState<number | null>(null);
   const [localMappings, setLocalMappings] = useState<EditableMapping[]>([]);
@@ -170,14 +172,15 @@ export default function ColumnMappingsPage() {
                 <TableHead>Source Column</TableHead>
                 <TableHead>Mapped Component</TableHead>
                 <TableHead>Identifiers</TableHead>
+                <TableHead className="w-20">Visible</TableHead>
                 <TableHead className="w-24"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {displayMappings.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                    No mappings configured. Add a mapping to get started.
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                      No mappings configured. Add a mapping to get started.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -215,6 +218,21 @@ export default function ColumnMappingsPage() {
                         {(mapping as any).isGrossSalary && <Badge variant="outline" className="text-[10px]">Gross</Badge>}
                         {(mapping as any).isNetSalary && <Badge variant="outline" className="text-[10px]">Net</Badge>}
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      <label className="flex cursor-pointer items-center gap-1.5 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={componentVisibility[mapping.mappedComponent] !== false}
+                          onChange={(e) => setComponentVisibility(mapping.mappedComponent, e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/30"
+                        />
+                        {componentVisibility[mapping.mappedComponent] !== false ? (
+                          <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                        ) : (
+                          <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
+                        )}
+                      </label>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
