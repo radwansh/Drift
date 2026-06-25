@@ -8,7 +8,7 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { AlertCircle, CheckCircle2, XCircle, Brain } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatComponentName } from "@/lib/utils";
 
 interface MappingRowProps {
   sourceColumn: string;
@@ -136,7 +136,7 @@ export function MappingRow({
             <SelectItem value="ignore">Ignore column</SelectItem>
             {availableComponents.map((comp) => (
               <SelectItem key={comp} value={comp}>
-                {comp}
+                {formatComponentName(comp)}
               </SelectItem>
             ))}
             <SelectItem

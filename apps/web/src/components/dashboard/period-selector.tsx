@@ -18,15 +18,6 @@ interface PeriodSelectorProps {
   loading?: boolean;
 }
 
-const FALLBACK_OPTIONS = [
-  { value: "June 2026", label: "June 2026" },
-  { value: "May 2026", label: "May 2026" },
-  { value: "April 2026", label: "April 2026" },
-  { value: "March 2026", label: "March 2026" },
-  { value: "February 2026", label: "February 2026" },
-  { value: "January 2026", label: "January 2026" },
-];
-
 export function PeriodSelector({
   periodType,
   onPeriodTypeChange,
@@ -39,7 +30,8 @@ export function PeriodSelector({
 }: PeriodSelectorProps) {
   const { periods } = usePayrollStore();
   const seen = new Set<string>();
-  const periodOptions = [...FALLBACK_OPTIONS, ...periods.map((p) => ({ value: p.label, label: p.label }))]
+  const periodOptions = periods
+    .map((p) => ({ value: p.label, label: p.label }))
     .filter((opt) => {
       if (seen.has(opt.value)) return false;
       seen.add(opt.value);
