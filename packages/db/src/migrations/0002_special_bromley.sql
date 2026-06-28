@@ -1,0 +1,1 @@
+ALTER TABLE "trial_requests" ALTER COLUMN "reviewed_by" SET DATA TYPE varchar(255);

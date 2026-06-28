@@ -8,6 +8,20 @@
       "when": 1782083359393,
       "tag": "0000_cheerful_miek",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1782683107702,
+      "tag": "0001_dear_chronomancer",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782683567702,
+      "tag": "0002_special_bromley",
+      "breakpoints": true
     }
   ]
 }
