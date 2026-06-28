@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drift — Payroll Variance Intelligence</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --primary: #3b82f6;
+    --primary-dark: #1d4ed8;
+    --primary-light: #93c5fd;
+    --sidebar: #1e293b;
+    --bg: #ffffff;
+    --fg: #0f172a;
+    --muted: #f1f5f9;
+    --muted-fg: #64748b;
+    --success: #22c55e;
+    --warning: #f59e0b;
+    --radius: 12px;
+  }
+
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  .slide-container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 64px;
+    opacity: 0;
+    transform: scale(0.96);
+    transition: opacity 0.8s ease, transform 0.8s ease;
+    pointer-events: none;
+  }
+
+  .slide.active {
+    opacity: 1;
+    transform: scale(1);
+    pointer-events: auto;
+  }
+
+  .slide.exit {
+    opacity: 0;
+    transform: scale(1.04);
+  }
+
+  /* Progress bar */
+  .progress-bar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: rgba(59,130,246,0.15);
+    z-index: 100;
+  }
+  .progress-bar-inner {
+    height: 100%;
+    background: var(--primary);
+    transition: width 0.1s linear;
+  }
+
+  /* Slide indicators */
+  .indicators {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 10px;
+    z-index: 100;
+  }
+  .indicators button {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(59,130,246,0.25);
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+  .indicators button.active {
+    background: var(--primary);
+    width: 28px;
+    border-radius: 6px;
+  }
+
+  /* Typography */
+  h1 { font-size: clamp(2rem, 5vw, 4rem); font-weight: 800; line-height: 1.1; letter-spacing: -0.03em; }
+  h2 { font-size: clamp(1.5rem, 3vw, 2.5rem); font-weight: 700; line-height: 1.2; letter-spacing: -0.02em; }
+  h3 { font-size: clamp(1.1rem, 1.8vw, 1.5rem); font-weight: 600; }
+  p  { font-size: clamp(0.95rem, 1.4vw, 1.15rem); line-height: 1.7; color: var(--muted-fg); max-width: 640px; }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 16px;
+    border-radius: 100px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    background: rgba(59,130,246,0.1);
+    color: var(--primary);
+    margin-bottom: 20px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 32px;
+    border-radius: 100px;
+    font-weight: 600;
+    font-size: 1rem;
+    text-decoration: none;
+    transition: all 0.25s;
+    cursor: pointer;
+    border: none;
+  }
+  .btn-primary {
+    background: var(--primary);
+    color: #fff;
+    box-shadow: 0 4px 20px rgba(59,130,246,0.3);
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(59,130,246,0.4); }
+  .btn-outline {
+    background: transparent;
+    color: var(--fg);
+    border: 1.5px solid #e2e8f0;
+  }
+  .btn-outline:hover { border-color: var(--primary); color: var(--primary); }
+
+  .buttons { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 28px; }
+
+  /* Card modules */
+  .card-grid { display: grid; gap: 20px; max-width: 900px; width: 100%; margin-top: 32px; }
+  .card-grid-2 { grid-template-columns: 1fr 1fr; }
+  .card-grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+  @media (max-width: 700px) { .card-grid-2, .card-grid-3 { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--muted);
+    border-radius: var(--radius);
+    padding: 24px;
+    text-align: center;
+    transition: transform 0.3s;
+  }
+  .card:hover { transform: translateY(-4px); }
+  .card .icon { font-size: 2rem; margin-bottom: 12px; display: block; }
+  .card h3 { margin-bottom: 6px; }
+  .card p { font-size: 0.9rem; margin: 0 auto; }
+
+  /* Animated chart bars */
+  .chart-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    height: 160px;
+    margin: 28px 0 16px;
+    padding: 0 20px;
+  }
+  .chart-bars .bar {
+    flex: 1;
+    border-radius: 4px 4px 0 0;
+    background: var(--primary);
+    min-height: 8px;
+    transition: height 1s cubic-bezier(0.34, 1.56, 0.64, 1);
+    position: relative;
+    opacity: 0;
+    animation: barRise 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+  .chart-bars .bar:nth-child(1) { animation-delay: 0.1s; height: 60%; background: linear-gradient(to top, #3b82f6, #60a5fa); }
+  .chart-bars .bar:nth-child(2) { animation-delay: 0.2s; height: 85%; background: linear-gradient(to top, #2563eb, #3b82f6); }
+  .chart-bars .bar:nth-child(3) { animation-delay: 0.3s; height: 45%; background: linear-gradient(to top, #1d4ed8, #2563eb); }
+  .chart-bars .bar:nth-child(4) { animation-delay: 0.4s; height: 72%; background: linear-gradient(to top, #3b82f6, #60a5fa); }
+  .chart-bars .bar:nth-child(5) { animation-delay: 0.5s; height: 55%; background: linear-gradient(to top, #2563eb, #3b82f6); }
+  .chart-bars .bar:nth-child(6) { animation-delay: 0.6s; height: 90%; background: linear-gradient(to top, #1d4ed8, #2563eb); }
+
+  @keyframes barRise {
+    from { opacity: 1; transform: scaleY(0); transform-origin: bottom; }
+    to   { opacity: 1; transform: scaleY(1); transform-origin: bottom; }
+  }
+
+  /* Animated comparison lines */
+  .comparison-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    max-width: 600px;
+    width: 100%;
+    margin-top: 28px;
+  }
+  .comp-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    opacity: 0;
+    transform: translateX(-20px);
+    animation: fadeInRow 0.5s ease forwards;
+  }
+  .comp-row:nth-child(1) { animation-delay: 0.2s; }
+  .comp-row:nth-child(2) { animation-delay: 0.4s; }
+  .comp-row:nth-child(3) { animation-delay: 0.6s; }
+  .comp-row:nth-child(4) { animation-delay: 0.8s; }
+
+  @keyframes fadeInRow {
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .comp-row .label { width: 120px; font-size: 0.85rem; font-weight: 500; color: var(--muted-fg); flex-shrink: 0; }
+  .comp-row .prev-bar, .comp-row .curr-bar {
+    height: 28px;
+    border-radius: 6px;
+    transition: width 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .comp-row .prev-bar { background: #e2e8f0; }
+  .comp-row .curr-bar { background: var(--primary); }
+  .comp-row .delta { width: 80px; text-align: right; font-weight: 700; font-size: 0.9rem; flex-shrink: 0; }
+  .comp-row .delta.up { color: var(--success); }
+  .comp-row .delta.down { color: var(--warning); }
+
+  /* AI pulse ring */
+  .ai-ring {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    background: rgba(59,130,246,0.1);
+    position: relative;
+    margin-bottom: 20px;
+  }
+  .ai-ring::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
+    border: 2px solid rgba(59,130,246,0.2);
+    animation: pulseRing 2s ease-in-out infinite;
+  }
+  .ai-ring::after {
+    content: '';
+    position: absolute;
+    inset: -16px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(59,130,246,0.1);
+    animation: pulseRing 2s ease-in-out 0.5s infinite;
+  }
+  @keyframes pulseRing {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.1); opacity: 0.5; }
+  }
+  .ai-ring svg { width: 36px; height: 36px; color: var(--primary); }
+
+  /* Floating particles background */
+  .particles { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+  .particle {
+    position: absolute;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: rgba(59,130,246,0.08);
+    animation: float linear infinite;
+  }
+  @keyframes float {
+    0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { transform: translateY(-10vh) rotate(720deg); opacity: 0; }
+  }
+
+  /* Glow text */
+  .glow { color: var(--primary); }
+
+  /* Logo */
+  .logo {
+    position: fixed;
+    top: 24px;
+    left: 32px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 100;
+    font-weight: 700;
+    font-size: 1.2rem;
+  }
+  .logo svg { width: 28px; height: 28px; color: var(--primary); }
+
+  /* Skip / controls */
+  .controls {
+    position: fixed;
+    bottom: 32px;
+    right: 32px;
+    z-index: 100;
+    display: flex;
+    gap: 8px;
+  }
+  .controls button {
+    background: var(--muted);
+    border: none;
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--muted-fg);
+    transition: all 0.2s;
+    font-size: 1.1rem;
+  }
+  .controls button:hover { background: var(--primary); color: #fff; }
+
+  /* Slide 5 — CTA special */
+  .cta-glow {
+    display: inline-block;
+    background: linear-gradient(135deg, var(--primary), #8b5cf6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Company names ticker */
+  .ticker {
+    display: flex;
+    gap: 48px;
+    margin-top: 40px;
+    opacity: 0.3;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--muted-fg);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  /* Period badges */
+  .period-badges {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+  }
+  .period-badge {
+    padding: 8px 18px;
+    border-radius: 100px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    background: var(--muted);
+    color: var(--muted-fg);
+    border: 1px solid #e2e8f0;
+  }
+</style>
+</head>
+<body>
+
+<div class="logo">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 3v18h18"/><path d="M7 16l4-8 4 4 4-6"/>
+  </svg>
+  Drift
+</div>
+
+<div class="progress-bar">
+  <div class="progress-bar-inner" id="progress"></div>
+</div>
+
+<div class="particles" id="particles"></div>
+
+<div class="slide-container">
+
+  <!-- SLIDE 1: Hero -->
+  <div class="slide active" id="slide-0">
+    <div class="badge">&#9679; Now Available</div>
+    <h1 style="text-align:center;max-width:800px">
+      Know Every Dollar.<br>
+      <span class="glow">Every Period.</span>
+    </h1>
+    <p style="text-align:center;margin-top:16px;">
+      Drift gives business owners, payroll administrators, and finance managers
+      real-time visibility into payroll variances, headcount changes, and
+      salary expenses — powered by AI.
+    </p>
+    <div class="buttons">
+      <span class="btn btn-primary">&#9654; See How It Works</span>
+      <span class="btn btn-outline">Learn More</span>
+    </div>
+    <div class="chart-bars">
+      <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+      <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+    </div>
+    <p style="font-size:0.8rem;margin-top:8px;">
+      <span style="color:var(--success);">&#9650;</span> +12.4% &nbsp;&nbsp;
+      <span style="color:var(--warning);">&#9660;</span> -3.2% &nbsp;&nbsp;
+      <span style="color:var(--muted-fg);">&#9644;</span> 84% unchanged
+    </p>
+  </div>
+
+  <!-- SLIDE 2: Variance & Headcount -->
+  <div class="slide" id="slide-1">
+    <div class="badge">&#9878; For Business Owners &amp; Managers</div>
+    <h2 style="text-align:center;max-width:750px">
+      Spot Payroll Variances &amp; <span class="glow">Headcount Changes</span> Instantly
+    </h2>
+    <p style="text-align:center;">
+      Compare any two periods — weekly, bi-weekly, or monthly — and see exactly
+      which employees changed, by how much, and why. No more digging through spreadsheets.
+    </p>
+    <div class="comparison-lines">
+      <div class="comp-row">
+        <span class="label">Base Salary</span>
+        <div class="prev-bar" style="width:160px"></div>
+        <div class="curr-bar" style="width:200px"></div>
+        <span class="delta up">+$5,200</span>
+      </div>
+      <div class="comp-row">
+        <span class="label">Bonus</span>
+        <div class="prev-bar" style="width:120px"></div>
+        <div class="curr-bar" style="width:90px"></div>
+        <span class="delta down">-$1,800</span>
+      </div>
+      <div class="comp-row">
+        <span class="label">Benefits</span>
+        <div class="prev-bar" style="width:80px"></div>
+        <div class="curr-bar" style="width:95px"></div>
+        <span class="delta up">+$750</span>
+      </div>
+      <div class="comp-row">
+        <span class="label">Headcount</span>
+        <div class="prev-bar" style="width:100px"></div>
+        <div class="curr-bar" style="width:120px"></div>
+        <span class="delta up">+3 employees</span>
+      </div>
+    </div>
+    <div class="period-badges">
+      <span class="period-badge">&#128197; Weekly</span>
+      <span class="period-badge">&#128197; Bi-Weekly</span>
+      <span class="period-badge">&#128197; Monthly</span>
+    </div>
+  </div>
+
+  <!-- SLIDE 3: Monitoring Expenses -->
+  <div class="slide" id="slide-2">
+    <div class="badge">&#128200; For Payroll Administrators</div>
+    <h2 style="text-align:center;max-width:750px">
+      Monitor <span class="glow">Total Payroll Expenses</span> Across Periods
+    </h2>
+    <p style="text-align:center;">
+      Track gross payroll, net pay, and every salary component in one dashboard.
+      See total variance, department breakdowns, and individual contributor changes.
+    </p>
+    <div class="card-grid card-grid-3">
+      <div class="card">
+        <span class="icon">&#128176;</span>
+        <h3>Total Variance</h3>
+        <p>+$48,200 vs last period — driven by new hires in Engineering</p>
+      </div>
+      <div class="card">
+        <span class="icon">&#128101;</span>
+        <h3>Department View</h3>
+        <p>Engineering +$32K, Sales +$12K, Marketing +$4K</p>
+      </div>
+      <div class="card">
+        <span class="icon">&#128200;</span>
+        <h3>Component Drilldown</h3>
+        <p>Bonuses up 18%, Benefits flat, Overtime down 5%</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 4: AI Dashboard -->
+  <div class="slide" id="slide-3">
+    <div class="badge">&#129302; AI-Powered</div>
+    <h2 style="text-align:center;max-width:750px">
+      Get an <span class="glow">AI Summary</span> of Your Payroll Changes
+    </h2>
+    <p style="text-align:center;">
+      Drift's AI engine automatically analyzes every comparison, highlights
+      anomalies, flags unusual patterns, and generates a plain-English summary
+      of what changed — so you don't have to hunt for insights.
+    </p>
+    <div style="display:flex;align-items:center;gap:32px;margin-top:28px;flex-wrap:wrap;justify-content:center;">
+      <div class="ai-ring">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2a4 4 0 0 1 4 4c0 2-2 4-4 4s-4-2-4-4 2-4 4-4z"/>
+          <path d="M4 22v-2a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v2"/>
+        </svg>
+      </div>
+      <div style="background:var(--muted);border-radius:12px;padding:20px 28px;max-width:400px;text-align:left;">
+        <p style="font-size:0.9rem;color:var(--fg);font-weight:500;margin-bottom:4px;">
+          &#128172; AI Summary
+        </p>
+        <p style="font-size:0.85rem;">
+          "Payroll increased 6.2% driven by 3 new Engineering hires. Two
+          employees in Sales had bonus reductions exceeding 20%. One anomaly
+          flagged: a net change without corresponding component change."
+        </p>
+        <div style="display:flex;gap:8px;margin-top:12px;">
+          <span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:100px;font-size:0.7rem;font-weight:600;">3 anomalies</span>
+          <span style="background:#d1fae5;color:#065f46;padding:3px 10px;border-radius:100px;font-size:0.7rem;font-weight:600;">2 highlights</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 5: CTA -->
+  <div class="slide" id="slide-4">
+    <div class="badge">&#128640; Get Started</div>
+    <h2 style="text-align:center;max-width:700px">
+      Stop Guessing.<br>
+      <span class="cta-glow">Start Drifting.</span>
+    </h2>
+    <p style="text-align:center;margin-top:8px;">
+      Upload your payroll data, compare any two periods, and let AI surface
+      the insights that matter. Weekly, bi-weekly, or monthly — Drift works
+      with your payroll cycle.
+    </p>
+    <div class="buttons">
+      <span class="btn btn-primary">&#9654; Try Drift Free</span>
+      <span class="btn btn-outline">Book a Demo</span>
+    </div>
+    <div class="ticker">
+      <span>Acme Corp</span>
+      <span>Globex Inc</span>
+      <span>Initech</span>
+      <span>Umbrella Co</span>
+      <span>Stark Ind</span>
+    </div>
+  </div>
+
+</div>
+
+<div class="indicators" id="indicators">
+  <button class="active" data-index="0"></button>
+  <button data-index="1"></button>
+  <button data-index="2"></button>
+  <button data-index="3"></button>
+  <button data-index="4"></button>
+</div>
+
+<div class="controls">
+  <button id="prevBtn" title="Previous">&#8592;</button>
+  <button id="nextBtn" title="Next">&#8594;</button>
+</div>
+
+<script>
+  (function() {
+    const slides = document.querySelectorAll('.slide');
+    const dots = document.querySelectorAll('.indicators button');
+    const progress = document.getElementById('progress');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const total = slides.length;
+    let current = 0;
+    let timer = null;
+    const DURATION = 6000;
+    let startTime = Date.now();
+    let paused = false;
+
+    // Particles
+    const particles = document.getElementById('particles');
+    for (let i = 0; i < 30; i++) {
+      const p = document.createElement('div');
+      p.className = 'particle';
+      p.style.left = Math.random() * 100 + '%';
+      p.style.width = (2 + Math.random() * 6) + 'px';
+      p.style.height = p.style.width;
+      p.style.animationDuration = (12 + Math.random() * 20) + 's';
+      p.style.animationDelay = (Math.random() * 10) + 's';
+      p.style.opacity = 0.3 + Math.random() * 0.4;
+      particles.appendChild(p);
+    }
+
+    function goTo(index) {
+      if (index < 0) index = total - 1;
+      if (index >= total) index = 0;
+      if (index === current) return;
+
+      slides.forEach((s, i) => {
+        s.classList.remove('active', 'exit');
+        if (i === current) s.classList.add('exit');
+      });
+      slides[index].classList.add('active');
+      dots.forEach((d, i) => d.classList.toggle('active', i === index));
+      current = index;
+      startTime = Date.now();
+    }
+
+    function advance() { goTo(current + 1); }
+    function goBack() { goTo(current - 1); }
+
+    // Manual controls
+    prevBtn.addEventListener('click', function() { goBack(); resetTimer(); });
+    nextBtn.addEventListener('click', function() { advance(); resetTimer(); });
+    dots.forEach(function(dot) {
+      dot.addEventListener('click', function() {
+        goTo(parseInt(this.dataset.index));
+        resetTimer();
+      });
+    });
+
+    // Keyboard
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'ArrowRight') { advance(); resetTimer(); }
+      if (e.key === 'ArrowLeft') { goBack(); resetTimer(); }
+      if (e.key === ' ') { e.preventDefault(); togglePause(); }
+    });
+
+    // Touch support
+    let touchStartX = 0;
+    document.addEventListener('touchstart', function(e) {
+      touchStartX = e.touches[0].clientX;
+    });
+    document.addEventListener('touchend', function(e) {
+      const dx = e.changedTouches[0].clientX - touchStartX;
+      if (Math.abs(dx) > 50) {
+        if (dx > 0) { goBack(); resetTimer(); }
+        else { advance(); resetTimer(); }
+      }
+    });
+
+    function togglePause() {
+      paused = !paused;
+      if (!paused) startTime = Date.now();
+    }
+
+    function resetTimer() {
+      startTime = Date.now();
+      if (timer) { clearInterval(timer); timer = null; }
+    }
+
+    // Auto-advance with smooth progress bar
+    function tick() {
+      if (paused) return;
+      const elapsed = Date.now() - startTime;
+      const pct = Math.min((elapsed / DURATION) * 100, 100);
+      progress.style.width = pct + '%';
+      if (elapsed >= DURATION) {
+        advance();
+        startTime = Date.now();
+      }
+    }
+
+    setInterval(tick, 50);
+  })();
+</script>
+</body>
+</html>
