@@ -1,7 +1,7 @@
 import { Resend } from "resend";
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY ?? "";
-const FROM_EMAIL = "Drift <onboarding@drift.money>";
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://drift.money";
 const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? "Drift";
 
@@ -22,18 +22,19 @@ export async function sendTrialApprovedEmail(input: TrialRequestEmailInput) {
     console.warn("Resend not configured — skipping trial approval email");
     return;
   }
-  await resend.emails.send({
-    from: FROM_EMAIL,
-    to: input.email,
-    subject: `Your 30-Day Drift Trial is Ready!`,
-    html: `<!DOCTYPE html>
+  try {
+    const result = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: input.email,
+      subject: `Your 30-Day Drift Trial is Ready!`,
+      html: `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;padding:0;background:#f8fafc">
 <table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:40px 16px">
 <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.08)">
 <tr><td style="padding:40px 40px 0;text-align:center">
-<h1 style="font-size:24px;font-weight:700;color:#0f172a;margin:0 0 8px">Welcome to Drift, ${input.firstName}! 🚀</h1>
+<h1 style="font-size:24px;font-weight:700;color:#0f172a;margin:0 0 8px">Welcome to Drift, ${input.firstName}!</h1>
 <p style="color:#64748b;font-size:15px;line-height:1.6;margin:0 0 24px">
 Your <strong style="color:#3b82f6">30-day free trial</strong> is now active. Click the button below to access Drift and start comparing your payroll periods instantly.
 </p>
@@ -47,10 +48,10 @@ Your <strong style="color:#3b82f6">30-day free trial</strong> is now active. Cli
 <tr><td style="padding:24px 40px 40px">
 <h2 style="font-size:16px;font-weight:600;color:#0f172a;margin:0 0 12px">What you get with Drift:</h2>
 <table width="100%" cellpadding="0" cellspacing="0">
-<tr><td style="padding:6px 0;color:#334155;font-size:14px">✅ <strong>Payroll Variance Analysis</strong> — Compare any two periods side-by-side</td></tr>
-<tr><td style="padding:6px 0;color:#334155;font-size:14px">✅ <strong>AI-Powered Insights</strong> — Automated anomaly detection &amp; summaries</td></tr>
-<tr><td style="padding:6px 0;color:#334155;font-size:14px">✅ <strong>Department Breakdowns</strong> — See changes by team or location</td></tr>
-<tr><td style="padding:6px 0;color:#334155;font-size:14px">✅ <strong>Export &amp; Share</strong> — CSV reports ready for your stakeholders</td></tr>
+<tr><td style="padding:6px 0;color:#334155;font-size:14px">+ <strong>Payroll Variance Analysis</strong> &mdash; Compare any two periods side-by-side</td></tr>
+<tr><td style="padding:6px 0;color:#334155;font-size:14px">+ <strong>AI-Powered Insights</strong> &mdash; Automated anomaly detection &amp; summaries</td></tr>
+<tr><td style="padding:6px 0;color:#334155;font-size:14px">+ <strong>Department Breakdowns</strong> &mdash; See changes by team or location</td></tr>
+<tr><td style="padding:6px 0;color:#334155;font-size:14px">+ <strong>Export &amp; Share</strong> &mdash; CSV reports ready for your stakeholders</td></tr>
 </table>
 </td></tr>
 <tr><td style="background:#f1f5f9;padding:24px 40px;text-align:center">
@@ -66,7 +67,11 @@ Your trial expires in <strong>30 days</strong>.
 </td></tr></table>
 </body>
 </html>`,
-  });
+    });
+    console.log("Trial approval email sent:", result?.id || "no id");
+  } catch (err) {
+    console.error("Failed to send trial approval email:", err);
+  }
 }
 
 export async function sendTrialRequestNotification(input: {
