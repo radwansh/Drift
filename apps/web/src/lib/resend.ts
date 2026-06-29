@@ -68,7 +68,11 @@ Your trial expires in <strong>30 days</strong>.
 </body>
 </html>`,
     });
-    console.log("Trial approval email sent:", result?.id || "no id");
+    if (result.error) {
+      console.error("Resend returned error:", result.error);
+    } else {
+      console.log("Trial approval email sent:", result.data?.id ?? "no id");
+    }
   } catch (err) {
     console.error("Failed to send trial approval email:", err);
   }
