@@ -12,7 +12,7 @@ export async function GET() {
   const ZOHO_CLIENT_ID = process.env.ZOHO_CLIENT_ID ?? "";
   const ZOHO_CLIENT_SECRET = process.env.ZOHO_CLIENT_SECRET ?? "";
   const ZOHO_REFRESH_TOKEN = process.env.ZOHO_REFRESH_TOKEN ?? "";
-  const configuredUrl = process.env.ZOHO_ACCOUNTS_URL ?? "https://accounts.zoho.com";
+  const configuredUrl = (process.env.ZOHO_ACCOUNTS_URL ?? "https://accounts.zoho.com").replace(/\/+$/, "");
 
   const missing = [];
   if (!ZOHO_CLIENT_ID) missing.push("ZOHO_CLIENT_ID");

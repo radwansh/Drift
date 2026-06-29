@@ -1,7 +1,7 @@
 const ZOHO_CLIENT_ID = process.env.ZOHO_CLIENT_ID ?? "";
 const ZOHO_CLIENT_SECRET = process.env.ZOHO_CLIENT_SECRET ?? "";
 const ZOHO_REFRESH_TOKEN = process.env.ZOHO_REFRESH_TOKEN ?? "";
-const ZOHO_ACCOUNTS_URL = process.env.ZOHO_ACCOUNTS_URL ?? "https://accounts.zoho.com";
+const ZOHO_ACCOUNTS_URL = (process.env.ZOHO_ACCOUNTS_URL ?? "https://accounts.zoho.com").replace(/\/+$/, "");
 const ZOHO_API_URL = "https://www.zohoapis.com";
 
 let cachedAccessToken: { token: string; expiresAt: number } | null = null;
@@ -11,6 +11,7 @@ async function getAccessToken(): Promise<string> {
     return cachedAccessToken.token;
   }
   const url = `${ZOHO_ACCOUNTS_URL}/oauth/v2/token`;
+  console.log("getAccessToken: requesting token from", url, "client_id exists:", !!ZOHO_CLIENT_ID);
   const params = new URLSearchParams({
     refresh_token: ZOHO_REFRESH_TOKEN,
     client_id: ZOHO_CLIENT_ID,
