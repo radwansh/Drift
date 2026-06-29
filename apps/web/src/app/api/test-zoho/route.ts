@@ -24,10 +24,13 @@ export async function GET() {
       grant_type: "refresh_token",
     });
     const res = await fetch(url, { method: "POST", body: params });
-    const data = await res.json();
+    const text = await res.text();
     if (!res.ok) {
-      return NextResponse.json({ ok: false, error: data.error ?? data, status: res.status });
+      const snippet = text.slice(0, 500);
+      return NextResponse.json({ ok: false, status: res.status, body: snippet });
     }
+    let data;
+    try { data = JSON.parse(text); } catch { data = {}; }
     return NextResponse.json({ ok: true, access_token: data.access_token?.slice(0, 10) + "..." });
   } catch (err) {
     return NextResponse.json({ ok: false, error: String(err) });
