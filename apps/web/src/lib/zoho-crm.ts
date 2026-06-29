@@ -17,7 +17,11 @@ async function getAccessToken(): Promise<string> {
     client_secret: ZOHO_CLIENT_SECRET,
     grant_type: "refresh_token",
   });
-  const res = await fetch(url, { method: "POST", body: params });
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params,
+  });
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`Zoho token refresh failed: ${res.status} ${body}`);
@@ -68,5 +72,7 @@ export async function createZohoLead(input: ZohoLeadInput): Promise<string> {
   if (!res.ok) {
     throw new Error(`Zoho create lead failed: ${res.status} ${JSON.stringify(body)}`);
   }
-  return body?.data?.[0]?.details?.id ?? "";
+  const leadId = body?.data?.[0]?.details?.id ?? "";
+  console.log("Zoho lead created:", leadId, "for", input.email);
+  return leadId;
 }
