@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
 
     const db = requireDb();
 
-    if (leadStatus === "Approved" || leadStatus === "Qualified") {
+    if (leadStatus === "Pre-Qualified") {
       const request = await db.query.trialRequests.findFirst({
         where: email
           ? eq(trialRequests.email, email)
