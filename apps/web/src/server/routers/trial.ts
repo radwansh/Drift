@@ -45,9 +45,11 @@ export const trialRouter = router({
 
       let zohoLeadId = "";
       try {
+        console.log("trial.submit: calling createZohoLead for", input.email);
         zohoLeadId = await createZohoLead(input);
+        console.log("trial.submit: createZohoLead returned:", zohoLeadId);
       } catch (err) {
-        console.error("Zoho lead creation failed:", err);
+        console.error("trial.submit: Zoho lead creation failed:", err);
       }
 
       const [request] = await db.insert(trialRequests).values({
@@ -59,6 +61,8 @@ export const trialRouter = router({
         status: "pending",
         zohoLeadId: zohoLeadId || null,
       }).returning();
+
+      console.log("trial.submit: DB record created", request.id, "zohoLeadId:", zohoLeadId);
 
       return {
         success: true,

@@ -25,12 +25,16 @@ export async function POST(req: NextRequest) {
     }
 
     if (!leadStatus) {
+      console.log("zoho-webhook: no leadStatus, skipping");
       return NextResponse.json({ received: true });
     }
 
     if (leadStatus !== "Pre-Qualified") {
+      console.log("zoho-webhook: leadStatus is", leadStatus, "- not Pre-Qualified, skipping");
       return NextResponse.json({ received: true });
     }
+
+    console.log("zoho-webhook: received Pre-Qualified for email:", email, "leadId:", leadId);
 
     const db = requireDb();
 
@@ -42,12 +46,17 @@ export async function POST(req: NextRequest) {
           : undefined,
     });
 
+    console.log("zoho-webhook: found request?", !!request, "status:", request?.status);
+
     if (!request || request.status !== "pending") {
+      console.log("zoho-webhook: request not found or not pending, skipping");
       return NextResponse.json({ received: true });
     }
 
     const trialLink = `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/signup?trial=${request.id}`;
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+    console.log("zoho-webhook: sending email to", request.email, "with link", trialLink);
 
     const { sendTrialApprovedEmail } = await import("@/lib/resend");
     await sendTrialApprovedEmail({
@@ -55,6 +64,8 @@ export async function POST(req: NextRequest) {
       email: request.email,
       trialLink,
     });
+
+    console.log("zoho-webhook: email sent, updating DB...");
 
     await db.update(trialRequests)
       .set({
@@ -65,6 +76,7 @@ export async function POST(req: NextRequest) {
       })
       .where(eq(trialRequests.id, request.id));
 
+    console.log("zoho-webhook: done");
     return NextResponse.json({ received: true });
   } catch (err) {
     console.error("Zoho webhook error:", err);

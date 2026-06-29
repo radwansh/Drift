@@ -43,36 +43,43 @@ export interface ZohoLeadInput {
 }
 
 export async function createZohoLead(input: ZohoLeadInput): Promise<string> {
+  console.log("createZohoLead called for", input.email, "ZOHO_CLIENT_ID exists:", !!ZOHO_CLIENT_ID);
   if (!ZOHO_CLIENT_ID) {
     console.warn("Zoho CRM not configured — skipping lead creation");
     return "";
   }
-  const token = await getAccessToken();
-  const res = await fetch(`${ZOHO_API_URL}/crm/v2/Leads`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      data: [
-        {
-          First_Name: input.firstName,
-          Last_Name: input.lastName,
-          Email: input.email,
-          Company: input.companyName,
-          Lead_Source: "Drift Landing Page",
-          Description: `Company size: ${input.companySize}`,
-          Lead_Status: "New",
-        },
-      ],
-    }),
-  });
-  const body = await res.json();
-  if (!res.ok) {
-    throw new Error(`Zoho create lead failed: ${res.status} ${JSON.stringify(body)}`);
+  try {
+    const token = await getAccessToken();
+    console.log("Zoho access token obtained, calling CRM API...");
+    const res = await fetch(`${ZOHO_API_URL}/crm/v2/Leads`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        data: [
+          {
+            First_Name: input.firstName,
+            Last_Name: input.lastName,
+            Email: input.email,
+            Company: input.companyName,
+            Lead_Source: "Drift Landing Page",
+            Description: `Company size: ${input.companySize}`,
+            Lead_Status: "New",
+          },
+        ],
+      }),
+    });
+    const body = await res.json();
+    if (!res.ok) {
+      throw new Error(`Zoho create lead failed: ${res.status} ${JSON.stringify(body)}`);
+    }
+    const leadId = body?.data?.[0]?.details?.id ?? "";
+    console.log("Zoho lead created:", leadId, "for", input.email);
+    return leadId;
+  } catch (err) {
+    console.error("createZohoLead error:", err);
+    throw err;
   }
-  const leadId = body?.data?.[0]?.details?.id ?? "";
-  console.log("Zoho lead created:", leadId, "for", input.email);
-  return leadId;
 }
