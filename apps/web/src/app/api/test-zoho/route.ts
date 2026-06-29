@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 
 export async function GET() {
-  const ZOHO_CLIENT_ID = process.env.ZOHO_CLIENT_ID;
-  const ZOHO_CLIENT_SECRET = process.env.ZOHO_CLIENT_SECRET;
-  const ZOHO_REFRESH_TOKEN = process.env.ZOHO_REFRESH_TOKEN;
+  const ZOHO_CLIENT_ID = process.env.ZOHO_CLIENT_ID ?? "";
+  const ZOHO_CLIENT_SECRET = process.env.ZOHO_CLIENT_SECRET ?? "";
+  const ZOHO_REFRESH_TOKEN = process.env.ZOHO_REFRESH_TOKEN ?? "";
   const ZOHO_ACCOUNTS_URL = process.env.ZOHO_ACCOUNTS_URL ?? "https://accounts.zoho.com";
 
   const missing = [];
