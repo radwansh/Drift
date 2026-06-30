@@ -210,11 +210,8 @@ export function LandingPage() {
 
         <div className="particles" id="landing-particles"></div>
 
-        <div style={{ position: "fixed", top: "24px", left: "32px", display: "flex", alignItems: "center", gap: "10px", zIndex: 100, fontWeight: 700, fontSize: "1.2rem", color: "#0f172a" }}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 28, height: 28, color: "#3b82f6" }}>
-            <path d="M3 3v18h18"/><path d="M7 16l4-8 4 4 4-6"/>
-          </svg>
-          Drift
+        <div style={{ position: "fixed", top: "24px", left: "32px", zIndex: 100 }}>
+          <img src="/logo.svg" alt="Drift" style={{ height: 32 }} />
         </div>
 
         <div style={{ position: "relative", width: "100vw", height: "100vh", overflow: "hidden" }}>
