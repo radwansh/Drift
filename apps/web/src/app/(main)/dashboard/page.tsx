@@ -6,6 +6,7 @@ import type { AiNarrative } from "@saas/types";
 import { PeriodSelector } from "@/components/dashboard/period-selector";
 import { AiSummaryBanner } from "@/components/dashboard/ai-summary-banner";
 import { KpiCards } from "@/components/dashboard/kpi-cards";
+import { YearlyTotalsSection } from "@/components/dashboard/yearly-totals-section";
 import { VarianceDistributionChart } from "@/components/dashboard/variance-distribution-chart";
 import { ComponentBreakdown } from "@/components/dashboard/component-breakdown";
 import { AnomalyFlagsPanel } from "@/components/dashboard/anomaly-flags-panel";
@@ -124,6 +125,8 @@ export default function DashboardPage() {
       {narrative && <AiSummaryBanner narrative={narrative} onRegenerate={() => console.log("Regenerate AI summary")} />}
 
       <KpiCards summary={summary} />
+
+      <YearlyTotalsSection />
 
       <div className="grid grid-cols-1 gap-6">
         <VarianceDistributionChart distribution={summary.distribution} />
