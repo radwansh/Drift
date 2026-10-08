@@ -108,6 +108,32 @@ describe("computeSummary coverage and warnings", () => {
     expect(s.warnings.some((w) => w.includes("MULTI_CURRENCY"))).toBe(true);
   });
 
+  it("emits RECONCILIATION_GAP when deductions do not reconcile to net", () => {
+    const jan = period({
+      periodStart: "2026-01-01",
+      periodEnd: "2026-01-31",
+      gross: 1500,
+      net: 1400,
+      components: [pos("Base Salary", 1500)],
+    });
+    const s = summaryFor({ periods: [jan] });
+    expect(s.bridge.actual.balance).toBe(100);
+    expect(s.warnings.some((w) => w.includes("RECONCILIATION_GAP"))).toBe(true);
+  });
+
+  it("does not emit RECONCILIATION_GAP when the bridge reconciles", () => {
+    const jan = period({
+      periodStart: "2026-01-01",
+      periodEnd: "2026-01-31",
+      gross: 1500,
+      net: 1250,
+      components: [pos("Base Salary", 1500), pos("Income Tax", 250)],
+    });
+    const s = summaryFor({ periods: [jan] });
+    expect(s.bridge.actual.balance).toBe(0);
+    expect(s.warnings.some((w) => w.includes("RECONCILIATION_GAP"))).toBe(false);
+  });
+
   it("returns zeros without NaN for an empty year", () => {
     const s = summaryFor();
     expect(s.warnings.some((w) => w.includes("NO_DATA"))).toBe(true);

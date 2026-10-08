@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,6 +23,7 @@ import { AnnualAbsences } from "@/components/annual/annual-absences";
 import { AnnualDepartments } from "@/components/annual/annual-departments";
 import { AnnualYoY } from "@/components/annual/annual-yoy";
 import { AnnualMix } from "@/components/annual/annual-mix";
+import { CategoryManager } from "@/components/annual/category-manager";
 import { AlertCircle, AlertTriangle, Info, CalendarDays, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PERIOD_TYPE_LABELS } from "@/lib/constants";
@@ -181,6 +183,13 @@ export function AnnualDashboard({
             )}
           </span>
         )}
+
+        {summary && (
+          <CategoryManager
+            currency={summary.currency}
+            hasUncategorised={summary.warnings.some((w) => w.includes("UNCATEGORISED"))}
+          />
+        )}
       </div>
 
       {summary && summary.warnings.length > 0 && (
@@ -189,6 +198,7 @@ export function AnnualDashboard({
             const severity = severityFor(warning);
             const meta = SEVERITY_STYLES[severity];
             const Icon = meta.icon;
+            const code = warning.split(":")[0]?.trim().toUpperCase() ?? "";
             return (
               <div
                 key={i}
@@ -197,6 +207,14 @@ export function AnnualDashboard({
               >
                 <Icon className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>{formatWarning(warning)}</span>
+                {code === "MISSING_PERIODS" && (
+                  <Link
+                    href="/payroll-periods"
+                    className="ml-auto shrink-0 underline underline-offset-2"
+                  >
+                    View missing uploads
+                  </Link>
+                )}
               </div>
             );
           })}

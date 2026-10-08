@@ -168,6 +168,12 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
   const actualEmployerCosts = sumEmployerCosts(periodRows);
   const actualBalance = ytdGross - ytdNet - actualEmployeeDeductions;
 
+  if (actual.length > 0 && ytdGross > 0 && Math.abs(actualBalance) / ytdGross > 0.02) {
+    warnings.push(
+      `RECONCILIATION_GAP: gross minus net does not fully reconcile with the mapped employee deductions (unreconciled balance ${pct(Math.abs(actualBalance), ytdGross)?.toFixed(1) ?? "0.0"}% of gross).`,
+    );
+  }
+
   const headcount = computeHeadcountFlows(actual, previousYearLastEmployeeIds);
   const avgHeadcountYtd = headcount.avgHeadcount;
   const lastHeadcount = actual.length > 0 ? actual[actual.length - 1]?.headcount ?? 0 : 0;
