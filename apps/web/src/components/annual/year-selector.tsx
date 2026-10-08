@@ -15,9 +15,11 @@ const YEAR_COOKIE = "drift_annual_year";
 export function YearSelector({
   initialYear,
   availableYears,
+  onYearChange,
 }: {
   initialYear: number;
   availableYears: number[];
+  onYearChange?: (year: number) => void;
 }) {
   const router = useRouter();
   const [value, setValue] = useState(String(initialYear));
@@ -29,6 +31,7 @@ export function YearSelector({
   function handleChange(next: string) {
     setValue(next);
     document.cookie = `${YEAR_COOKIE}=${next}; path=/; max-age=31536000; samesite=lax`;
+    onYearChange?.(Number(next));
     router.replace(`/annual-salaries?year=${next}`);
   }
 
