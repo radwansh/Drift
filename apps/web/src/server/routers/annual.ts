@@ -1,16 +1,25 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { sql, eq, and } from "drizzle-orm";
-import { users, componentCategories } from "@saas/db";
+import { createHash } from "node:crypto";
+import {
+  users,
+  componentCategories,
+  companies,
+  annualBudgets,
+  annualInsightCaches,
+} from "@saas/db";
 import {
   computeSummary,
   classifyComponent,
   type AnnualPeriodInput,
+  type AnnualSummary,
   type Category,
   type ForecastMethod,
   type PeriodType,
   type ComponentAggregate,
 } from "@saas/payroll-core";
+import { generateAnnualInsights, DEFAULT_MODEL, type AnnualInsightPayload } from "@saas/ai";
 import { protectedProcedure, router, type ProtectedContext } from "../trpc";
 
 const PeriodTypeSchema = z.enum(["monthly", "weekly", "bi_monthly", "bi_weekly"]);
@@ -244,6 +253,122 @@ async function loadDepartments(ctx: ProtectedContext, opts: { companyId: string;
   return departments;
 }
 
+interface SummaryContext {
+  summary: AnnualSummary;
+  periodType: PeriodType;
+  currency: string;
+  allPeriodTypes: PeriodType[];
+  allCurrencies: string[];
+}
+
+async function loadSummaryContext(
+  ctx: ProtectedContext,
+  input: { year: number; periodType?: PeriodType; currency?: string; forecastMethod?: ForecastMethod },
+): Promise<SummaryContext> {
+  const { companyId } = await getCompany(ctx);
+
+  const setupRes = await ctx.db.execute(sql`
+    SELECT period_type, currency_code
+    FROM payroll_periods
+    WHERE company_id = ${companyId} AND status = 'ready'
+      AND period_end >= ${`${input.year}-01-01`}::date AND period_end < ${`${input.year + 1}-01-01`}::date
+    GROUP BY 1, 2
+    ORDER BY COUNT(*) DESC
+  `);
+  const setups = setupRes.rows as unknown as SetupRow[];
+  const allPeriodTypes = [...new Set(setups.map((s) => s.periodType))] as PeriodType[];
+  const allCurrencies = [...new Set(setups.map((s) => s.currencyCode))];
+
+  const periodType = (input.periodType ?? allPeriodTypes[0] ?? "monthly") as PeriodType;
+  const currency = input.currency ?? allCurrencies[0] ?? "USD";
+
+  const { periods } = await loadYearQueries(ctx, { companyId, periodType, currency, year: input.year });
+  const departments = await loadDepartments(ctx, { companyId, periodType, currency, year: input.year });
+
+  let previousYear: { periods: AnnualPeriodInput[] } | undefined;
+  let previousYearLastEmployeeIds: string[] | undefined;
+  if (periods.length > 0) {
+    const prev = await loadYearQueries(ctx, { companyId, periodType, currency, year: input.year - 1 });
+    previousYear = prev.periods.length > 0 ? { periods: prev.periods } : undefined;
+    const lastEnd = prev.periodRows.length > 0 ? prev.periodRows[prev.periodRows.length - 1]!.periodEnd : null;
+    const lastPeriodIds = lastEnd
+      ? prev.periods.find((p) => p.periodEnd === lastEnd)?.employeeIds ?? []
+      : [];
+    previousYearLastEmployeeIds = lastPeriodIds.length > 0 ? lastPeriodIds : undefined;
+  }
+
+  const savedRes = await ctx.db.select().from(componentCategories)
+    .where(eq(componentCategories.companyId, companyId));
+  const savedCategories: Record<string, Category> = {};
+  for (const s of savedRes) savedCategories[s.componentKey] = s.category as Category;
+
+  const summary = computeSummary({
+    year: input.year,
+    periodType,
+    currency,
+    allPeriodTypes,
+    allCurrencies,
+    periods,
+    forecastMethod: input.forecastMethod as ForecastMethod | undefined,
+    previousYear,
+    previousYearLastEmployeeIds,
+    savedCategories,
+    departments,
+  });
+
+  return { summary, periodType, currency, allPeriodTypes, allCurrencies };
+}
+
+function buildInsightPayload(summary: AnnualSummary, companyName?: string): AnnualInsightPayload {
+  const round = (v: number) => Math.round(v * 100) / 100;
+  const byCategory = summary.categories.byCategory;
+  return {
+    year: summary.year,
+    periodType: summary.periodType,
+    currency: summary.currency,
+    companyName,
+    coverage: {
+      uploaded: summary.coverage.uploaded,
+      expected: summary.coverage.expected,
+      missingLabels: summary.missingLabels,
+    },
+    totals: {
+      grossToDate: round(summary.bridge.actual.gross),
+      netToDate: round(summary.bridge.actual.net),
+      employerCostToDate: round(summary.bridge.actual.totalEmploymentCost),
+      headcountLatest: summary.periods.length > 0 ? round(summary.periods[summary.periods.length - 1]!.headcount ?? 0) : 0,
+      headcountAvgYtd: round(summary.avgHeadcountYtd),
+    },
+    forecast: {
+      method: summary.forecastMethod,
+      fullYearNet: round(summary.bridge.fullYear.net),
+      fullYearGross: round(summary.bridge.fullYear.gross),
+      fullYearEmployerCost: round(summary.bridge.fullYear.totalEmploymentCost),
+    },
+    statutory: {
+      incomeTax: round(byCategory.income_tax ?? 0),
+      socialSecurityEmployee: round(byCategory.social_security_employee ?? 0),
+      employerOnCost: round(summary.statutory.employerOnCostTotal),
+    },
+    categories: Object.entries(byCategory)
+      .slice(0, 10)
+      .map(([category, total]) => ({ category, total: round(total ?? 0) })),
+    departments: summary.departments
+      .slice(0, 8)
+      .map((d) => ({ department: d.department, total: round(d.actual) })),
+    mix: {
+      fixed: round(summary.mix.fixed),
+      variable: round(summary.mix.variable),
+      overtime: round(byCategory.overtime ?? 0),
+    },
+    yoy: {
+      changePctGross: summary.yoy.changePct.gross,
+      changePctNet: summary.yoy.changePct.net,
+      likeForLikePeriods: summary.yoy.available ? summary.yoy.comparablePeriods : null,
+    },
+  };
+}
+
 export const annualRouter = router({
   getYears: protectedProcedure.query(async ({ ctx }) => {
     const { companyId } = await getCompany(ctx);
@@ -264,57 +389,7 @@ export const annualRouter = router({
       forecastMethod: ForecastMethodSchema.optional(),
     }))
     .query(async ({ ctx, input }) => {
-      const { companyId } = await getCompany(ctx);
-
-      const setupRes = await ctx.db.execute(sql`
-        SELECT period_type, currency_code
-        FROM payroll_periods
-        WHERE company_id = ${companyId} AND status = 'ready'
-          AND period_end >= ${`${input.year}-01-01`}::date AND period_end < ${`${input.year + 1}-01-01`}::date
-        GROUP BY 1, 2
-        ORDER BY COUNT(*) DESC
-      `);
-      const setups = setupRes.rows as unknown as SetupRow[];
-      const allPeriodTypes = [...new Set(setups.map((s) => s.periodType))] as PeriodType[];
-      const allCurrencies = [...new Set(setups.map((s) => s.currencyCode))];
-
-      const periodType = (input.periodType ?? allPeriodTypes[0] ?? "monthly") as PeriodType;
-      const currency = input.currency ?? allCurrencies[0] ?? "USD";
-
-      const { periods } = await loadYearQueries(ctx, { companyId, periodType, currency, year: input.year });
-      const departments = await loadDepartments(ctx, { companyId, periodType, currency, year: input.year });
-
-      let previousYear: { periods: AnnualPeriodInput[] } | undefined;
-      let previousYearLastEmployeeIds: string[] | undefined;
-      if (periods.length > 0) {
-        const prev = await loadYearQueries(ctx, { companyId, periodType, currency, year: input.year - 1 });
-        previousYear = prev.periods.length > 0 ? { periods: prev.periods } : undefined;
-        const lastEnd = prev.periodRows.length > 0 ? prev.periodRows[prev.periodRows.length - 1]!.periodEnd : null;
-        const lastPeriodIds = lastEnd
-          ? prev.periods.find((p) => p.periodEnd === lastEnd)?.employeeIds ?? []
-          : [];
-        previousYearLastEmployeeIds = lastPeriodIds.length > 0 ? lastPeriodIds : undefined;
-      }
-
-      const savedRes = await ctx.db.select().from(componentCategories)
-        .where(eq(componentCategories.companyId, companyId));
-      const savedCategories: Record<string, Category> = {};
-      for (const s of savedRes) savedCategories[s.componentKey] = s.category as Category;
-
-      const summary = computeSummary({
-        year: input.year,
-        periodType,
-        currency,
-        allPeriodTypes,
-        allCurrencies,
-        periods,
-        forecastMethod: input.forecastMethod as ForecastMethod | undefined,
-        previousYear,
-        previousYearLastEmployeeIds,
-        savedCategories,
-        departments,
-      });
-
+      const { summary } = await loadSummaryContext(ctx, input);
       return summary;
     }),
 
@@ -401,5 +476,105 @@ export const annualRouter = router({
       }).returning();
       if (!created) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
       return { componentKey: created.componentKey, category: created.category };
+    }),
+
+  getBudget: protectedProcedure
+    .input(z.object({
+      year: z.number().int().min(2000).max(2100),
+      currency: z.string().length(3),
+    }))
+    .query(async ({ ctx, input }) => {
+      const { companyId } = await getCompany(ctx);
+      const row = await ctx.db.query.annualBudgets.findFirst({
+        where: and(
+          eq(annualBudgets.companyId, companyId),
+          eq(annualBudgets.year, input.year),
+          eq(annualBudgets.currency, input.currency),
+        ),
+      });
+      return { amount: row ? Number(row.amount) : null };
+    }),
+
+  setBudget: protectedProcedure
+    .input(z.object({
+      year: z.number().int().min(2000).max(2100),
+      currency: z.string().length(3),
+      amount: z.number().finite().min(0).nullable(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const { companyId } = await getCompany(ctx);
+
+      if (input.amount === null) {
+        await ctx.db.delete(annualBudgets).where(and(
+          eq(annualBudgets.companyId, companyId),
+          eq(annualBudgets.year, input.year),
+          eq(annualBudgets.currency, input.currency),
+        ));
+        return { amount: null };
+      }
+
+      const amount = input.amount.toFixed(2);
+      await ctx.db.insert(annualBudgets)
+        .values({ companyId, year: input.year, currency: input.currency, amount })
+        .onConflictDoUpdate({
+          target: [annualBudgets.companyId, annualBudgets.year, annualBudgets.currency],
+          set: { amount, updatedAt: new Date() },
+        });
+      return { amount: input.amount };
+    }),
+
+  getInsights: protectedProcedure
+    .input(z.object({
+      year: z.number().int().min(2000).max(2100),
+      periodType: PeriodTypeSchema.optional(),
+      currency: z.string().length(3).optional(),
+      forecastMethod: ForecastMethodSchema.optional(),
+      force: z.boolean().optional(),
+      runId: z.number().int().min(0).optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const { companyId } = await getCompany(ctx);
+      const { summary } = await loadSummaryContext(ctx, input);
+
+      const company = await ctx.db.query.companies.findFirst({
+        where: eq(companies.id, companyId),
+      });
+      const payload = buildInsightPayload(summary, company?.name);
+      const dataHash = createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+      const method = input.forecastMethod ?? summary.forecastMethod;
+
+      if (!input.force) {
+        const cached = await ctx.db.query.annualInsightCaches.findFirst({
+          where: and(
+            eq(annualInsightCaches.companyId, companyId),
+            eq(annualInsightCaches.forecastMethod, method),
+            eq(annualInsightCaches.dataHash, dataHash),
+          ),
+        });
+        if (cached) {
+          return {
+            bullets: (cached.bullets as unknown as string[]) ?? [],
+            generatedAt: cached.generatedAt,
+            model: cached.model || DEFAULT_MODEL,
+            fromCache: true,
+          };
+        }
+      }
+
+      const bullets = await generateAnnualInsights(payload);
+
+      await ctx.db.insert(annualInsightCaches)
+        .values({ companyId, year: input.year, forecastMethod: method, dataHash, bullets, model: DEFAULT_MODEL })
+        .onConflictDoUpdate({
+          target: [annualInsightCaches.companyId, annualInsightCaches.forecastMethod, annualInsightCaches.dataHash],
+          set: { bullets, model: DEFAULT_MODEL, generatedAt: new Date() },
+        });
+
+      return {
+        bullets,
+        generatedAt: new Date(),
+        model: DEFAULT_MODEL,
+        fromCache: false,
+      };
     }),
 });

@@ -24,6 +24,8 @@ import { AnnualDepartments } from "@/components/annual/annual-departments";
 import { AnnualYoY } from "@/components/annual/annual-yoy";
 import { AnnualMix } from "@/components/annual/annual-mix";
 import { CategoryManager } from "@/components/annual/category-manager";
+import { BudgetInput, AnnualBudgetCard } from "@/components/annual/annual-budget";
+import { AnnualInsights } from "@/components/annual/annual-insights";
 import { AlertCircle, AlertTriangle, Info, CalendarDays, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PERIOD_TYPE_LABELS } from "@/lib/constants";
@@ -190,6 +192,15 @@ export function AnnualDashboard({
             hasUncategorised={summary.warnings.some((w) => w.includes("UNCATEGORISED"))}
           />
         )}
+
+        {summary && (
+          <BudgetInput
+            key={`${summary.year}-${summary.currency}`}
+            year={summary.year}
+            currency={summary.currency}
+            disabled={summary.coverage.expected === 0}
+          />
+        )}
       </div>
 
       {summary && summary.warnings.length > 0 && (
@@ -250,6 +261,10 @@ export function AnnualDashboard({
       ) : summary ? (
         <>
           <AnnualKpiCards summary={summary} />
+
+          {summary.coverage.expected > 0 && <AnnualBudgetCard summary={summary} />}
+
+          {summary.coverage.uploaded > 0 && <AnnualInsights summary={summary} />}
 
           <div className="grid grid-cols-1 gap-6">
             <AnnualPeriodsChart summary={summary} />

@@ -4,6 +4,8 @@ const apiKey = process.env["ANTHROPIC_API_KEY"] ?? "";
 
 export const isAiAvailable = apiKey.length > 0;
 
+export const DEFAULT_MODEL = "claude-sonnet-4-20250514";
+
 let _client: Anthropic | null = null;
 
 export function getClient(): Anthropic | null {
@@ -25,7 +27,7 @@ export async function callClaude(
 
   try {
     const response = await client.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: DEFAULT_MODEL,
       max_tokens: 4096,
       system: systemPrompt,
       messages: [{ role: "user", content: userMessage }],

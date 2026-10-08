@@ -29,6 +29,13 @@
       "when": 1791494998045,
       "tag": "0003_calm_speed_demon",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791500323845,
+      "tag": "0004_pink_blindfold",
+      "breakpoints": true
     }
   ]
 }
