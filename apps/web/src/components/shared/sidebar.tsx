@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   Table,
   Calendar,
+  CalendarRange,
   Plug,
   Settings,
   BarChart3,
@@ -18,6 +19,7 @@ const iconMap: Record<string, React.ReactNode> = {
   LayoutDashboard: <LayoutDashboard className="h-5 w-5" />,
   Table: <Table className="h-5 w-5" />,
   Calendar: <Calendar className="h-5 w-5" />,
+  CalendarRange: <CalendarRange className="h-5 w-5" />,
   Plug: <Plug className="h-5 w-5" />,
   Settings: <Settings className="h-5 w-5" />,
 };

@@ -17,6 +17,7 @@ export const PERIOD_TYPE_LABELS: Record<string, string> = {
 
 export const NAV_ITEMS = [
   { label: "Dashboard", href: "/dashboard", icon: "LayoutDashboard" },
+  { label: "Annual Salaries", href: "/annual-salaries", icon: "CalendarRange" },
   { label: "Detailed View", href: "/detailed", icon: "Table" },
   { label: "Payroll Periods", href: "/payroll-periods", icon: "Calendar" },
   { label: "Integrations", href: "/integrations", icon: "Plug" },
