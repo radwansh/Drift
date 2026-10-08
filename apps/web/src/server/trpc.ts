@@ -18,3 +18,5 @@ const isAuthenticated = t.middleware(async ({ ctx, next }) => {
 });
 
 export const protectedProcedure = t.procedure.use(isAuthenticated);
+
+export type ProtectedContext = { userId: string; db: NonNullable<typeof db> };
