@@ -112,7 +112,7 @@ export function generateAnnualInsights(payload: AnnualInsightPayload): Promise<s
   if (!isAiAvailable) {
     return Promise.resolve(ruleBasedInsights(payload));
   }
-  return callClaude(ANNUAL_INSIGHTS_SYSTEM_PROMPT, userMessage).then((raw) => {
+  return callClaude(ANNUAL_INSIGHTS_SYSTEM_PROMPT, userMessage).then(({ text: raw }) => {
     if (!raw) return ruleBasedInsights(payload);
     const parsed = parseBullets(raw);
     if (parsed.length >= 3) return parsed;

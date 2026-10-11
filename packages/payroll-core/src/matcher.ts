@@ -28,8 +28,8 @@ export function matchEmployees(
       duplicateIds.push(id);
     }
 
-    const current = currentList.length > 0 ? currentList[0] : null;
-    const previous = previousList.length > 0 ? previousList[0] : null;
+    const current = currentList[0] ?? null;
+    const previous = previousList[0] ?? null;
 
     const employeeName = current?.name ?? previous?.name ?? "Unknown";
     const department = current?.department ?? previous?.department ?? null;
@@ -56,10 +56,12 @@ function groupByExternalId(
 ): Record<string, EmployeeRecord[]> {
   const grouped: Record<string, EmployeeRecord[]> = {};
   for (const record of records) {
-    if (!grouped[record.externalId]) {
-      grouped[record.externalId] = [];
+    const id = record.externalId;
+
+    if (!grouped[id]) {
+      grouped[id] = [];
     }
-    grouped[record.externalId].push(record);
+    grouped[id].push(record);
   }
   return grouped;
 }

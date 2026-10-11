@@ -20,10 +20,10 @@ describe("matchEmployees", () => {
 
     const result = matchEmployees(current, previous);
     expect(result.pairs).toHaveLength(1);
-    expect(result.pairs[0].employeeExternalId).toBe("1");
-    expect(result.pairs[0].current?.netSalary).toBe(5000);
-    expect(result.pairs[0].previous?.netSalary).toBe(4500);
-    expect(result.pairs[0].status).toBe("unchanged");
+    expect(result.pairs[0]!.employeeExternalId).toBe("1");
+    expect(result.pairs[0]!.current?.netSalary).toBe(5000);
+    expect(result.pairs[0]!.previous?.netSalary).toBe(4500);
+    expect(result.pairs[0]!.status).toBe("unchanged");
   });
 
   it("marks new employees", () => {
@@ -32,7 +32,7 @@ describe("matchEmployees", () => {
 
     const result = matchEmployees(current, previous);
     expect(result.pairs).toHaveLength(1);
-    expect(result.pairs[0].status).toBe("new");
+    expect(result.pairs[0]!.status).toBe("new");
   });
 
   it("marks departed employees", () => {
@@ -41,7 +41,7 @@ describe("matchEmployees", () => {
 
     const result = matchEmployees(current, previous);
     expect(result.pairs).toHaveLength(1);
-    expect(result.pairs[0].status).toBe("departed");
+    expect(result.pairs[0]!.status).toBe("departed");
   });
 
   it("handles employees only in current", () => {
@@ -92,8 +92,8 @@ describe("matchEmployees", () => {
     const previous = [makeRecord({ externalId: "1", name: "Alice Old", department: "Sales" })];
 
     const result = matchEmployees(current, previous);
-    expect(result.pairs[0].employeeName).toBe("Alice");
-    expect(result.pairs[0].department).toBe("Eng");
+    expect(result.pairs[0]!.employeeName).toBe("Alice");
+    expect(result.pairs[0]!.department).toBe("Eng");
   });
 
   it("uses previous name and department when current is null", () => {
@@ -101,7 +101,7 @@ describe("matchEmployees", () => {
     const previous = [makeRecord({ externalId: "1", name: "Bob", department: "Eng" })];
 
     const result = matchEmployees(current, previous);
-    expect(result.pairs[0].employeeName).toBe("Bob");
-    expect(result.pairs[0].department).toBe("Eng");
+    expect(result.pairs[0]!.employeeName).toBe("Bob");
+    expect(result.pairs[0]!.department).toBe("Eng");
   });
 });

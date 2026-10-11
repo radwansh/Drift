@@ -102,8 +102,15 @@ export function aggregateResults(results: ComparisonOutput[]): AggregatedSummary
   };
 }
 
+type DistributionLabel =
+  | "decreased >10%"
+  | "decreased 1-10%"
+  | "unchanged"
+  | "increased 1-10%"
+  | "increased >10%";
+
 function computeDistribution(results: ComparisonOutput[]) {
-  const buckets: Record<string, number> = {
+  const buckets: Record<DistributionLabel, number> = {
     "decreased >10%": 0,
     "decreased 1-10%": 0,
     unchanged: 0,
@@ -151,12 +158,14 @@ function computeComponentBreakdown(results: ComparisonOutput[]) {
     if (!r.componentDeltas) continue;
 
     for (const delta of r.componentDeltas) {
-      if (!componentMap[delta.component]) {
-        componentMap[delta.component] = { totalChange: 0, employeeCount: 0 };
+      const component = delta.component;
+
+      if (!componentMap[component]) {
+        componentMap[component] = { totalChange: 0, employeeCount: 0 };
       }
-      componentMap[delta.component].totalChange += delta.absoluteDiff ?? 0;
+      componentMap[component].totalChange += delta.absoluteDiff ?? 0;
       if (delta.absoluteDiff !== null) {
-        componentMap[delta.component].employeeCount++;
+        componentMap[component].employeeCount++;
       }
     }
   }

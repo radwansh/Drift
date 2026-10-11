@@ -126,7 +126,7 @@ export async function generateAuditSummary(
     return ruleBasedAuditSummary(comparisonData);
   }
 
-  const claudeRaw = await callClaude(AUDIT_SYSTEM_PROMPT, JSON.stringify(comparisonData));
+  const { text: claudeRaw } = await callClaude(AUDIT_SYSTEM_PROMPT, JSON.stringify(comparisonData));
 
   if (!claudeRaw) {
     return ruleBasedAuditSummary(comparisonData);

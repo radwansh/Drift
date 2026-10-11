@@ -42,50 +42,91 @@ const CategoryEnum = z.enum([
   "uncategorised",
 ]);
 
-interface PeriodRow {
-  id: string;
-  periodType: string;
-  periodStart: string;
-  periodEnd: string;
-  currencyCode: string;
-  createdAt: string | Date;
+// Raw rows come back from db.execute untyped. Postgres returns the column name as
+// written, so every query below aliases snake_case to camelCase and parses the result
+// with one of these schemas. Never cast a raw row with `as unknown as`: the keys and
+// the declared type drift apart silently, which is finding C1.
+const Numeric = z.union([z.string(), z.number()]).transform(Number);
+const IntLike = z.union([z.string(), z.number()]).transform((v) => Math.trunc(Number(v)));
+
+const PeriodRowSchema = z.object({
+  id: z.string(),
+  periodType: z.string(),
+  periodStart: z.union([z.string(), z.date()]).transform(toIsoDate),
+  periodEnd: z.union([z.string(), z.date()]).transform(toIsoDate),
+  currencyCode: z.string(),
+  createdAt: z.union([z.string(), z.date()]).transform(toIsoTimestamp),
+});
+type PeriodRow = z.infer<typeof PeriodRowSchema>;
+
+const HeadcountRowSchema = z.object({
+  id: z.string(),
+  headcount: IntLike,
+  gross: Numeric,
+  net: Numeric,
+});
+
+const ComponentRowSchema = z.object({
+  id: z.string(),
+  key: z.string(),
+  total: Numeric,
+  negRows: IntLike,
+  posRows: IntLike,
+});
+
+const EmployeeRowSchema = z.object({
+  id: z.string(),
+  employeeExternalId: z.string(),
+});
+
+const DepartmentTotalsRowSchema = z.object({
+  department: z.string(),
+  key: z.string(),
+  total: Numeric,
+});
+
+const DepartmentHeadcountRowSchema = z.object({
+  department: z.string(),
+  periodEnd: z.union([z.string(), z.date()]).transform(toIsoDate),
+  headcount: IntLike,
+});
+
+const SetupRowSchema = z.object({
+  periodType: z.string(),
+  currencyCode: z.string(),
+});
+
+function toIsoDate(v: string | Date): string {
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  // Postgres `date` arrives as "YYYY-MM-DD"; keep it verbatim rather than passing it
+  // through Date, which would shift it by the local timezone offset.
+  return v.length >= 10 ? v.slice(0, 10) : v;
 }
 
-interface HeadcountRow {
-  id: string;
-  headcount: number;
-  gross: string | number;
-  net: string | number;
+function toIsoTimestamp(v: string | Date): string {
+  if (v instanceof Date) return v.toISOString();
+  const parsed = new Date(v);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: `Unparseable timestamp from database: ${JSON.stringify(v)}`,
+    });
+  }
+  return parsed.toISOString();
 }
 
-interface ComponentRow {
-  id: string;
-  key: string;
-  total: string | number;
-  negRows: number;
-  posRows: number;
-}
-
-interface EmployeeRow {
-  id: string;
-  employeeExternalId: string;
-}
-
-interface DepartmentTotalsRow {
-  department: string;
-  key: string;
-  total: string | number;
-}
-
-interface DepartmentHeadcountRow {
-  department: string;
-  periodEnd: string;
-  headcount: number;
-}
-
-interface SetupRow {
-  periodType: string;
-  currencyCode: string;
+function parseRows<T extends z.ZodTypeAny>(schema: T, rows: unknown[], label: string): z.infer<T>[] {
+  const parsed = schema.array().safeParse(rows);
+  if (!parsed.success) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: `Unexpected ${label} row shape: ${parsed.error.issues
+        .slice(0, 3)
+        .map((i) => `${i.path.join(".")} ${i.message}`)
+        .join("; ")}`,
+    });
+  }
+  return parsed.data;
 }
 
 const numericComponentFilter = sql`(x.value #>> '{}') ~ '^-?[0-9]+(\\.[0-9]+)?$'`;
@@ -123,7 +164,12 @@ async function loadYearQueries(ctx: ProtectedContext, opts: { companyId: string;
   const [periodRes, headcountRes, componentRes, employeeRes] = await Promise.all([
     ctx.db.execute(sql`
       WITH ${cte}
-      SELECT id, period_type, period_start, period_end, currency_code, created_at
+      SELECT id,
+             period_type   AS "periodType",
+             period_start  AS "periodStart",
+             period_end    AS "periodEnd",
+             currency_code AS "currencyCode",
+             created_at    AS "createdAt"
       FROM valid_periods
       ORDER BY period_end
     `),
@@ -141,8 +187,8 @@ async function loadYearQueries(ctx: ProtectedContext, opts: { companyId: string;
       WITH ${cte}
       SELECT p.id, x.key,
              COALESCE(SUM((x.value #>> '{}')::numeric), 0) AS total,
-             COUNT(*) FILTER (WHERE (x.value #>> '{}')::numeric < 0)::int AS neg_rows,
-             COUNT(*) FILTER (WHERE (x.value #>> '{}')::numeric > 0)::int AS pos_rows
+             COUNT(*) FILTER (WHERE (x.value #>> '{}')::numeric < 0)::int AS "negRows",
+             COUNT(*) FILTER (WHERE (x.value #>> '{}')::numeric > 0)::int AS "posRows"
       FROM valid_periods p
       JOIN snaps r ON r.payroll_period_id = p.id
       CROSS JOIN LATERAL jsonb_each(r.components) x
@@ -151,22 +197,24 @@ async function loadYearQueries(ctx: ProtectedContext, opts: { companyId: string;
     `),
     ctx.db.execute(sql`
       WITH ${cte}
-      SELECT p.id, r.employee_external_id
+      SELECT p.id, r.employee_external_id AS "employeeExternalId"
       FROM valid_periods p
       LEFT JOIN snaps r ON r.payroll_period_id = p.id
       WHERE r.id IS NOT NULL
     `),
   ]);
 
-  const periodRows = periodRes.rows as unknown as PeriodRow[];
-  const headcountMap = new Map<string, HeadcountRow>((headcountRes.rows as unknown as HeadcountRow[]).map((r) => [r.id, r]));
-  const componentRows = componentRes.rows as unknown as ComponentRow[];
-  const employeeRows = employeeRes.rows as unknown as EmployeeRow[];
+  const periodRows = parseRows(PeriodRowSchema, periodRes.rows, "period");
+  const headcountMap = new Map(
+    parseRows(HeadcountRowSchema, headcountRes.rows, "headcount").map((r) => [r.id, r]),
+  );
+  const componentRows = parseRows(ComponentRowSchema, componentRes.rows, "component");
+  const employeeRows = parseRows(EmployeeRowSchema, employeeRes.rows, "employee");
 
   const componentsByPeriod = new Map<string, ComponentAggregate[]>();
   for (const c of componentRows) {
     const list = componentsByPeriod.get(c.id) ?? [];
-    list.push({ key: c.key, total: Number(c.total), negRows: c.negRows, posRows: c.posRows });
+    list.push({ key: c.key, total: c.total, negRows: c.negRows, posRows: c.posRows });
     componentsByPeriod.set(c.id, list);
   }
 
@@ -185,10 +233,10 @@ async function loadYearQueries(ctx: ProtectedContext, opts: { companyId: string;
       currency: p.currencyCode,
       periodStart: p.periodStart,
       periodEnd: p.periodEnd,
-      createdAt: p.createdAt instanceof Date ? p.createdAt.toISOString() : new Date(p.createdAt).toISOString(),
+      createdAt: p.createdAt,
       headcount: hc ? hc.headcount : 0,
-      gross: hc ? Number(hc.gross) : 0,
-      net: hc ? Number(hc.net) : 0,
+      gross: hc ? hc.gross : 0,
+      net: hc ? hc.net : 0,
       components: componentsByPeriod.get(p.id) ?? [],
       employeeIds: employeeIdsByPeriod.get(p.id) ?? [],
     };
@@ -214,7 +262,8 @@ async function loadDepartments(ctx: ProtectedContext, opts: { companyId: string;
     `),
     ctx.db.execute(sql`
       WITH ${cte}
-      SELECT COALESCE(r.department, 'Unassigned') AS department, p.period_end,
+      SELECT COALESCE(r.department, 'Unassigned') AS department,
+             p.period_end AS "periodEnd",
              COUNT(DISTINCT r.employee_external_id)::int AS headcount
       FROM valid_periods p
       JOIN snaps r ON r.payroll_period_id = p.id
@@ -222,8 +271,8 @@ async function loadDepartments(ctx: ProtectedContext, opts: { companyId: string;
     `),
   ]);
 
-  const totals = totalRes.rows as unknown as DepartmentTotalsRow[];
-  const headcounts = headcountRes.rows as unknown as DepartmentHeadcountRow[];
+  const totals = parseRows(DepartmentTotalsRowSchema, totalRes.rows, "department total");
+  const headcounts = parseRows(DepartmentHeadcountRowSchema, headcountRes.rows, "department headcount");
   const periodEnds = [...new Set(headcounts.map((h) => h.periodEnd))].sort();
 
   const headcountsByDepartment = new Map<string, Map<string, number>>();
@@ -236,7 +285,7 @@ async function loadDepartments(ctx: ProtectedContext, opts: { companyId: string;
   const componentsByDepartment = new Map<string, Map<string, number>>();
   for (const t of totals) {
     const map = componentsByDepartment.get(t.department) ?? new Map<string, number>();
-    map.set(t.key, Number(t.total));
+    map.set(t.key, t.total);
     componentsByDepartment.set(t.department, map);
   }
 
@@ -268,19 +317,33 @@ async function loadSummaryContext(
   const { companyId } = await getCompany(ctx);
 
   const setupRes = await ctx.db.execute(sql`
-    SELECT period_type, currency_code
+    SELECT period_type   AS "periodType",
+           currency_code AS "currencyCode"
     FROM payroll_periods
     WHERE company_id = ${companyId} AND status = 'ready'
       AND period_end >= ${`${input.year}-01-01`}::date AND period_end < ${`${input.year + 1}-01-01`}::date
     GROUP BY 1, 2
     ORDER BY COUNT(*) DESC
   `);
-  const setups = setupRes.rows as unknown as SetupRow[];
+  const setups = parseRows(SetupRowSchema, setupRes.rows, "setup");
+  // Ordered by COUNT(*) DESC above, so index 0 is the most frequent.
   const allPeriodTypes = [...new Set(setups.map((s) => s.periodType))] as PeriodType[];
   const allCurrencies = [...new Set(setups.map((s) => s.currencyCode))];
 
+  // Step 8 (A6): the organization's own currency wins when the year actually has data
+  // in it; otherwise fall back to the most frequent currency, and only then to USD.
+  const companyRow = await ctx.db.query.companies.findFirst({
+    where: eq(companies.id, companyId),
+    columns: { currencyCode: true },
+  });
+  const companyCurrency = companyRow?.currencyCode;
+
   const periodType = (input.periodType ?? allPeriodTypes[0] ?? "monthly") as PeriodType;
-  const currency = input.currency ?? allCurrencies[0] ?? "USD";
+  const currency =
+    input.currency ??
+    (companyCurrency && allCurrencies.includes(companyCurrency)
+      ? companyCurrency
+      : allCurrencies[0] ?? companyCurrency ?? "USD");
 
   const { periods } = await loadYearQueries(ctx, { companyId, periodType, currency, year: input.year });
   const departments = await loadDepartments(ctx, { companyId, periodType, currency, year: input.year });
@@ -378,7 +441,7 @@ export const annualRouter = router({
       WHERE company_id = ${companyId} AND status = 'ready'
       ORDER BY year DESC
     `);
-    return { years: (res.rows as unknown as { year: number }[]).map((r) => r.year) };
+    return { years: parseRows(z.object({ year: IntLike }), res.rows, "year").map((r) => r.year) };
   }),
 
   getSummary: protectedProcedure
@@ -412,9 +475,10 @@ export const annualRouter = router({
       ctx.db.select().from(componentCategories).where(eq(componentCategories.companyId, companyId)),
     ]);
 
-    const latestYear = (yearRes.rows as unknown as { year: number | null }[])[0]?.year ?? null;
+    const latestYear =
+      parseRows(z.object({ year: IntLike.nullable() }), yearRes.rows, "latest year")[0]?.year ?? null;
     const saved = new Map(savedRes.map((s) => [s.componentKey, s.category as Category]));
-    const keys = (keysRes.rows as unknown as { key: string }[]).map((r) => r.key);
+    const keys = parseRows(z.object({ key: z.string() }), keysRes.rows, "component key").map((r) => r.key);
 
     let amounts = new Map<string, number>();
     if (latestYear !== null) {
@@ -428,7 +492,11 @@ export const annualRouter = router({
           AND (x.value #>> '{}') ~ '^-?[0-9]+(\\.[0-9]+)?$'
         GROUP BY x.key
       `);
-      amounts = new Map((amountRes.rows as unknown as { key: string; total: string | number }[]).map((r) => [r.key, Number(r.total)]));
+      amounts = new Map(
+        parseRows(z.object({ key: z.string(), total: Numeric }), amountRes.rows, "component amount").map(
+          (r) => [r.key, r.total] as const,
+        ),
+      );
     }
 
     return {

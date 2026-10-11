@@ -215,7 +215,7 @@ export async function answerQuestion(
     comparisonRun,
   });
 
-  const claudeRaw = await callClaude(QA_SYSTEM_PROMPT, userMessage);
+  const { text: claudeRaw } = await callClaude(QA_SYSTEM_PROMPT, userMessage);
 
   if (!claudeRaw) {
     return ruleBasedAnswer(intent, comparisonRun);

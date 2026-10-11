@@ -17,10 +17,18 @@
         "NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL",
         "NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL",
         "ANTHROPIC_API_KEY",
+        "ANTHROPIC_MODEL",
         "UPSTASH_REDIS_REST_URL",
         "UPSTASH_REDIS_REST_TOKEN",
         "NEXT_PUBLIC_APP_URL",
-        "NODE_ENV"
+        "NODE_ENV",
+        "CLERK_WEBHOOK_SIGNING_SECRET",
+        "RESEND_API_KEY",
+        "RESEND_AUDIENCE_ID",
+        "ZOHO_CLIENT_ID",
+        "ZOHO_CLIENT_SECRET",
+        "ZOHO_REFRESH_TOKEN",
+        "ZOHO_ACCOUNTS_URL"
       ]
     },
     "dev": {

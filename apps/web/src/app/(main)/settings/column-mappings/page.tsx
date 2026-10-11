@@ -110,7 +110,9 @@ export default function ColumnMappingsPage() {
         const imported = JSON.parse(text) as EditableMapping[];
         setLocalMappings(imported);
         setIsEditing(true);
-      } catch {}
+      } catch {
+        // Malformed or non-JSON file: leave the existing mappings untouched.
+      }
     };
     input.click();
   };

@@ -30,7 +30,10 @@ function loadViews(): SavedView[] {
 function writeViews(views: SavedView[]) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(views));
-  } catch {}
+  } catch {
+    // Private browsing or a full quota: saved views are a convenience, so a write
+    // failure must not break the page.
+  }
 }
 
 export function useSavedViews() {

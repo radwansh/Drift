@@ -1,6 +1,7 @@
-import { db } from "../client";
+import { requireDb } from "../client";
 
 async function main() {
+  const db = requireDb();
   console.log("Running migrations...");
   await db.execute(
     `CREATE TABLE IF NOT EXISTS __drizzle_migrations (

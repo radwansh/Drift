@@ -47,8 +47,8 @@ export function AnnualAbsences({ summary }: AnnualAbsencesProps) {
       <CardContent className="space-y-4">
         {!hasAbsenceMapped && amount === 0 && days === null ? (
           <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-            No absence columns mapped. Categorise a component such as "Absence Days" or "Unpaid Leave" as an
-            absence to see absence cost here.
+            No absence columns mapped. Categorise a component such as &quot;Absence Days&quot; or &quot;Unpaid
+            Leave&quot; as an absence to see absence cost here.
           </div>
         ) : (
           <>

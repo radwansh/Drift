@@ -36,7 +36,7 @@ export async function refineAnomalies(
     })),
   });
 
-  const claudeRaw = await callClaude(ANOMALY_SYSTEM_PROMPT, userMessage);
+  const { text: claudeRaw } = await callClaude(ANOMALY_SYSTEM_PROMPT, userMessage);
 
   if (!claudeRaw) {
     return ruleBasedAnomalies

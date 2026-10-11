@@ -24,7 +24,7 @@ export const CurrencyInput = forwardRef<HTMLInputElement, CurrencyInputProps>(
 
     const handleChange = useCallback(
       (e: ChangeEvent<HTMLInputElement>) => {
-        const raw = e.target.value.replace(/[^0-9.\-]/g, "");
+        const raw = e.target.value.replace(/[^0-9.-]/g, "");
         if (raw === "" || raw === "-") {
           onChange(null);
           return;
