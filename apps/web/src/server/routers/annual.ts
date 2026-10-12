@@ -1,29 +1,34 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { sql, eq, and } from "drizzle-orm";
+import { sql, eq, and, desc } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import {
-  users,
   componentCategories,
   companies,
   annualBudgets,
+  annualBudgetPhasing,
   annualInsightCaches,
+  annualAuditLog,
 } from "@saas/db";
 import {
   computeSummary,
-  classifyComponent,
+  classifyComponentWithReason,
+  MONEY_CATEGORIES,
   type AnnualPeriodInput,
   type AnnualSummary,
   type Category,
   type ForecastMethod,
   type PeriodType,
   type ComponentAggregate,
+  type DepartmentTotalsInput,
 } from "@saas/payroll-core";
-import { generateAnnualInsights, DEFAULT_MODEL, type AnnualInsightPayload } from "@saas/ai";
-import { protectedProcedure, router, type ProtectedContext } from "../trpc";
+import { generateAnnualInsights, DEFAULT_MODEL, isAiAvailable, type AnnualInsightPayload } from "@saas/ai";
+import { memberProcedure, editorProcedure, router, type MemberContext } from "../trpc";
+import { limitInsightGeneration } from "../rate-limit";
 
 const PeriodTypeSchema = z.enum(["monthly", "weekly", "bi_monthly", "bi_weekly"]);
 const ForecastMethodSchema = z.enum(["run_rate", "average", "prior_year"]);
+const BudgetBasisSchema = z.enum(["gross", "employer_cost", "net"]);
 const CategoryEnum = z.enum([
   "base_salary",
   "allowance",
@@ -42,10 +47,20 @@ const CategoryEnum = z.enum([
   "uncategorised",
 ]);
 
+/**
+ * ISO 4217 is three upper-case letters. The budget endpoint accepted "lbp" and
+ * stored it as a distinct currency from "LBP" (finding C15/R7).
+ */
+const CurrencyCodeSchema = z
+  .string()
+  .length(3)
+  .transform((s) => s.toUpperCase())
+  .refine((s) => /^[A-Z]{3}$/.test(s), { message: "Currency must be a 3-letter ISO code" });
+
 // Raw rows come back from db.execute untyped. Postgres returns the column name as
-// written, so every query below aliases snake_case to camelCase and parses the result
-// with one of these schemas. Never cast a raw row with `as unknown as`: the keys and
-// the declared type drift apart silently, which is finding C1.
+// written, so every query below aliases snake_case to camelCase and parses the
+// result with one of these schemas. Never cast a raw row with `as unknown as`: the
+// keys and the declared type drift apart silently, which is finding C1.
 const Numeric = z.union([z.string(), z.number()]).transform(Number);
 const IntLike = z.union([z.string(), z.number()]).transform((v) => Math.trunc(Number(v)));
 
@@ -57,7 +72,6 @@ const PeriodRowSchema = z.object({
   currencyCode: z.string(),
   createdAt: z.union([z.string(), z.date()]).transform(toIsoTimestamp),
 });
-type PeriodRow = z.infer<typeof PeriodRowSchema>;
 
 const HeadcountRowSchema = z.object({
   id: z.string(),
@@ -102,8 +116,8 @@ const SetupRowSchema = z.object({
 
 function toIsoDate(v: string | Date): string {
   if (v instanceof Date) return v.toISOString().slice(0, 10);
-  // Postgres `date` arrives as "YYYY-MM-DD"; keep it verbatim rather than passing it
-  // through Date, which would shift it by the local timezone offset.
+  // Postgres `date` arrives as "YYYY-MM-DD"; keep it verbatim rather than passing
+  // it through Date, which would shift it by the local timezone offset.
   return v.length >= 10 ? v.slice(0, 10) : v;
 }
 
@@ -135,10 +149,17 @@ function parseRows<T extends z.ZodTypeAny>(schema: T, rows: unknown[], label: st
 
 const numericComponentFilter = sql`(x.value #>> '{}') ~ '^-?[0-9]+(\\.[0-9]+)?$'`;
 
+/**
+ * The valid-periods CTE, selecting only the columns the annual queries use.
+ *
+ * `SELECT *` previously carried the whole components JSON through both CTEs on
+ * every query that did not need it (finding B6).
+ */
 function validPeriodsCte(companyId: string, periodType: string, currency: string, year: number) {
   return sql`
     valid_periods AS (
-      SELECT DISTINCT ON (period_type, period_start, period_end) *
+      SELECT DISTINCT ON (period_type, period_start, period_end)
+             id, period_type, period_start, period_end, currency_code, created_at
       FROM payroll_periods
       WHERE company_id = ${companyId} AND status = 'ready'
         AND period_type = ${periodType} AND currency_code = ${currency}
@@ -146,27 +167,30 @@ function validPeriodsCte(companyId: string, periodType: string, currency: string
       ORDER BY period_type, period_start, period_end, created_at DESC
     ),
     snaps AS (
-      SELECT DISTINCT ON (payroll_period_id, employee_external_id) *
+      SELECT DISTINCT ON (payroll_period_id, employee_external_id)
+             id, payroll_period_id, employee_external_id, department,
+             gross_salary, net_salary, components, created_at
       FROM employee_snapshots
       WHERE payroll_period_id IN (SELECT id FROM valid_periods)
       ORDER BY payroll_period_id, employee_external_id, created_at DESC
     )`;
 }
 
-async function getCompany(ctx: ProtectedContext) {
-  const currentUser = await ctx.db.query.users.findFirst({
-    where: eq(users.clerkUserId, ctx.userId),
-  });
-  if (!currentUser) throw new TRPCError({ code: "NOT_FOUND" });
-  return { companyId: currentUser.companyId };
-}
+// ---------------------------------------------------------------------------
+// Loaders (step 26, finding A5)
+//
+// A page view ran about 13 sequential SQL round trips. These two functions make
+// it two: one to resolve which cadence/currency/company we are looking at, and
+// one batched call for everything else. `db.batch` on neon-http sends the whole
+// array in a single HTTP request.
+// ---------------------------------------------------------------------------
 
-async function loadYearQueries(ctx: ProtectedContext, opts: { companyId: string; periodType: string; currency: string; year: number }) {
+function yearQueries(ctx: MemberContext, opts: { companyId: string; periodType: string; currency: string; year: number }) {
   const { companyId, periodType, currency, year } = opts;
   const cte = validPeriodsCte(companyId, periodType, currency, year);
 
-  const [periodRes, headcountRes, componentRes, employeeRes] = await Promise.all([
-    ctx.db.execute(sql`
+  return {
+    periods: ctx.db.execute(sql`
       WITH ${cte}
       SELECT id,
              period_type   AS "periodType",
@@ -177,7 +201,7 @@ async function loadYearQueries(ctx: ProtectedContext, opts: { companyId: string;
       FROM valid_periods
       ORDER BY period_end
     `),
-    ctx.db.execute(sql`
+    headcount: ctx.db.execute(sql`
       WITH ${cte}
       SELECT p.id,
              COUNT(r.id)::int AS headcount,
@@ -187,7 +211,7 @@ async function loadYearQueries(ctx: ProtectedContext, opts: { companyId: string;
       LEFT JOIN snaps r ON r.payroll_period_id = p.id
       GROUP BY p.id
     `),
-    ctx.db.execute(sql`
+    components: ctx.db.execute(sql`
       WITH ${cte}
       SELECT p.id, x.key,
              COALESCE(SUM((x.value #>> '{}')::numeric), 0) AS total,
@@ -199,21 +223,52 @@ async function loadYearQueries(ctx: ProtectedContext, opts: { companyId: string;
       WHERE ${numericComponentFilter}
       GROUP BY p.id, x.key
     `),
-    ctx.db.execute(sql`
+    employees: ctx.db.execute(sql`
       WITH ${cte}
       SELECT p.id, r.employee_external_id AS "employeeExternalId"
       FROM valid_periods p
       LEFT JOIN snaps r ON r.payroll_period_id = p.id
       WHERE r.id IS NOT NULL
     `),
-  ]);
+  };
+}
 
-  const periodRows = parseRows(PeriodRowSchema, periodRes.rows, "period");
-  const headcountMap = new Map(
-    parseRows(HeadcountRowSchema, headcountRes.rows, "headcount").map((r) => [r.id, r]),
-  );
-  const componentRows = parseRows(ComponentRowSchema, componentRes.rows, "component");
-  const employeeRows = parseRows(EmployeeRowSchema, employeeRes.rows, "employee");
+function departmentQueries(ctx: MemberContext, opts: { companyId: string; periodType: string; currency: string; year: number }) {
+  const { companyId, periodType, currency, year } = opts;
+  const cte = validPeriodsCte(companyId, periodType, currency, year);
+
+  return {
+    totals: ctx.db.execute(sql`
+      WITH ${cte}
+      SELECT COALESCE(r.department, 'Unassigned') AS department, x.key,
+             COALESCE(SUM((x.value #>> '{}')::numeric), 0) AS total
+      FROM valid_periods p
+      JOIN snaps r ON r.payroll_period_id = p.id
+      CROSS JOIN LATERAL jsonb_each(r.components) x
+      WHERE ${numericComponentFilter}
+      GROUP BY 1, 2
+    `),
+    headcounts: ctx.db.execute(sql`
+      WITH ${cte}
+      SELECT COALESCE(r.department, 'Unassigned') AS department,
+             p.period_end AS "periodEnd",
+             COUNT(DISTINCT r.employee_external_id)::int AS headcount,
+             COALESCE(SUM(r.gross_salary), 0)::numeric AS gross,
+             COALESCE(SUM(r.net_salary), 0)::numeric   AS net
+      FROM valid_periods p
+      JOIN snaps r ON r.payroll_period_id = p.id
+      GROUP BY 1, 2
+    `),
+  };
+}
+
+function assemblePeriods(
+  periodRows: z.infer<typeof PeriodRowSchema>[],
+  headcountRows: z.infer<typeof HeadcountRowSchema>[],
+  componentRows: z.infer<typeof ComponentRowSchema>[],
+  employeeRows: z.infer<typeof EmployeeRowSchema>[],
+): AnnualPeriodInput[] {
+  const headcountMap = new Map(headcountRows.map((r) => [r.id, r]));
 
   const componentsByPeriod = new Map<string, ComponentAggregate[]>();
   for (const c of componentRows) {
@@ -229,7 +284,7 @@ async function loadYearQueries(ctx: ProtectedContext, opts: { companyId: string;
     employeeIdsByPeriod.set(r.id, list);
   }
 
-  const periods: AnnualPeriodInput[] = periodRows.map((p) => {
+  return periodRows.map((p) => {
     const hc = headcountMap.get(p.id);
     return {
       id: p.id,
@@ -245,40 +300,12 @@ async function loadYearQueries(ctx: ProtectedContext, opts: { companyId: string;
       employeeIds: employeeIdsByPeriod.get(p.id) ?? [],
     };
   });
-
-  return { periods, periodRows };
 }
 
-async function loadDepartments(ctx: ProtectedContext, opts: { companyId: string; periodType: string; currency: string; year: number }) {
-  const { companyId, periodType, currency, year } = opts;
-  const cte = validPeriodsCte(companyId, periodType, currency, year);
-
-  const [totalRes, headcountRes] = await Promise.all([
-    ctx.db.execute(sql`
-      WITH ${cte}
-      SELECT COALESCE(r.department, 'Unassigned') AS department, x.key,
-             COALESCE(SUM((x.value #>> '{}')::numeric), 0) AS total
-      FROM valid_periods p
-      JOIN snaps r ON r.payroll_period_id = p.id
-      CROSS JOIN LATERAL jsonb_each(r.components) x
-      WHERE ${numericComponentFilter}
-      GROUP BY 1, 2
-    `),
-    ctx.db.execute(sql`
-      WITH ${cte}
-      SELECT COALESCE(r.department, 'Unassigned') AS department,
-             p.period_end AS "periodEnd",
-             COUNT(DISTINCT r.employee_external_id)::int AS headcount,
-             COALESCE(SUM(r.gross_salary), 0)::numeric AS gross,
-             COALESCE(SUM(r.net_salary), 0)::numeric   AS net
-      FROM valid_periods p
-      JOIN snaps r ON r.payroll_period_id = p.id
-      GROUP BY 1, 2
-    `),
-  ]);
-
-  const totals = parseRows(DepartmentTotalsRowSchema, totalRes.rows, "department total");
-  const headcounts = parseRows(DepartmentHeadcountRowSchema, headcountRes.rows, "department headcount");
+function assembleDepartments(
+  totals: z.infer<typeof DepartmentTotalsRowSchema>[],
+  headcounts: z.infer<typeof DepartmentHeadcountRowSchema>[],
+): DepartmentTotalsInput[] {
   const periodEnds = [...new Set(headcounts.map((h) => h.periodEnd))].sort();
 
   const headcountsByDepartment = new Map<string, Map<string, number>>();
@@ -299,7 +326,7 @@ async function loadDepartments(ctx: ProtectedContext, opts: { companyId: string;
     componentsByDepartment.set(t.department, map);
   }
 
-  const departments = [...new Set([...componentsByDepartment.keys(), ...headcountsByDepartment.keys()])].map((department) => {
+  return [...new Set([...componentsByDepartment.keys(), ...headcountsByDepartment.keys()])].map((department) => {
     const componentMap = componentsByDepartment.get(department) ?? new Map<string, number>();
     const deptHeadcounts = headcountsByDepartment.get(department) ?? new Map<string, number>();
     return {
@@ -310,8 +337,6 @@ async function loadDepartments(ctx: ProtectedContext, opts: { companyId: string;
       net: netByDepartment.get(department) ?? 0,
     };
   });
-
-  return departments;
 }
 
 interface SummaryContext {
@@ -320,36 +345,78 @@ interface SummaryContext {
   currency: string;
   allPeriodTypes: PeriodType[];
   allCurrencies: string[];
+  companyName: string | undefined;
 }
 
-async function loadSummaryContext(
-  ctx: ProtectedContext,
-  input: { year: number; periodType?: PeriodType; currency?: string; forecastMethod?: ForecastMethod },
-): Promise<SummaryContext> {
-  const { companyId } = await getCompany(ctx);
+export interface SummaryInput {
+  year: number;
+  periodType?: PeriodType;
+  currency?: string;
+  forecastMethod?: ForecastMethod;
+}
 
-  const setupRes = await ctx.db.execute(sql`
-    SELECT period_type   AS "periodType",
-           currency_code AS "currencyCode"
-    FROM payroll_periods
-    WHERE company_id = ${companyId} AND status = 'ready'
-      AND period_end >= ${`${input.year}-01-01`}::date AND period_end < ${`${input.year + 1}-01-01`}::date
-    GROUP BY 1, 2
-    ORDER BY COUNT(*) DESC
-  `);
+/**
+ * Short-lived per-instance memo (step 26).
+ *
+ * `getSummary` and `generateInsights` resolve the same summary from the same
+ * inputs; a refetch triggered by the client repeats it again. The key includes
+ * companyId, so no tenant can read another's entry.
+ */
+const SUMMARY_TTL_MS = 30_000;
+const summaryMemo = new Map<string, { at: number; value: SummaryContext }>();
+
+function memoKey(companyId: string, input: SummaryInput): string {
+  return [companyId, input.year, input.periodType ?? "", input.currency ?? "", input.forecastMethod ?? ""].join("|");
+}
+
+async function loadSummaryContext(ctx: MemberContext, input: SummaryInput): Promise<SummaryContext> {
+  const key = memoKey(ctx.companyId, input);
+  const hit = summaryMemo.get(key);
+  if (hit && Date.now() - hit.at < SUMMARY_TTL_MS) return hit.value;
+
+  const value = await buildSummaryContext(ctx, input);
+  summaryMemo.set(key, { at: Date.now(), value });
+  // Keep the map from growing without bound in a long-lived instance.
+  if (summaryMemo.size > 64) {
+    for (const [k, v] of summaryMemo) {
+      if (Date.now() - v.at >= SUMMARY_TTL_MS) summaryMemo.delete(k);
+    }
+  }
+  return value;
+}
+
+async function buildSummaryContext(ctx: MemberContext, input: SummaryInput): Promise<SummaryContext> {
+  const { companyId } = ctx;
+
+  // ---- round trip 1: what are we looking at? ----
+  const [setupRes, companyRows, savedRows] = await ctx.db.batch([
+    ctx.db.execute(sql`
+      SELECT period_type   AS "periodType",
+             currency_code AS "currencyCode"
+      FROM payroll_periods
+      WHERE company_id = ${companyId} AND status = 'ready'
+        AND period_end >= ${`${input.year}-01-01`}::date AND period_end < ${`${input.year + 1}-01-01`}::date
+      GROUP BY 1, 2
+      ORDER BY COUNT(*) DESC
+    `),
+    ctx.db.select({ name: companies.name, currencyCode: companies.currencyCode })
+      .from(companies)
+      .where(eq(companies.id, companyId)),
+    ctx.db.select({ componentKey: componentCategories.componentKey, category: componentCategories.category })
+      .from(componentCategories)
+      .where(eq(componentCategories.companyId, companyId)),
+  ]);
+
   const setups = parseRows(SetupRowSchema, setupRes.rows, "setup");
   // Ordered by COUNT(*) DESC above, so index 0 is the most frequent.
   const allPeriodTypes = [...new Set(setups.map((s) => s.periodType))] as PeriodType[];
   const allCurrencies = [...new Set(setups.map((s) => s.currencyCode))];
 
-  // Step 8 (A6): the organization's own currency wins when the year actually has data
-  // in it; otherwise fall back to the most frequent currency, and only then to USD.
-  const companyRow = await ctx.db.query.companies.findFirst({
-    where: eq(companies.id, companyId),
-    columns: { currencyCode: true },
-  });
+  const companyRow = companyRows[0];
   const companyCurrency = companyRow?.currencyCode;
 
+  // Step 8 (A6): the organization's own currency wins when the year actually has
+  // data in it; otherwise fall back to the most frequent, and only then to USD.
   const periodType = (input.periodType ?? allPeriodTypes[0] ?? "monthly") as PeriodType;
   const currency =
     input.currency ??
@@ -357,25 +424,99 @@ async function loadSummaryContext(
       ? companyCurrency
       : allCurrencies[0] ?? companyCurrency ?? "USD");
 
-  const { periods } = await loadYearQueries(ctx, { companyId, periodType, currency, year: input.year });
-  const departments = await loadDepartments(ctx, { companyId, periodType, currency, year: input.year });
-
-  let previousYear: { periods: AnnualPeriodInput[] } | undefined;
-  let previousYearLastEmployeeIds: string[] | undefined;
-  if (periods.length > 0) {
-    const prev = await loadYearQueries(ctx, { companyId, periodType, currency, year: input.year - 1 });
-    previousYear = prev.periods.length > 0 ? { periods: prev.periods } : undefined;
-    const lastEnd = prev.periodRows.length > 0 ? prev.periodRows[prev.periodRows.length - 1]!.periodEnd : null;
-    const lastPeriodIds = lastEnd
-      ? prev.periods.find((p) => p.periodEnd === lastEnd)?.employeeIds ?? []
-      : [];
-    previousYearLastEmployeeIds = lastPeriodIds.length > 0 ? lastPeriodIds : undefined;
-  }
-
-  const savedRes = await ctx.db.select().from(componentCategories)
-    .where(eq(componentCategories.companyId, companyId));
   const savedCategories: Record<string, Category> = {};
-  for (const s of savedRes) savedCategories[s.componentKey] = s.category as Category;
+  for (const s of savedRows) savedCategories[s.componentKey] = s.category as Category;
+
+  // ---- round trip 2: everything else, in one batch ----
+  const current = yearQueries(ctx, { companyId, periodType, currency, year: input.year });
+  const departments = departmentQueries(ctx, { companyId, periodType, currency, year: input.year });
+  const prevOpts = { companyId, periodType, currency, year: input.year - 1 };
+  const prevCte = validPeriodsCte(prevOpts.companyId, prevOpts.periodType, prevOpts.currency, prevOpts.year);
+
+  const [
+    periodRes,
+    headcountRes,
+    componentRes,
+    employeeRes,
+    deptTotalRes,
+    deptHeadcountRes,
+    prevPeriodRes,
+    prevHeadcountRes,
+    prevComponentRes,
+    prevLastEmployeeRes,
+  ] = await ctx.db.batch([
+    current.periods,
+    current.headcount,
+    current.components,
+    current.employees,
+    departments.totals,
+    departments.headcounts,
+    ctx.db.execute(sql`
+      WITH ${prevCte}
+      SELECT id,
+             period_type   AS "periodType",
+             period_start  AS "periodStart",
+             period_end    AS "periodEnd",
+             currency_code AS "currencyCode",
+             created_at    AS "createdAt"
+      FROM valid_periods
+      ORDER BY period_end
+    `),
+    ctx.db.execute(sql`
+      WITH ${prevCte}
+      SELECT p.id,
+             COUNT(r.id)::int AS headcount,
+             COALESCE(SUM(r.gross_salary), 0)::numeric AS gross,
+             COALESCE(SUM(r.net_salary), 0)::numeric AS net
+      FROM valid_periods p
+      LEFT JOIN snaps r ON r.payroll_period_id = p.id
+      GROUP BY p.id
+    `),
+    ctx.db.execute(sql`
+      WITH ${prevCte}
+      SELECT p.id, x.key,
+             COALESCE(SUM((x.value #>> '{}')::numeric), 0) AS total,
+             COUNT(*) FILTER (WHERE (x.value #>> '{}')::numeric < 0)::int AS "negRows",
+             COUNT(*) FILTER (WHERE (x.value #>> '{}')::numeric > 0)::int AS "posRows"
+      FROM valid_periods p
+      JOIN snaps r ON r.payroll_period_id = p.id
+      CROSS JOIN LATERAL jsonb_each(r.components) x
+      WHERE ${numericComponentFilter}
+      GROUP BY p.id, x.key
+    `),
+    // Only the LAST prior-year period's roster is needed, for joiners/leavers
+    // across the year boundary — not every snapshot of last year.
+    ctx.db.execute(sql`
+      WITH ${prevCte},
+      last_period AS (SELECT id FROM valid_periods ORDER BY period_end DESC LIMIT 1)
+      SELECT lp.id, r.employee_external_id AS "employeeExternalId"
+      FROM last_period lp
+      JOIN snaps r ON r.payroll_period_id = lp.id
+    `),
+  ]);
+
+  const periods = assemblePeriods(
+    parseRows(PeriodRowSchema, periodRes.rows, "period"),
+    parseRows(HeadcountRowSchema, headcountRes.rows, "headcount"),
+    parseRows(ComponentRowSchema, componentRes.rows, "component"),
+    parseRows(EmployeeRowSchema, employeeRes.rows, "employee"),
+  );
+
+  const departmentInputs = assembleDepartments(
+    parseRows(DepartmentTotalsRowSchema, deptTotalRes.rows, "department total"),
+    parseRows(DepartmentHeadcountRowSchema, deptHeadcountRes.rows, "department headcount"),
+  );
+
+  const prevPeriods = assemblePeriods(
+    parseRows(PeriodRowSchema, prevPeriodRes.rows, "previous period"),
+    parseRows(HeadcountRowSchema, prevHeadcountRes.rows, "previous headcount"),
+    parseRows(ComponentRowSchema, prevComponentRes.rows, "previous component"),
+    [],
+  );
+
+  const prevLastIds = parseRows(EmployeeRowSchema, prevLastEmployeeRes.rows, "previous roster").map(
+    (r) => r.employeeExternalId,
+  );
 
   const summary = computeSummary({
     year: input.year,
@@ -384,19 +525,49 @@ async function loadSummaryContext(
     allPeriodTypes,
     allCurrencies,
     periods,
-    forecastMethod: input.forecastMethod as ForecastMethod | undefined,
-    previousYear,
-    previousYearLastEmployeeIds,
+    forecastMethod: input.forecastMethod,
+    previousYear: prevPeriods.length > 0 ? { periods: prevPeriods } : undefined,
+    previousYearLastEmployeeIds: prevLastIds.length > 0 ? prevLastIds : undefined,
     savedCategories,
-    departments,
+    departments: departmentInputs,
   });
 
-  return { summary, periodType, currency, allPeriodTypes, allCurrencies };
+  return {
+    summary,
+    periodType,
+    currency,
+    allPeriodTypes,
+    allCurrencies,
+    companyName: companyRow?.name,
+  };
 }
 
-function buildInsightPayload(summary: AnnualSummary, companyName?: string): AnnualInsightPayload {
+const METHOD_LABELS: Record<ForecastMethod, string> = {
+  run_rate: "run rate",
+  average: "average of the last 3 periods",
+  prior_year: "prior-year trend",
+};
+
+/**
+ * Build the model payload from an already-computed summary (step 23).
+ *
+ * Two fixes over v1 (finding C11): absence *day counts* were being sent in the
+ * money categories list, so the model described days as currency; and the top 10
+ * was an unsorted slice of an object's keys, so which categories reached the
+ * model depended on insertion order.
+ */
+export function buildInsightPayload(summary: AnnualSummary, companyName?: string): AnnualInsightPayload {
   const round = (v: number) => Math.round(v * 100) / 100;
   const byCategory = summary.categories.byCategory;
+
+  const moneyCategories = MONEY_CATEGORIES.map((category) => ({
+    category,
+    total: round(byCategory[category] ?? 0),
+  }))
+    .filter((c) => c.total !== 0)
+    .sort((a, b) => Math.abs(b.total) - Math.abs(a.total))
+    .slice(0, 10);
+
   return {
     year: summary.year,
     periodType: summary.periodType,
@@ -415,7 +586,9 @@ function buildInsightPayload(summary: AnnualSummary, companyName?: string): Annu
       headcountAvgYtd: round(summary.avgHeadcountYtd),
     },
     forecast: {
-      method: summary.forecastMethod,
+      // A human-readable method name, not the raw `run_rate` enum, which the
+      // model echoed verbatim into user-facing text.
+      method: METHOD_LABELS[summary.forecastMethod],
       fullYearNet: round(summary.bridge.fullYear.net),
       fullYearGross: round(summary.bridge.fullYear.gross),
       fullYearEmployerCost: round(summary.bridge.fullYear.totalEmploymentCost),
@@ -425,9 +598,7 @@ function buildInsightPayload(summary: AnnualSummary, companyName?: string): Annu
       socialSecurityEmployee: round(byCategory.social_security_employee ?? 0),
       employerOnCost: round(summary.statutory.employerOnCostTotal),
     },
-    categories: Object.entries(byCategory)
-      .slice(0, 10)
-      .map(([category, total]) => ({ category, total: round(total ?? 0) })),
+    categories: moneyCategories,
     departments: summary.departments
       .slice(0, 8)
       .map((d) => ({ department: d.department, total: round(d.actual) })),
@@ -444,11 +615,31 @@ function buildInsightPayload(summary: AnnualSummary, companyName?: string): Annu
   };
 }
 
+function insightCacheKey(payload: AnnualInsightPayload): string {
+  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+}
+
+const PROMPT_VERSION = "v1";
+
+async function writeAudit(
+  ctx: MemberContext,
+  entry: { entity: string; entityKey: string; oldValue: unknown; newValue: unknown },
+) {
+  await ctx.db.insert(annualAuditLog).values({
+    companyId: ctx.companyId,
+    userId: ctx.currentUser.id,
+    entity: entry.entity,
+    entityKey: entry.entityKey,
+    oldValue: entry.oldValue ?? null,
+    newValue: entry.newValue ?? null,
+  });
+}
+
 export const annualRouter = router({
   // `getYears` was removed in step 21 (finding C17): it was never called, because
   // the annual page is a server component that queries the years itself.
 
-  getSummary: protectedProcedure
+  getSummary: memberProcedure
     .input(z.object({
       year: z.number().int().min(2000).max(2100),
       periodType: PeriodTypeSchema.optional(),
@@ -460,193 +651,403 @@ export const annualRouter = router({
       return summary;
     }),
 
-  listComponentCategories: protectedProcedure.query(async ({ ctx }) => {
-    const { companyId } = await getCompany(ctx);
+  /**
+   * Step 24 (finding C13): amounts now come from the same valid-periods CTE as
+   * the dashboard, scoped to the selected year and currency. v1 summed every
+   * ready upload of the latest year in every currency, so a company with two
+   * currencies saw inflated totals (38,000 where 28,000 was correct).
+   */
+  listComponentCategories: memberProcedure
+    .input(z.object({
+      year: z.number().int().min(2000).max(2100).optional(),
+      currency: z.string().length(3).optional(),
+      periodType: PeriodTypeSchema.optional(),
+    }).optional())
+    .query(async ({ ctx, input }) => {
+      const { companyId } = ctx;
 
-    const [keysRes, yearRes, savedRes] = await Promise.all([
-      ctx.db.execute(sql`
-        SELECT DISTINCT x.key
-        FROM payroll_periods p
-        JOIN employee_snapshots r ON r.payroll_period_id = p.id
-        CROSS JOIN LATERAL jsonb_each(r.components) x
-        WHERE p.company_id = ${companyId} AND p.status = 'ready'
-      `),
-      ctx.db.execute(sql`
+      const yearRes = await ctx.db.execute(sql`
         SELECT MAX(EXTRACT(YEAR FROM period_end)::int) AS year
         FROM payroll_periods
         WHERE company_id = ${companyId} AND status = 'ready'
-      `),
-      ctx.db.select().from(componentCategories).where(eq(componentCategories.companyId, companyId)),
-    ]);
-
-    const latestYear =
-      parseRows(z.object({ year: IntLike.nullable() }), yearRes.rows, "latest year")[0]?.year ?? null;
-    const saved = new Map(savedRes.map((s) => [s.componentKey, s.category as Category]));
-    const keys = parseRows(z.object({ key: z.string() }), keysRes.rows, "component key").map((r) => r.key);
-
-    let amounts = new Map<string, number>();
-    if (latestYear !== null) {
-      const amountRes = await ctx.db.execute(sql`
-        SELECT x.key, SUM((x.value #>> '{}')::numeric) AS total
-        FROM payroll_periods p
-        JOIN employee_snapshots r ON r.payroll_period_id = p.id
-        CROSS JOIN LATERAL jsonb_each(r.components) x
-        WHERE p.company_id = ${companyId} AND p.status = 'ready'
-          AND EXTRACT(YEAR FROM p.period_end) = ${latestYear}
-          AND (x.value #>> '{}') ~ '^-?[0-9]+(\\.[0-9]+)?$'
-        GROUP BY x.key
       `);
-      amounts = new Map(
+      const latestYear =
+        parseRows(z.object({ year: IntLike.nullable() }), yearRes.rows, "latest year")[0]?.year ?? null;
+
+      const year = input?.year ?? latestYear;
+      if (year === null) {
+        return { latestYear: null, year: null, currency: null, categories: [] };
+      }
+
+      const [setupRes, savedRows] = await ctx.db.batch([
+        ctx.db.execute(sql`
+          SELECT period_type   AS "periodType",
+                 currency_code AS "currencyCode"
+          FROM payroll_periods
+          WHERE company_id = ${companyId} AND status = 'ready'
+            AND period_end >= ${`${year}-01-01`}::date AND period_end < ${`${year + 1}-01-01`}::date
+          GROUP BY 1, 2
+          ORDER BY COUNT(*) DESC
+        `),
+        ctx.db.select().from(componentCategories).where(eq(componentCategories.companyId, companyId)),
+      ]);
+
+      const setups = parseRows(SetupRowSchema, setupRes.rows, "setup");
+      const periodType = input?.periodType ?? (setups[0]?.periodType as PeriodType | undefined) ?? "monthly";
+      const currency = input?.currency?.toUpperCase() ?? setups[0]?.currencyCode ?? "USD";
+
+      const cte = validPeriodsCte(companyId, periodType, currency, year);
+      const [keysRes, amountRes] = await ctx.db.batch([
+        ctx.db.execute(sql`
+          WITH ${cte}
+          SELECT DISTINCT x.key
+          FROM snaps r
+          CROSS JOIN LATERAL jsonb_each(r.components) x
+        `),
+        ctx.db.execute(sql`
+          WITH ${cte}
+          SELECT x.key, SUM((x.value #>> '{}')::numeric) AS total
+          FROM snaps r
+          CROSS JOIN LATERAL jsonb_each(r.components) x
+          WHERE ${numericComponentFilter}
+          GROUP BY x.key
+        `),
+      ]);
+
+      const saved = new Map(savedRows.map((s) => [s.componentKey, s]));
+      const keys = parseRows(z.object({ key: z.string() }), keysRes.rows, "component key").map((r) => r.key);
+      const amounts = new Map(
         parseRows(z.object({ key: z.string(), total: Numeric }), amountRes.rows, "component amount").map(
           (r) => [r.key, r.total] as const,
         ),
       );
-    }
 
-    return {
-      latestYear,
-      categories: keys.map((key) => {
-        const category = saved.get(key) ?? classifyComponent(key);
-        return {
-          componentKey: key,
-          category,
-          source: saved.has(key) ? "saved" : "auto",
-          amountToDate: amounts.get(key) ?? 0,
-        };
-      }),
-    };
-  }),
+      return {
+        latestYear,
+        year,
+        currency,
+        categories: keys.map((key) => {
+          const savedRow = saved.get(key);
+          const auto = classifyComponentWithReason(key);
+          return {
+            componentKey: key,
+            category: (savedRow?.category as Category | undefined) ?? auto.category,
+            source: savedRow ? ("saved" as const) : ("auto" as const),
+            // The rule that fired, so the category manager can explain itself
+            // instead of leaving the user to guess (step 40).
+            autoRule: auto.rule,
+            autoCategory: auto.category,
+            amountToDate: amounts.get(key) ?? 0,
+          };
+        }),
+      };
+    }),
 
-  setComponentCategory: protectedProcedure
+  /**
+   * Step 24 (finding C14): one bulk upsert.
+   *
+   * v1 exposed a single-key `setComponentCategory` that read-then-inserted (a
+   * race, despite the unique constraint being available for an upsert) and never
+   * moved `updated_at`. The dialog called it once per key, so categorising 20
+   * components sent 20 sequential requests.
+   */
+  setComponentCategories: editorProcedure
     .input(z.object({
-      componentKey: z.string().min(1).max(200),
-      category: CategoryEnum,
+      entries: z.array(z.object({
+        componentKey: z.string().min(1).max(200),
+        category: CategoryEnum,
+      })).min(1).max(500),
     }))
     .mutation(async ({ ctx, input }) => {
-      const { companyId } = await getCompany(ctx);
+      const { companyId } = ctx;
 
-      const existing = await ctx.db.query.componentCategories.findFirst({
-        where: and(
-          eq(componentCategories.companyId, companyId),
-          eq(componentCategories.componentKey, input.componentKey),
-        ),
-      });
+      const existing = await ctx.db.select()
+        .from(componentCategories)
+        .where(eq(componentCategories.companyId, companyId));
+      const before = new Map(existing.map((e) => [e.componentKey, e.category]));
 
-      if (existing) {
-        const [updated] = await ctx.db.update(componentCategories)
-          .set({ category: input.category })
-          .where(eq(componentCategories.id, existing.id))
-          .returning();
-        if (!updated) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
-        return { componentKey: updated.componentKey, category: updated.category };
+      const now = new Date();
+      await ctx.db.insert(componentCategories)
+        .values(input.entries.map((e) => ({
+          companyId,
+          componentKey: e.componentKey,
+          category: e.category,
+          updatedBy: ctx.currentUser.id,
+          updatedAt: now,
+        })))
+        .onConflictDoUpdate({
+          target: [componentCategories.companyId, componentCategories.componentKey],
+          set: {
+            category: sql`excluded.category`,
+            updatedBy: sql`excluded.updated_by`,
+            updatedAt: now,
+          },
+        });
+
+      const changed = input.entries.filter((e) => before.get(e.componentKey) !== e.category);
+      if (changed.length > 0) {
+        await ctx.db.insert(annualAuditLog).values(
+          changed.map((e) => ({
+            companyId,
+            userId: ctx.currentUser.id,
+            entity: "component_category",
+            entityKey: e.componentKey,
+            oldValue: { category: before.get(e.componentKey) ?? null },
+            newValue: { category: e.category },
+          })),
+        );
       }
 
-      const [created] = await ctx.db.insert(componentCategories).values({
-        companyId,
-        componentKey: input.componentKey,
-        category: input.category,
-      }).returning();
-      if (!created) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
-      return { componentKey: created.componentKey, category: created.category };
+      return { updated: input.entries.length, changed: changed.length };
     }),
 
-  getBudget: protectedProcedure
+  /** Drop a saved override so the component falls back to the classifier. */
+  resetComponentCategory: editorProcedure
+    .input(z.object({ componentKey: z.string().min(1).max(200) }))
+    .mutation(async ({ ctx, input }) => {
+      const [removed] = await ctx.db.delete(componentCategories)
+        .where(and(
+          eq(componentCategories.companyId, ctx.companyId),
+          eq(componentCategories.componentKey, input.componentKey),
+        ))
+        .returning();
+
+      if (removed) {
+        await writeAudit(ctx, {
+          entity: "component_category",
+          entityKey: input.componentKey,
+          oldValue: { category: removed.category },
+          newValue: null,
+        });
+      }
+
+      return {
+        componentKey: input.componentKey,
+        category: classifyComponentWithReason(input.componentKey).category,
+      };
+    }),
+
+  getBudget: memberProcedure
     .input(z.object({
       year: z.number().int().min(2000).max(2100),
-      currency: z.string().length(3),
+      currency: CurrencyCodeSchema,
     }))
     .query(async ({ ctx, input }) => {
-      const { companyId } = await getCompany(ctx);
       const row = await ctx.db.query.annualBudgets.findFirst({
         where: and(
-          eq(annualBudgets.companyId, companyId),
+          eq(annualBudgets.companyId, ctx.companyId),
           eq(annualBudgets.year, input.year),
           eq(annualBudgets.currency, input.currency),
         ),
       });
-      return { amount: row ? Number(row.amount) : null };
+      if (!row) return { amount: null, basis: "gross" as const, phasing: [] };
+
+      const phasing = await ctx.db.select()
+        .from(annualBudgetPhasing)
+        .where(eq(annualBudgetPhasing.budgetId, row.id));
+
+      return {
+        amount: Number(row.amount),
+        basis: row.basis as z.infer<typeof BudgetBasisSchema>,
+        phasing: phasing
+          .map((p) => ({ month: p.month, amount: Number(p.amount) }))
+          .sort((a, b) => a.month - b.month),
+      };
     }),
 
-  setBudget: protectedProcedure
+  /**
+   * Step 25 (findings C15, B4): the currency is upper-cased and ISO-checked, the
+   * amount column is wide enough for an LBP-scale budget, and the budget carries
+   * a basis plus optional monthly phasing.
+   */
+  setBudget: editorProcedure
     .input(z.object({
       year: z.number().int().min(2000).max(2100),
-      currency: z.string().length(3),
-      amount: z.number().finite().min(0).nullable(),
+      currency: CurrencyCodeSchema,
+      // 1e18 stays inside numeric(20,2); an LBP annual payroll is ~1.2e12.
+      amount: z.number().finite().min(0).max(1e18).nullable(),
+      basis: BudgetBasisSchema.default("gross"),
+      phasing: z.array(z.object({
+        month: z.number().int().min(1).max(12),
+        amount: z.number().finite().min(0).max(1e18),
+      })).max(12).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const { companyId } = await getCompany(ctx);
+      const { companyId } = ctx;
+      const where = and(
+        eq(annualBudgets.companyId, companyId),
+        eq(annualBudgets.year, input.year),
+        eq(annualBudgets.currency, input.currency),
+      );
+
+      const previous = await ctx.db.query.annualBudgets.findFirst({ where });
 
       if (input.amount === null) {
-        await ctx.db.delete(annualBudgets).where(and(
-          eq(annualBudgets.companyId, companyId),
-          eq(annualBudgets.year, input.year),
-          eq(annualBudgets.currency, input.currency),
-        ));
-        return { amount: null };
+        await ctx.db.delete(annualBudgets).where(where);
+        if (previous) {
+          await writeAudit(ctx, {
+            entity: "annual_budget",
+            entityKey: `${input.year}:${input.currency}`,
+            oldValue: { amount: Number(previous.amount), basis: previous.basis },
+            newValue: null,
+          });
+        }
+        return { amount: null, basis: input.basis, phasing: [] };
       }
 
       const amount = input.amount.toFixed(2);
-      await ctx.db.insert(annualBudgets)
-        .values({ companyId, year: input.year, currency: input.currency, amount })
+      const [saved] = await ctx.db.insert(annualBudgets)
+        .values({ companyId, year: input.year, currency: input.currency, amount, basis: input.basis })
         .onConflictDoUpdate({
           target: [annualBudgets.companyId, annualBudgets.year, annualBudgets.currency],
-          set: { amount, updatedAt: new Date() },
-        });
-      return { amount: input.amount };
+          set: { amount, basis: input.basis, updatedAt: new Date() },
+        })
+        .returning();
+      if (!saved) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+      if (input.phasing) {
+        await ctx.db.delete(annualBudgetPhasing).where(eq(annualBudgetPhasing.budgetId, saved.id));
+        if (input.phasing.length > 0) {
+          await ctx.db.insert(annualBudgetPhasing).values(
+            input.phasing.map((p) => ({
+              budgetId: saved.id,
+              month: p.month,
+              amount: p.amount.toFixed(2),
+            })),
+          );
+        }
+      }
+
+      await writeAudit(ctx, {
+        entity: "annual_budget",
+        entityKey: `${input.year}:${input.currency}`,
+        oldValue: previous ? { amount: Number(previous.amount), basis: previous.basis } : null,
+        newValue: { amount: input.amount, basis: input.basis },
+      });
+
+      return { amount: input.amount, basis: input.basis, phasing: input.phasing ?? [] };
     }),
 
-  getInsights: protectedProcedure
+  /**
+   * Step 23 (finding A3): a cache READ only.
+   *
+   * This was a query that called the model and wrote the cache. React Query
+   * refetches queries on mount and on window focus, so simply alt-tabbing back to
+   * the dashboard spent tokens. It is now side-effect free; generation is the
+   * mutation below.
+   */
+  getInsights: memberProcedure
     .input(z.object({
       year: z.number().int().min(2000).max(2100),
       periodType: PeriodTypeSchema.optional(),
       currency: z.string().length(3).optional(),
       forecastMethod: ForecastMethodSchema.optional(),
-      force: z.boolean().optional(),
-      runId: z.number().int().min(0).optional(),
     }))
     .query(async ({ ctx, input }) => {
-      const { companyId } = await getCompany(ctx);
-      const { summary } = await loadSummaryContext(ctx, input);
-
-      const company = await ctx.db.query.companies.findFirst({
-        where: eq(companies.id, companyId),
-      });
-      const payload = buildInsightPayload(summary, company?.name);
-      const dataHash = createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+      const { summary, companyName } = await loadSummaryContext(ctx, input);
+      const payload = buildInsightPayload(summary, companyName);
+      const dataHash = insightCacheKey(payload);
       const method = input.forecastMethod ?? summary.forecastMethod;
 
-      if (!input.force) {
-        const cached = await ctx.db.query.annualInsightCaches.findFirst({
-          where: and(
-            eq(annualInsightCaches.companyId, companyId),
-            eq(annualInsightCaches.forecastMethod, method),
-            eq(annualInsightCaches.dataHash, dataHash),
-          ),
-        });
-        if (cached) {
-          return {
-            bullets: (cached.bullets as unknown as string[]) ?? [],
-            generatedAt: cached.generatedAt,
-            model: cached.model || DEFAULT_MODEL,
-            fromCache: true,
-          };
-        }
+      const cached = await ctx.db.query.annualInsightCaches.findFirst({
+        where: and(
+          eq(annualInsightCaches.companyId, ctx.companyId),
+          eq(annualInsightCaches.forecastMethod, method),
+          eq(annualInsightCaches.dataHash, dataHash),
+        ),
+        orderBy: [desc(annualInsightCaches.generatedAt)],
+      });
+
+      if (!cached) {
+        return {
+          bullets: [] as string[],
+          generatedAt: null,
+          model: null,
+          source: null,
+          promptVersion: null,
+          stale: true,
+          canGenerate: isAiAvailable,
+        };
       }
 
-      const bullets = await generateAnnualInsights(payload);
+      return {
+        bullets: Array.isArray(cached.bullets) ? (cached.bullets as string[]) : [],
+        generatedAt: cached.generatedAt,
+        model: cached.model || null,
+        // The UI must not label rule-based text with a model name (finding U7).
+        source: cached.source as "ai" | "rules",
+        promptVersion: cached.promptVersion,
+        stale: false,
+        canGenerate: isAiAvailable,
+      };
+    }),
 
+  /**
+   * Step 23: generation is an editor-only, rate-limited mutation.
+   *
+   * A failure is never cached, so a transient model error cannot be served for an
+   * hour as though it were an answer (finding A2).
+   */
+  generateInsights: editorProcedure
+    .input(z.object({
+      year: z.number().int().min(2000).max(2100),
+      periodType: PeriodTypeSchema.optional(),
+      currency: z.string().length(3).optional(),
+      forecastMethod: ForecastMethodSchema.optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const limit = await limitInsightGeneration(ctx.companyId);
+      if (!limit.success) {
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: limit.reset
+            ? `Insight generation is limited to 5 per hour. Try again after ${new Date(limit.reset).toISOString()}.`
+            : "Insight generation is limited to 5 per hour.",
+        });
+      }
+
+      const { summary, companyName } = await loadSummaryContext(ctx, input);
+      const payload = buildInsightPayload(summary, companyName);
+      const dataHash = insightCacheKey(payload);
+      const method = input.forecastMethod ?? summary.forecastMethod;
+
+      const result = await generateAnnualInsights(payload);
+      const source = result.source;
+      const bullets = result.bullets;
+
+      // Only a real model answer is cached under a model name. A rule-based
+      // fallback is cached as such, so the UI can label it honestly.
       await ctx.db.insert(annualInsightCaches)
-        .values({ companyId, year: input.year, forecastMethod: method, dataHash, bullets, model: DEFAULT_MODEL })
+        .values({
+          companyId: ctx.companyId,
+          year: input.year,
+          forecastMethod: method,
+          dataHash,
+          bullets,
+          model: source === "ai" ? DEFAULT_MODEL : "",
+          source,
+          promptVersion: PROMPT_VERSION,
+        })
         .onConflictDoUpdate({
           target: [annualInsightCaches.companyId, annualInsightCaches.forecastMethod, annualInsightCaches.dataHash],
-          set: { bullets, model: DEFAULT_MODEL, generatedAt: new Date() },
+          set: {
+            bullets,
+            model: source === "ai" ? DEFAULT_MODEL : "",
+            source,
+            promptVersion: PROMPT_VERSION,
+            generatedAt: new Date(),
+          },
         });
 
       return {
         bullets,
         generatedAt: new Date(),
-        model: DEFAULT_MODEL,
-        fromCache: false,
+        model: source === "ai" ? DEFAULT_MODEL : null,
+        source,
+        promptVersion: PROMPT_VERSION,
+        stale: false,
+        canGenerate: isAiAvailable,
+        remaining: limit.remaining,
       };
     }),
 });

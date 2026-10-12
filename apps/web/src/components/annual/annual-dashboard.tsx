@@ -168,7 +168,9 @@ export function AnnualDashboard({
 
         {summary && (
           <CategoryManager
+            year={summary.year}
             currency={summary.currency}
+            periodType={summary.periodType}
             hasUncategorised={summary.warnings.some((w) => w.code === "UNCATEGORISED")}
           />
         )}

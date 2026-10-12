@@ -31,51 +31,67 @@ const CATEGORY_OPTIONS = (Object.keys(CATEGORY_LABELS) as Category[]).map((categ
 }));
 
 interface CategoryManagerProps {
+  year: number;
   currency: string;
+  periodType: "monthly" | "weekly" | "bi_monthly" | "bi_weekly";
   hasUncategorised: boolean;
 }
 
-export function CategoryManager({ currency, hasUncategorised }: CategoryManagerProps) {
+export function CategoryManager({ year, currency, periodType, hasUncategorised }: CategoryManagerProps) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<Record<string, Category>>({});
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const utils = trpc.useUtils();
-  const categoriesQuery = trpc.annual.listComponentCategories.useQuery(undefined, {
-    enabled: open,
-    retry: 1,
-  });
-  const saveMutation = trpc.annual.setComponentCategory.useMutation();
+  // Scoped to the year and currency on screen (step 24, finding C13): the amounts
+  // shown must match the dashboard, not sum every currency of the latest year.
+  const categoriesQuery = trpc.annual.listComponentCategories.useQuery(
+    { year, currency, periodType },
+    { enabled: open, retry: 1 },
+  );
+  const saveMutation = trpc.annual.setComponentCategories.useMutation();
 
   const data = categoriesQuery.data;
 
+  // Seed the draft once per fetched payload rather than on every object identity
+  // change, which previously discarded in-progress edits on any refetch
+  // (finding C18).
+  const seedKey = data?.categories.map((c) => `${c.componentKey}:${c.category}`).join("|") ?? "";
   useEffect(() => {
     if (!data) return;
     setDraft(Object.fromEntries(data.categories.map((c) => [c.componentKey, c.category])));
     setError(null);
-  }, [data]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seedKey]);
 
-  const changedCount = useMemo(() => {
-    if (!data) return 0;
-    return data.categories.filter((c) => draft[c.componentKey] && draft[c.componentKey] !== c.category).length;
+  const changes = useMemo(() => {
+    if (!data) return [];
+    return data.categories
+      .filter((c) => draft[c.componentKey] && draft[c.componentKey] !== c.category)
+      .map((c) => ({ componentKey: c.componentKey, category: draft[c.componentKey]! }));
   }, [data, draft]);
 
+  const changedCount = changes.length;
+  const saving = saveMutation.isPending;
+
   async function handleSave() {
-    if (!data) return;
-    const changes = data.categories.filter((c) => draft[c.componentKey] && draft[c.componentKey] !== c.category);
-    setSaving(true);
+    if (changes.length === 0) {
+      setOpen(false);
+      return;
+    }
     setError(null);
     try {
-      for (const c of changes) {
-        await saveMutation.mutateAsync({ componentKey: c.componentKey, category: draft[c.componentKey]! });
-      }
+      // One request for all of them. v1 sent one request per key, so a 20-key
+      // change was 20 sequential round trips (finding C14).
+      await saveMutation.mutateAsync({ entries: changes });
       await Promise.all([utils.annual.getSummary.invalidate(), utils.annual.listComponentCategories.invalidate()]);
       setOpen(false);
-    } catch {
-      setError("Could not save categories. Please try again.");
-    } finally {
-      setSaving(false);
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message.includes("admin or manager")
+          ? "Changing categories requires the admin or manager role."
+          : "Could not save categories. Please try again.";
+      setError(message);
     }
   }
 

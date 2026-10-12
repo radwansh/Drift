@@ -11,6 +11,10 @@ export const annualInsightCaches = pgTable(
     dataHash: varchar("data_hash", { length: 64 }).notNull(),
     bullets: jsonb("bullets").notNull(),
     model: varchar("model", { length: 100 }).default("").notNull(),
+    // Rule-based fallbacks used to be cached under the model's name, so the UI
+    // labelled deterministic text as AI output (findings B5, R8, U7).
+    source: varchar("source", { length: 10 }).default("rules").notNull(),
+    promptVersion: varchar("prompt_version", { length: 20 }).default("v1").notNull(),
     generatedAt: timestamp("generated_at", { withTimezone: true }).defaultNow().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },

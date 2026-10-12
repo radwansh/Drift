@@ -36,6 +36,13 @@
       "when": 1791500323845,
       "tag": "0004_pink_blindfold",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791586723845,
+      "tag": "0005_annual_constraints",
+      "breakpoints": true
     }
   ]
 }

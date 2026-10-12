@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { Sparkles, RefreshCw, Loader2, Info } from "lucide-react";
+import { Sparkles, RefreshCw, Loader2, Info, TriangleAlert } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import type { AnnualSummary } from "@saas/payroll-core";
 import {
@@ -12,6 +11,7 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface AnnualInsightsProps {
@@ -19,56 +19,79 @@ interface AnnualInsightsProps {
 }
 
 export function AnnualInsights({ summary }: AnnualInsightsProps) {
-  const [runId, setRunId] = useState(0);
+  const utils = trpc.useUtils();
 
-  const insightsQuery = trpc.annual.getInsights.useQuery(
-    {
-      year: summary.year,
-      periodType: summary.periodType,
-      currency: summary.currency,
-      forecastMethod: summary.forecastMethod,
-      force: runId > 0,
-      runId,
-    },
-    {
-      enabled: summary.coverage.uploaded > 0,
-      refetchOnWindowFocus: false,
-      staleTime: Infinity,
-    },
-  );
+  const scope = {
+    year: summary.year,
+    periodType: summary.periodType,
+    currency: summary.currency,
+    forecastMethod: summary.forecastMethod,
+  };
 
-  const bullets = insightsQuery.data?.bullets ?? [];
-  const isLoading = insightsQuery.isLoading || insightsQuery.isFetching;
-  const generatedAt = insightsQuery.data?.generatedAt;
+  // Reading the cache is now side-effect free (step 23), so refetching on mount
+  // or window focus can no longer spend tokens.
+  const insightsQuery = trpc.annual.getInsights.useQuery(scope, {
+    enabled: summary.coverage.uploaded > 0,
+  });
+
+  const generate = trpc.annual.generateInsights.useMutation({
+    onSuccess: () => utils.annual.getInsights.invalidate(scope),
+  });
+
+  const data = insightsQuery.data;
+  const bullets = generate.data?.bullets ?? data?.bullets ?? [];
+  const source = generate.data?.source ?? data?.source ?? null;
+  const model = generate.data?.model ?? data?.model ?? null;
+  const generatedAt = generate.data?.generatedAt ?? data?.generatedAt ?? null;
+  const isBusy = insightsQuery.isLoading || generate.isPending;
+  const canGenerate = data?.canGenerate ?? false;
 
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between space-y-0 p-4">
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <Sparkles className="h-4 w-4 shrink-0 text-primary" />
-          <div>
-            <CardTitle className="text-sm font-semibold">AI insights</CardTitle>
-            <CardDescription>Aggregated payroll numbers, regenerated on demand · cache by year + method</CardDescription>
+          <div className="min-w-0">
+            <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+              Annual insights
+              {/* Rule-based text is never labelled with a model name (finding U7). */}
+              {source === "ai" && model && <Badge variant="secondary">{model}</Badge>}
+              {source === "rules" && <Badge variant="outline">Rule-based</Badge>}
+            </CardTitle>
+            <CardDescription>
+              A short written read of this year&apos;s payroll numbers.
+            </CardDescription>
           </div>
         </div>
         <Button
           type="button"
           size="sm"
           variant="outline"
-          disabled={isLoading || insightsQuery.data === undefined}
-          onClick={() => setRunId((r) => r + 1)}
-          aria-label="Regenerate AI insights"
+          disabled={isBusy || !canGenerate}
+          onClick={() => generate.mutate(scope)}
+          aria-label="Generate annual insights"
         >
-          {insightsQuery.isFetching && runId > 0 ? (
+          {generate.isPending ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           ) : (
             <RefreshCw className="mr-2 h-4 w-4" />
           )}
-          Regenerate
+          {bullets.length > 0 ? "Regenerate" : "Generate"}
         </Button>
       </CardHeader>
       <CardContent className="p-4 pt-1">
-        {isLoading && insightsQuery.data === undefined ? (
+        {generate.error && (
+          <p className="mb-3 flex items-start gap-2 text-sm text-destructive">
+            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+            {generate.error.data?.code === "TOO_MANY_REQUESTS"
+              ? "Generation is limited to 5 per hour for this company. Try again later."
+              : generate.error.data?.code === "FORBIDDEN"
+                ? "Generating insights requires the admin or manager role."
+                : generate.error.message}
+          </p>
+        )}
+
+        {isBusy && bullets.length === 0 ? (
           <div className="space-y-2">
             {Array.from({ length: 4 }).map((_, i) => (
               <Skeleton key={i} className="h-4 w-full" />
@@ -86,17 +109,18 @@ export function AnnualInsights({ summary }: AnnualInsightsProps) {
             </ul>
             {generatedAt && (
               <p className="mt-3 text-xs text-muted-foreground">
-                Generated {new Date(generatedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
-                {" · "}
-                {insightsQuery.data?.model}
+                Generated{" "}
+                {new Date(generatedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                {source === "rules" && " · written from the figures, without a model"}
               </p>
             )}
           </>
         ) : (
           <p className="flex items-start gap-2 text-sm text-muted-foreground">
             <Info className="mt-0.5 h-4 w-4 shrink-0" />
-            AI insights are unavailable (no API key configured, or the model returned nothing). Data is never sent
-            outside the company without an API key.
+            {canGenerate
+              ? "No insights yet. Generate writes a short read of this year's figures."
+              : "Insights need an Anthropic API key. Without one, a rule-based summary is written from the figures instead."}
           </p>
         )}
       </CardContent>

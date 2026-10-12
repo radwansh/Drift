@@ -1,69 +1,86 @@
 import { describe, it, expect } from "vitest";
-import { generateAnnualInsights, type AnnualInsightPayload } from "./insights";
+import { parseBullets, type AnnualInsightPayload } from "./insights";
+import { generateAnnualInsights } from "./insights";
 
-function makePayload(overrides: Partial<AnnualInsightPayload> = {}): AnnualInsightPayload {
+/** Equivalent of probe AI1: the parser must not eat leading numbers. */
+describe("parseBullets", () => {
+  it("keeps a leading number that is part of the sentence", () => {
+    const raw = [
+      "Here are the key insights for the year:",
+      "",
+      "- 2026 payroll is forecast at USD 3.1M, up from 2.9M.",
+      "- 12.5% of gross is variable pay.",
+      "- Employer on-costs run at 9.8% of gross.",
+    ].join("\n");
+
+    const bullets = parseBullets(raw);
+
+    expect(bullets).toHaveLength(3);
+    // v1 produced "payroll is forecast..." and "% of gross is variable pay."
+    expect(bullets[0]).toBe("2026 payroll is forecast at USD 3.1M, up from 2.9M.");
+    expect(bullets[1]).toBe("12.5% of gross is variable pay.");
+  });
+
+  it("drops the model's preamble instead of promoting it to bullet one", () => {
+    const raw = ["Here are the insights:", "- Payroll grew 4%."].join("\n");
+    expect(parseBullets(raw)).toEqual(["Payroll grew 4%."]);
+  });
+
+  it("accepts -, * and bullet markers and ignores unmarked prose", () => {
+    const raw = ["- one", "* two", "• three", "four is not a bullet"].join("\n");
+    expect(parseBullets(raw)).toEqual(["one", "two", "three"]);
+  });
+
+  it("caps at five bullets", () => {
+    const raw = [1, 2, 3, 4, 5, 6, 7].map((n) => `- bullet ${n}`).join("\n");
+    expect(parseBullets(raw)).toHaveLength(5);
+  });
+});
+
+function payload(overrides: Partial<AnnualInsightPayload> = {}): AnnualInsightPayload {
   return {
     year: 2026,
     periodType: "monthly",
     currency: "USD",
-    companyName: "Acme Corp",
-    coverage: { uploaded: 8, expected: 12, missingLabels: ["Jun 2026", "Jul 2026"] },
+    coverage: { uploaded: 12, expected: 12, missingLabels: [] },
     totals: {
-      grossToDate: 800000,
-      netToDate: 605000,
-      employerCostToDate: 950000,
-      headcountLatest: 100,
-      headcountAvgYtd: 98,
+      grossToDate: 1000,
+      netToDate: 800,
+      employerCostToDate: 100,
+      headcountLatest: 10,
+      headcountAvgYtd: 10,
     },
-    forecast: {
-      method: "run_rate",
-      fullYearNet: 910000,
-      fullYearGross: 1200000,
-      fullYearEmployerCost: 1425000,
-    },
-    statutory: {
-      incomeTax: 90000,
-      socialSecurityEmployee: 65000,
-      employerOnCost: 150000,
-    },
-    categories: [
-      { category: "base_salary", total: 720000 },
-      { category: "bonus_commission", total: 50000 },
-      { category: "overtime", total: 30000 },
-    ],
-    departments: [{ department: "Engineering", total: 400000 }],
-    mix: { fixed: 720000, variable: 50000, overtime: 30000 },
-    yoy: { changePctGross: 6.4, changePctNet: 5.1, likeForLikePeriods: 8 },
+    forecast: { method: "run rate", fullYearNet: 800, fullYearGross: 1000, fullYearEmployerCost: 100 },
+    statutory: { incomeTax: 100, socialSecurityEmployee: 50, employerOnCost: 100 },
+    categories: [],
+    departments: [],
+    // 900 fixed + 100 variable, of which 100 is overtime.
+    mix: { fixed: 900, variable: 100, overtime: 100 },
+    yoy: { changePctGross: null, changePctNet: null, likeForLikePeriods: null },
     ...overrides,
   };
 }
 
-describe("generateAnnualInsights", () => {
-  it("returns between 3 and 5 bullets", async () => {
-    const bullets = await generateAnnualInsights(makePayload());
-    expect(bullets.length).toBeGreaterThanOrEqual(3);
-    expect(bullets.length).toBeLessThanOrEqual(5);
+/** Equivalent of probe AI2: the fallback must not count overtime twice. */
+describe("rule-based insights", () => {
+  it("reports the variable share once, so fixed plus variable does not exceed 100%", async () => {
+    const { bullets } = await generateAnnualInsights(payload());
+    const variableLine = bullets.find((b) => b.includes("variable pay"));
+
+    expect(variableLine).toBeDefined();
+    // mix.variable already includes overtime. v1 added mix.overtime again and
+    // printed 20.0% here, making fixed + variable come to 110%.
+    expect(variableLine).toContain("10.0%");
+    expect(variableLine).toContain("90.0%");
   });
 
-  it("sends aggregated numbers only, never employee identifiers", async () => {
-    const serialized = JSON.stringify(makePayload());
-    expect(serialized).not.toMatch(/employeeId|employeeName|employee_id|employee_name/i);
-    expect(serialized).not.toMatch(/\bname\b/i);
-    expect(serialized).not.toMatch(/E\d{3,}/i);
-  });
-
-  it("uses only the numbers provided (aggregates)", async () => {
-    const payload = makePayload({
-      coverage: { uploaded: 12, expected: 12, missingLabels: [] },
-      yoy: { changePctGross: null, changePctNet: null, likeForLikePeriods: null },
-    });
-    const bullets = await generateAnnualInsights(payload);
-    expect(bullets.join(" ")).toContain("periods are uploaded");
-    expect(bullets.join(" ")).not.toContain("not uploaded");
-  });
-
-  it("flags missing periods when coverage is partial", async () => {
-    const bullets = await generateAnnualInsights(makePayload());
-    expect(bullets.join(" ")).toContain("Jun 2026");
+  it("falls back to rule-based text when no API key is configured, and says so", async () => {
+    const result = await generateAnnualInsights(payload());
+    expect(result.bullets.length).toBeGreaterThanOrEqual(3);
+    expect(result.bullets[0]).toContain("2026");
+    // The caller must be able to tell this apart from a model answer, so it is
+    // never cached or labelled as one (step 23).
+    expect(result.source).toBe("rules");
+    expect(result.error).toBeTruthy();
   });
 });

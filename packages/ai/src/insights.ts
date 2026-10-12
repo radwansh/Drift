@@ -79,11 +79,14 @@ function ruleBasedInsights(payload: AnnualInsightPayload): string[] {
     );
   }
 
+  // `mix.variable` already includes overtime (summary.ts sums bonus_commission +
+  // overtime), so adding `mix.overtime` again counted it twice: the variable share
+  // read 13.8% instead of 10.0%, and fixed-plus-variable came to 103.8% of gross
+  // (finding C11/AI2). `mix.overtime` is carried separately only so the narrative
+  // can name it.
   const variableRatio =
-    totals.grossToDate > 0
-      ? ((payload.mix.variable + payload.mix.overtime) / totals.grossToDate) * 100
-      : null;
-  if (variableRatio !== null && payload.mix.fixed + payload.mix.variable + payload.mix.overtime > 0) {
+    totals.grossToDate > 0 ? (payload.mix.variable / totals.grossToDate) * 100 : null;
+  if (variableRatio !== null && payload.mix.fixed + payload.mix.variable > 0) {
     bullets.push(
       `${pctText(variableRatio)} of gross earnings to date is variable pay (bonuses, commissions and overtime), versus ${pctText(totals.grossToDate > 0 ? (payload.mix.fixed / totals.grossToDate) * 100 : null)} fixed.`,
     );
@@ -98,24 +101,61 @@ function ruleBasedInsights(payload: AnnualInsightPayload): string[] {
   return bullets.slice(0, 5);
 }
 
-function parseBullets(raw: string): string[] {
+/**
+ * Keep only lines that are actually bullets, and strip just the marker.
+ *
+ * v1 ran `replace(/^[-*\d.)\s]+/, "")` over every non-empty line (finding
+ * C11/AI1), which ate the leading number of any bullet that began with one:
+ * "2026 payroll rose..." became "payroll rose...", and "12.5% of gross..."
+ * became "% of gross...". It also accepted the model's preamble line ("Here are
+ * the insights:") as bullet one, because that line is non-empty too.
+ */
+export function parseBullets(raw: string): string[] {
   const bullets: string[] = [];
   for (const line of raw.split("\n")) {
-    const cleaned = line.trim().replace(/^[-*\d.)\s]+/, "").trim();
-    if (cleaned.length > 0) bullets.push(cleaned);
+    const trimmed = line.trim();
+    // A bullet marker is "-", "*" or "•" followed by whitespace. Nothing else.
+    const match = /^([-*•])\s+(.*)$/.exec(trimmed);
+    if (!match) continue;
+    const text = match[2]!.trim();
+    if (text.length > 0) bullets.push(text);
   }
   return bullets.slice(0, 5);
 }
 
-export function generateAnnualInsights(payload: AnnualInsightPayload): Promise<string[]> {
-  const userMessage = JSON.stringify(payload);
+export interface AnnualInsightsResult {
+  bullets: string[];
+  /** Which produced the text, so the cache and the UI never mislabel it. */
+  source: "ai" | "rules";
+  /** Why the model was not used, when it wasn't. */
+  error: string | null;
+}
+
+/**
+ * Returns the source alongside the text (step 23, findings A2/B5/U7).
+ *
+ * v1 returned a bare string[], so the caller cached rule-based fallbacks under
+ * the model's name and the UI presented deterministic text as AI output.
+ */
+export async function generateAnnualInsights(
+  payload: AnnualInsightPayload,
+): Promise<AnnualInsightsResult> {
   if (!isAiAvailable) {
-    return Promise.resolve(ruleBasedInsights(payload));
+    return { bullets: ruleBasedInsights(payload), source: "rules", error: "No API key configured" };
   }
-  return callClaude(ANNUAL_INSIGHTS_SYSTEM_PROMPT, userMessage).then(({ text: raw }) => {
-    if (!raw) return ruleBasedInsights(payload);
-    const parsed = parseBullets(raw);
-    if (parsed.length >= 3) return parsed;
-    return ruleBasedInsights(payload);
-  });
+
+  const { text, error } = await callClaude(ANNUAL_INSIGHTS_SYSTEM_PROMPT, JSON.stringify(payload));
+  if (!text) {
+    return { bullets: ruleBasedInsights(payload), source: "rules", error: error ?? "No response" };
+  }
+
+  const parsed = parseBullets(text);
+  if (parsed.length >= 3) {
+    return { bullets: parsed, source: "ai", error: null };
+  }
+  return {
+    bullets: ruleBasedInsights(payload),
+    source: "rules",
+    error: `Model returned ${parsed.length} usable bullets`,
+  };
 }
