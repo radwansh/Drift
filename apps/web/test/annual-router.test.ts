@@ -467,6 +467,61 @@ describe("audit trail (step 46)", () => {
   });
 });
 
+// ---- step 29, finding B5 ----
+describe("insight cache retention (step 29)", () => {
+  it("keeps only the newest 20 rows per company and year", async () => {
+    // 25 rows with distinct hashes, as 25 data changes would produce. Nothing
+    // used to remove them, so the table grew for the life of the company.
+    for (let i = 0; i < 25; i++) {
+      await ctx.db.execute(sql`
+        INSERT INTO annual_insight_caches
+          (company_id, year, forecast_method, data_hash, bullets, model, source, prompt_version, generated_at)
+        VALUES (${acme.companyId}, 2026, 'run_rate', ${`hash-${i}`},
+                ${JSON.stringify([`bullet ${i}`])}::jsonb, '', 'rules', 'v1',
+                ${`2026-01-01T00:${String(i).padStart(2, "0")}:00Z`}::timestamptz)
+      `);
+    }
+
+    const before = await ctx.db.execute(sql`
+      SELECT COUNT(*)::int AS n FROM annual_insight_caches
+      WHERE company_id = ${acme.companyId} AND year = 2026
+    `);
+    expect((before.rows[0] as { n: number }).n).toBeGreaterThanOrEqual(25);
+
+    // Generating prunes as part of the write.
+    await callerFor(acme, "admin").generateInsights({ year: 2026 });
+
+    const after = await ctx.db.execute(sql`
+      SELECT data_hash AS "dataHash" FROM annual_insight_caches
+      WHERE company_id = ${acme.companyId} AND year = 2026
+      ORDER BY generated_at DESC
+    `);
+    const hashes = after.rows.map((r) => (r as { dataHash: string }).dataHash);
+
+    expect(hashes).toHaveLength(20);
+    // The oldest seeded rows are the ones dropped; the newest survive.
+    expect(hashes).not.toContain("hash-0");
+    expect(hashes).toContain("hash-24");
+  });
+
+  it("does not prune another company's rows", async () => {
+    await ctx.db.execute(sql`
+      INSERT INTO annual_insight_caches
+        (company_id, year, forecast_method, data_hash, bullets, model, source, prompt_version)
+      VALUES (${other.companyId}, 2026, 'run_rate', 'globex-keep',
+              ${JSON.stringify(["keep me"])}::jsonb, '', 'rules', 'v1')
+    `);
+
+    await callerFor(acme, "admin").generateInsights({ year: 2026 });
+
+    const rows = await ctx.db.execute(sql`
+      SELECT COUNT(*)::int AS n FROM annual_insight_caches
+      WHERE company_id = ${other.companyId}
+    `);
+    expect((rows.rows[0] as { n: number }).n).toBeGreaterThan(0);
+  });
+});
+
 // ---- step 31, finding B7 ----
 describe("per-period aggregates (step 31)", () => {
   it("returns identical figures before and after the backfill", async () => {

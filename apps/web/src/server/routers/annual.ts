@@ -694,6 +694,33 @@ function insightCacheKey(payload: AnnualInsightPayload): string {
 
 const PROMPT_VERSION = "v1";
 
+/** How many cache rows to keep per company and year (step 29, finding B5). */
+const INSIGHT_CACHE_KEEP = 20;
+
+/**
+ * Trim the insight cache to the newest rows for one company and year.
+ *
+ * The cache is keyed on a hash of the payload, so every data change and every
+ * forecast method creates a new row and nothing ever removed the old ones — the
+ * table grew without bound for the life of the company. Only the newest few are
+ * ever read (a stale hash can never be requested again once the figures move),
+ * so keeping 20 leaves ample room to switch methods back and forth while
+ * bounding the table.
+ */
+async function pruneInsightCache(ctx: MemberContext, year: number): Promise<void> {
+  await ctx.db.execute(sql`
+    DELETE FROM annual_insight_caches
+    WHERE company_id = ${ctx.companyId}
+      AND year = ${year}
+      AND id NOT IN (
+        SELECT id FROM annual_insight_caches
+        WHERE company_id = ${ctx.companyId} AND year = ${year}
+        ORDER BY generated_at DESC, id DESC
+        LIMIT ${INSIGHT_CACHE_KEEP}
+      )
+  `);
+}
+
 /** Company-level AI switch (step 41). Defaults to on when never set. */
 async function isAiEnabledForCompany(ctx: MemberContext): Promise<boolean> {
   const company = await ctx.db.query.companies.findFirst({
@@ -1335,6 +1362,8 @@ export const annualRouter = router({
             generatedAt: new Date(),
           },
         });
+
+      await pruneInsightCache(ctx, input.year);
 
       return {
         bullets,
