@@ -61,6 +61,21 @@ export const editorProcedure = memberProcedure.use(async ({ ctx, next }) => {
   return next({ ctx });
 });
 
+/**
+ * Admin-only (step 44). Stricter than editor: employee-level pay is the one
+ * thing the annual feature exposes about individuals, so a manager who can edit
+ * company settings should not automatically be able to read every salary.
+ */
+export const adminProcedure = memberProcedure.use(async ({ ctx, next }) => {
+  if (ctx.currentUser.role !== "admin") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Employee-level figures require the admin role.",
+    });
+  }
+  return next({ ctx });
+});
+
 export type ProtectedContext = { userId: string; db: NonNullable<typeof db> };
 export type MemberContext = ProtectedContext & {
   currentUser: { id: string; companyId: string; role: string };

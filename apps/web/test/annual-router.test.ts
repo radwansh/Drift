@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import * as XLSX from "xlsx";
 import { sql } from "drizzle-orm";
 import { createTestDb, type TestDb } from "./pglite-neon";
 import { annualRouter } from "@/server/routers/annual";
@@ -346,6 +347,122 @@ describe("insights API (step 23)", () => {
     expect(read.source).toBe("rules");
     expect(read.bullets.length).toBeGreaterThanOrEqual(3);
     expect(read.stale).toBe(false);
+  });
+});
+
+// ---- step 42 ----
+describe("workbook export (step 42)", () => {
+  it("produces a workbook whose totals match the figures on screen", async () => {
+    const caller = callerFor(acme, "admin");
+    const summary = await caller.getSummary({ year: 2026 });
+    const workbook = await caller.exportWorkbook({ year: 2026 });
+
+    expect(workbook.filename).toBe("acme-annual-2026-USD.xlsx");
+    // A real xlsx is a zip, so the payload starts with the PK local-file header.
+    expect(Buffer.from(workbook.base64, "base64").subarray(0, 2).toString("binary")).toBe("PK");
+    expect(workbook.sheets).toContain("Summary");
+    expect(workbook.sheets).toContain("Periods");
+
+    /**
+     * The acceptance check, read out of the actual bytes the user downloads
+     * rather than a convenience field echoed by the procedure — otherwise the
+     * assertion would be comparing the summary against itself.
+     */
+    const parsed = XLSX.read(Buffer.from(workbook.base64, "base64"), { type: "buffer" });
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(parsed.Sheets["Summary"]!, { header: 1 });
+    const cellFor = (label: string): number[] => {
+      const row = rows.find((r) => r[0] === label);
+      if (!row) throw new Error(`Summary sheet has no "${label}" row`);
+      return [Number(row[1]), Number(row[2]), Number(row[3])];
+    };
+
+    const [grossToDate, , grossFullYear] = cellFor("Gross");
+    const [netToDate] = cellFor("Net");
+    const [, , costFullYear] = cellFor("Total employment cost");
+
+    expect(grossToDate).toBeCloseTo(summary.bridge.actual.gross, 2);
+    expect(netToDate).toBeCloseTo(summary.bridge.actual.net, 2);
+    expect(grossFullYear).toBeCloseTo(summary.bridge.fullYear.gross, 2);
+    expect(costFullYear).toBeCloseTo(summary.bridge.fullYear.totalEmploymentCost, 2);
+  });
+});
+
+// ---- step 44 ----
+describe("drill-down (step 44)", () => {
+  it("lets a viewer open a department's periods", async () => {
+    const result = await callerFor(acme, "viewer").drillDown({ year: 2026, department: "Ops" });
+    expect(result.scope).toBe("department");
+    expect(result.department?.department).toBe("Ops");
+    expect(result.periods.length).toBeGreaterThan(0);
+  });
+
+  it("refuses a viewer and a manager reaching employee rows, but allows an admin", async () => {
+    const scope = { year: 2026, periodType: "monthly" as const, currency: "USD" as never };
+
+    // The acceptance check. This is the only place the annual feature exposes
+    // individual pay, so it is admin-only — a manager can change company
+    // settings without being able to read every salary.
+    await expect(callerFor(acme, "viewer").drillDownEmployees(scope)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+    await expect(callerFor(acme, "manager").drillDownEmployees(scope)).rejects.toMatchObject({
+      code: "FORBIDDEN",
+    });
+
+    const rows = await callerFor(acme, "admin").drillDownEmployees(scope);
+    expect(rows.employees.length).toBeGreaterThan(0);
+    expect(rows.employees[0]!.employeeExternalId).toBeTruthy();
+  });
+
+  it("scopes employee rows to the caller's company", async () => {
+    const acmeRows = await callerFor(acme, "admin").drillDownEmployees({
+      year: 2026,
+      periodType: "monthly",
+      currency: "USD" as never,
+    });
+    const otherRows = await callerFor(other, "admin").drillDownEmployees({
+      year: 2026,
+      periodType: "monthly",
+      currency: "LBP" as never,
+    });
+
+    const acmeIds = acmeRows.employees.map((e) => e.employeeExternalId);
+    const otherIds = otherRows.employees.map((e) => e.employeeExternalId);
+    expect(acmeIds).not.toEqual(expect.arrayContaining(otherIds));
+  });
+});
+
+// ---- step 46 ----
+describe("audit trail (step 46)", () => {
+  it("records who changed a category and a budget, and when", async () => {
+    const admin = callerFor(acme, "admin");
+    await admin.setComponentCategories({
+      entries: [{ componentKey: "Mystery Line", category: "bonus_commission" }],
+    });
+    await admin.setBudget({ year: 2026, currency: "USD" as never, amount: 999_000, basis: "net" });
+
+    const trail = await admin.auditTrail({ limit: 50 });
+
+    const category = trail.entries.find((e) => e.entity === "component_category");
+    const budget = trail.entries.find((e) => e.entity === "annual_budget");
+
+    expect(category).toBeDefined();
+    expect(budget).toBeDefined();
+    // Who, and when.
+    expect(category!.userName).toBeTruthy();
+    expect(budget!.userEmail).toContain("@");
+    expect(Date.parse(budget!.createdAt)).toBeGreaterThan(0);
+    // And what changed.
+    expect(budget!.newValue).toMatchObject({ amount: 999_000, basis: "net" });
+  });
+
+  it("filters by entity and stays within the company", async () => {
+    const onlyBudgets = await callerFor(acme, "admin").auditTrail({ entity: "annual_budget" });
+    expect(onlyBudgets.entries.every((e) => e.entity === "annual_budget")).toBe(true);
+
+    // Globex has had its own budget changes; it must not see Acme's.
+    const otherTrail = await callerFor(other, "admin").auditTrail({ limit: 50 });
+    expect(otherTrail.entries.every((e) => !e.entityKey.startsWith("2026:USD"))).toBe(true);
   });
 });
 

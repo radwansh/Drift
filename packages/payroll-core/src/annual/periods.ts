@@ -1,5 +1,11 @@
 import type { ExpectedSlot, PeriodType } from "./types";
-import { addDays, endOfMonth, withinYear, yearStart } from "./dates";
+import { addDays, endOfMonth } from "./dates";
+import {
+  DEFAULT_FISCAL_START_MONTH,
+  fiscalMonths,
+  fiscalYearInterval,
+  withinFiscalYear,
+} from "./fiscal";
 import { assignSlot } from "./slots";
 
 export const MONTH_NAMES = [
@@ -44,26 +50,33 @@ export function generateExpectedPeriods(
   periodType: PeriodType,
   year: number,
   anchor?: string,
+  /** 1 = calendar year (default). See fiscal.ts (step 45). */
+  fiscalStartMonth: number = DEFAULT_FISCAL_START_MONTH,
 ): ExpectedSlot[] {
+  const interval = fiscalYearInterval(year, fiscalStartMonth);
+
   if (periodType === "monthly" || periodType === "bi_monthly") {
     const slots: ExpectedSlot[] = [];
-    for (let m = 1; m <= 12; m++) {
-      const start = `${year}-${m < 10 ? `0${m}` : m}-01`;
-      const end = endOfMonth(year, m);
+    // Months come from the fiscal calendar, so an April-start year runs
+    // Apr, May … Mar rather than Jan … Dec.
+    for (const { year: y, month: m } of fiscalMonths(year, fiscalStartMonth)) {
+      const mm = m < 10 ? `0${m}` : String(m);
+      const start = `${y}-${mm}-01`;
+      const end = endOfMonth(y, m);
       if (periodType === "monthly") {
-        slots.push({ label: `${MONTH_NAMES[m - 1]} ${year}`, start, end, index: slots.length + 1 });
+        slots.push({ label: `${MONTH_NAMES[m - 1]} ${y}`, start, end, index: slots.length + 1 });
       } else {
-        slots.push({ label: `B1 ${MONTH_NAMES[m - 1]} ${year}`, start, end: `${year}-${m < 10 ? `0${m}` : m}-15`, index: slots.length + 1 });
-        slots.push({ label: `B2 ${MONTH_NAMES[m - 1]} ${year}`, start: `${year}-${m < 10 ? `0${m}` : m}-16`, end, index: slots.length + 1 });
+        slots.push({ label: `B1 ${MONTH_NAMES[m - 1]} ${y}`, start, end: `${y}-${mm}-15`, index: slots.length + 1 });
+        slots.push({ label: `B2 ${MONTH_NAMES[m - 1]} ${y}`, start: `${y}-${mm}-16`, end, index: slots.length + 1 });
       }
     }
     return slots;
   }
 
   const step = periodType === "weekly" ? 7 : 14;
-  const gridStart: string = anchor ?? yearStart(year);
-  const ys = yearStart(year);
-  const ye = `${year}-12-31`;
+  const gridStart: string = anchor ?? interval.start;
+  const ys = interval.start;
+  const ye = interval.end;
 
   const candidates: string[] = [];
   // Back-fill so a slot that starts in the prior year but ends in `year` counts (weekly crossing 31 Dec).
@@ -78,7 +91,7 @@ export function generateExpectedPeriods(
   const prefix = periodType === "weekly" ? "W" : "BW";
   return [...new Set(candidates)]
     .map((start) => ({ start, end: addDays(start, step - 1) }))
-    .filter((s) => withinYear(s.end, year))
+    .filter((s) => withinFiscalYear(s.end, year, fiscalStartMonth))
     .sort((a, b) => a.start.localeCompare(b.start))
     .map((s, i) => ({ label: `${prefix}${i + 1}`, start: s.start, end: s.end, index: i + 1 }));
 }

@@ -16,6 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { formatCount, formatMoney, formatPct } from "@/components/annual/annual-utils";
 import { ScrollShadow } from "@/components/annual/scroll-shadow";
+import { AnnualDrilldown } from "@/components/annual/annual-drilldown";
 
 interface AnnualDepartmentsProps {
   summary: AnnualSummary | null;
@@ -41,6 +42,7 @@ const COLUMNS: { key: SortKey; label: string; numeric: boolean }[] = [
  */
 export function AnnualDepartments({ summary }: AnnualDepartmentsProps) {
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "actual", dir: "desc" });
+  const [drilldown, setDrilldown] = useState<string | null>(null);
 
   const rows = useMemo(() => {
     const list: DepartmentView[] = summary ? [...summary.departments] : [];
@@ -138,7 +140,14 @@ export function AnnualDepartments({ summary }: AnnualDepartmentsProps) {
               {rows.map((d) => (
                 <TableRow key={d.department}>
                   <TableCell className="sticky left-0 z-10 whitespace-nowrap bg-background font-medium">
-                    {d.department}
+                    {/* Step 44: opens this department's detail. */}
+                    <button
+                      type="button"
+                      onClick={() => setDrilldown(d.department)}
+                      className="rounded underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {d.department}
+                    </button>
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-right tabular-nums">
                     {d.avgHeadcount.toFixed(1)}
@@ -176,6 +185,12 @@ export function AnnualDepartments({ summary }: AnnualDepartmentsProps) {
             </TableBody>
           </Table>
         </ScrollShadow>
+
+        <AnnualDrilldown
+          summary={summary}
+          department={drilldown}
+          onClose={() => setDrilldown(null)}
+        />
       </CardContent>
     </Card>
   );

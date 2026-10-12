@@ -1,5 +1,6 @@
 import type { AnnualPeriodInput, ExpectedSlot, PeriodType } from "./types";
 import { generateExpectedPeriods } from "./periods";
+import { fiscalYearOf } from "./fiscal";
 import { groupBySlot } from "./slots";
 import { pctChange, roundMoney } from "./math";
 
@@ -83,13 +84,14 @@ function unavailable(): YoYResult {
 function snapshotBySlot(
   periods: readonly AnnualPeriodInput[],
   employerCostFor: (p: AnnualPeriodInput) => number,
+  fiscalStartMonth = 1,
 ): { map: Map<number, SlotSnapshot>; expected: ExpectedSlot[] } {
   if (periods.length === 0) return { map: new Map(), expected: [] };
 
   const first = periods[0]!;
   const cadence = first.periodType as PeriodType;
-  const year = Number(first.periodEnd.slice(0, 4));
-  const expected = generateExpectedPeriods(cadence, year, first.periodStart);
+  const year = fiscalYearOf(first.periodEnd, fiscalStartMonth);
+  const expected = generateExpectedPeriods(cadence, year, first.periodStart, fiscalStartMonth);
   const slotted = groupBySlot(periods, cadence, expected);
 
   const map = new Map<number, SlotSnapshot>();
@@ -112,6 +114,8 @@ export interface YoYOptions {
   forecastFullYearGross?: number;
   /** Per-period employer cost, so YoY can compare employer cost too. */
   employerCostFor?: (p: AnnualPeriodInput) => number;
+  /** First month of the fiscal year (step 45); 1 = calendar year. */
+  fiscalStartMonth?: number;
 }
 
 /**
@@ -129,8 +133,9 @@ export function computeYoY(opts: YoYOptions): YoYResult {
 
   if (current.length === 0 || previous.length === 0) return unavailable();
 
-  const cur = snapshotBySlot(current, employerCostFor);
-  const prev = snapshotBySlot(previous, employerCostFor);
+  const fiscalStartMonth = opts.fiscalStartMonth ?? 1;
+  const cur = snapshotBySlot(current, employerCostFor, fiscalStartMonth);
+  const prev = snapshotBySlot(previous, employerCostFor, fiscalStartMonth);
 
   let comparablePeriods = 0;
   const currentTotals = { gross: 0, net: 0, employerCost: 0, headcounts: [] as number[] };

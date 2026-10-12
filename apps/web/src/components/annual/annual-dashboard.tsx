@@ -27,6 +27,9 @@ import { AnnualWarnings } from "@/components/annual/annual-warnings";
 import { CategoryManager } from "@/components/annual/category-manager";
 import { BudgetInput, AnnualBudgetCard } from "@/components/annual/annual-budget";
 import { AnnualInsights } from "@/components/annual/annual-insights";
+import { AnnualExport } from "@/components/annual/annual-export";
+import { AnnualScenario } from "@/components/annual/annual-scenario";
+import { AnnualAuditTrail } from "@/components/annual/annual-audit-trail";
 import { AlertCircle, CalendarDays, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PERIOD_TYPE_LABELS } from "@/lib/constants";
@@ -213,6 +216,8 @@ export function AnnualDashboard({
           />
         )}
 
+        {summary && <AnnualExport summary={summary} />}
+
         {summaryQuery.isFetching && !summaryQuery.isLoading && (
           <span className="text-xs text-muted-foreground" role="status">
             Updating…
@@ -288,7 +293,11 @@ export function AnnualDashboard({
             </div>
           </div>
 
+          <AnnualScenario summary={summary} />
+
           <AnnualDepartments summary={summary} />
+
+          <AnnualAuditTrail />
         </>
       ) : null}
     </div>

@@ -45,6 +45,8 @@ export interface ForecastOptions {
   elapsedSlotIndexes?: readonly number[];
   previousYear?: PreviousYearForecast;
   resolve: (key: string) => Category;
+  /** First month of the fiscal year (step 45); 1 = calendar year. */
+  fiscalStartMonth?: number;
 }
 
 export interface PreviousYearForecast {
@@ -193,6 +195,7 @@ export function buildForecast(opts: ForecastOptions): ForecastResult {
       opts.periodType,
       opts.year - 1,
       opts.previousYear.periods[0]?.periodStart,
+      opts.fiscalStartMonth,
     );
     for (const { slot, period } of groupBySlot(opts.previousYear.periods, opts.periodType, prevExpected)) {
       const row = buildCategoryTotals(period.components, resolve).byCategory;

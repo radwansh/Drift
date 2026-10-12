@@ -15,6 +15,7 @@ import { buildForecast } from "./forecast";
 import { computeHeadcountFlows, type HeadcountFlows } from "./headcount";
 import { computeYoY, type YoYResult } from "./yoy";
 import { countSupersededUploads, dedupePeriods, generateExpectedPeriods } from "./periods";
+import { normaliseFiscalStartMonth } from "./fiscal";
 import { splitCoverage } from "./slots";
 import * as warn from "./warnings";
 import type { AnnualWarning } from "./warnings";
@@ -89,6 +90,12 @@ export interface AnnualSummaryOptions {
    * compared against an 11-month actual, hiding roughly USD 390K of variance.
    */
   estimateMissing?: boolean;
+  /**
+   * First month of the company's fiscal year, 1-12 (step 45). 1 is the calendar
+   * year and the default. Every year boundary in the engine derives from this
+   * through fiscal.ts.
+   */
+  fiscalStartMonth?: number;
 }
 
 export interface AnnualPeriodRow {
@@ -177,6 +184,7 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
   } = opts;
   const resolve = resolveFor(savedCategories);
   const estimateMissing = opts.estimateMissing ?? true;
+  const fiscalStartMonth = normaliseFiscalStartMonth(opts.fiscalStartMonth);
 
   const warnings: AnnualWarning[] = [];
   if (allPeriodTypes.length > 1) warnings.push(warn.mixedCadence(allPeriodTypes));
@@ -186,8 +194,15 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
   if (superseded > 0) warnings.push(warn.duplicatesIgnored(superseded));
 
   const deduped = dedupePeriods(opts.periods);
-  let expected: ExpectedSlot[] = generateExpectedPeriods(periodType, year, deduped[0]?.periodStart);
-  if (expected.length === 0) expected = generateExpectedPeriods(periodType, year);
+  let expected: ExpectedSlot[] = generateExpectedPeriods(
+    periodType,
+    year,
+    deduped[0]?.periodStart,
+    fiscalStartMonth,
+  );
+  if (expected.length === 0) {
+    expected = generateExpectedPeriods(periodType, year, undefined, fiscalStartMonth);
+  }
 
   // One slot model drives coverage, labels, merging and alignment (step 10).
   const coverageSplit = splitCoverage(deduped, periodType, expected);
@@ -249,7 +264,12 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
   const previousYearForForecast = previousYear
     ? {
         periods: previousYear.periods,
-        expectedCount: generateExpectedPeriods(periodType, year - 1, previousYear.periods[0]?.periodStart).length,
+        expectedCount: generateExpectedPeriods(
+          periodType,
+          year - 1,
+          previousYear.periods[0]?.periodStart,
+          fiscalStartMonth,
+        ).length,
       }
     : undefined;
 
@@ -263,6 +283,7 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
     elapsedSlotIndexes: actualSlots.map((s) => s.index),
     previousYear: previousYearForForecast,
     resolve,
+    fiscalStartMonth,
   });
 
   // Full year = uploaded + estimated past gaps + forecast future (step 14).
@@ -323,6 +344,7 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
     previous: previousYear?.periods ?? [],
     forecastFullYearGross: forecastAvailable ? fullYearGross : undefined,
     employerCostFor: employerCostForPeriod,
+    fiscalStartMonth,
   });
 
   // ---- departments (step 15, finding C6) ----

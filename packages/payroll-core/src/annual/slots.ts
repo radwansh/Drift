@@ -28,11 +28,21 @@ export function assignSlot(
   if (expected.length === 0) return null;
 
   const end = parseISO(period.periodEnd);
+  const year = end.getUTCFullYear();
   const month = end.getUTCMonth() + 1;
   const day = end.getUTCDate();
 
+  // Match on year AND month. Month alone was enough while every slot calendar was
+  // a single calendar year, but a fiscal year (step 45) spans two of them — an
+  // April-March calendar holds both Jan 2027 and, for the prior year, Jan 2026 —
+  // so a period could otherwise land in the wrong slot.
   if (cadence === "monthly") {
-    return expected.find((s) => parseISO(s.end).getUTCMonth() + 1 === month) ?? null;
+    return (
+      expected.find((s) => {
+        const slotEnd = parseISO(s.end);
+        return slotEnd.getUTCFullYear() === year && slotEnd.getUTCMonth() + 1 === month;
+      }) ?? null
+    );
   }
 
   if (cadence === "bi_monthly") {
@@ -40,6 +50,7 @@ export function assignSlot(
     return (
       expected.find((s) => {
         const slotEnd = parseISO(s.end);
+        if (slotEnd.getUTCFullYear() !== year) return false;
         if (slotEnd.getUTCMonth() + 1 !== month) return false;
         return (slotEnd.getUTCDate() <= 15) === wantFirstHalf;
       }) ?? null

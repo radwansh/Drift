@@ -21,9 +21,13 @@ import {
   type PeriodType,
   type ComponentAggregate,
   type DepartmentTotalsInput,
+  fiscalYearInterval,
+  fiscalYearOf,
+  normaliseFiscalStartMonth,
 } from "@saas/payroll-core";
 import { generateAnnualInsights, DEFAULT_MODEL, isAiAvailable, type AnnualInsightPayload } from "@saas/ai";
-import { memberProcedure, editorProcedure, router, type MemberContext } from "../trpc";
+import { memberProcedure, editorProcedure, adminProcedure, router, type MemberContext } from "../trpc";
+import { buildAnnualWorkbook, annualWorkbookSheets } from "../export/annual-workbook";
 import { limitInsightGeneration } from "../rate-limit";
 
 const PeriodTypeSchema = z.enum(["monthly", "weekly", "bi_monthly", "bi_weekly"]);
@@ -112,6 +116,7 @@ const DepartmentHeadcountRowSchema = z.object({
 const SetupRowSchema = z.object({
   periodType: z.string(),
   currencyCode: z.string(),
+  periodEnd: z.union([z.string(), z.date()]).transform(toIsoDate),
 });
 
 function toIsoDate(v: string | Date): string {
@@ -155,7 +160,16 @@ const numericComponentFilter = sql`(x.value #>> '{}') ~ '^-?[0-9]+(\\.[0-9]+)?$'
  * `SELECT *` previously carried the whole components JSON through both CTEs on
  * every query that did not need it (finding B6).
  */
-function validPeriodsCte(companyId: string, periodType: string, currency: string, year: number) {
+function validPeriodsCte(
+  companyId: string,
+  periodType: string,
+  currency: string,
+  year: number,
+  fiscalStartMonth = 1,
+) {
+  // The year boundary comes from fiscal.ts rather than being written inline, so
+  // SQL and the engine cannot disagree about where a year starts (step 45).
+  const interval = fiscalYearInterval(year, fiscalStartMonth);
   return sql`
     valid_periods AS (
       SELECT DISTINCT ON (period_type, period_start, period_end)
@@ -163,12 +177,12 @@ function validPeriodsCte(companyId: string, periodType: string, currency: string
       FROM payroll_periods
       WHERE company_id = ${companyId} AND status = 'ready'
         AND period_type = ${periodType} AND currency_code = ${currency}
-        AND period_end >= ${`${year}-01-01`}::date AND period_end < ${`${year + 1}-01-01`}::date
+        AND period_end >= ${interval.start}::date AND period_end < ${interval.endExclusive}::date
       ORDER BY period_type, period_start, period_end, created_at DESC
     ),
     snaps AS (
       SELECT DISTINCT ON (payroll_period_id, employee_external_id)
-             id, payroll_period_id, employee_external_id, department,
+             id, payroll_period_id, employee_external_id, employee_name, department,
              gross_salary, net_salary, components, created_at
       FROM employee_snapshots
       WHERE payroll_period_id IN (SELECT id FROM valid_periods)
@@ -185,9 +199,9 @@ function validPeriodsCte(companyId: string, periodType: string, currency: string
 // array in a single HTTP request.
 // ---------------------------------------------------------------------------
 
-function yearQueries(ctx: MemberContext, opts: { companyId: string; periodType: string; currency: string; year: number }) {
-  const { companyId, periodType, currency, year } = opts;
-  const cte = validPeriodsCte(companyId, periodType, currency, year);
+function yearQueries(ctx: MemberContext, opts: { companyId: string; periodType: string; currency: string; year: number; fiscalStartMonth: number }) {
+  const { companyId, periodType, currency, year, fiscalStartMonth } = opts;
+  const cte = validPeriodsCte(companyId, periodType, currency, year, fiscalStartMonth);
 
   return {
     periods: ctx.db.execute(sql`
@@ -233,9 +247,9 @@ function yearQueries(ctx: MemberContext, opts: { companyId: string; periodType: 
   };
 }
 
-function departmentQueries(ctx: MemberContext, opts: { companyId: string; periodType: string; currency: string; year: number }) {
-  const { companyId, periodType, currency, year } = opts;
-  const cte = validPeriodsCte(companyId, periodType, currency, year);
+function departmentQueries(ctx: MemberContext, opts: { companyId: string; periodType: string; currency: string; year: number; fiscalStartMonth: number }) {
+  const { companyId, periodType, currency, year, fiscalStartMonth } = opts;
+  const cte = validPeriodsCte(companyId, periodType, currency, year, fiscalStartMonth);
 
   return {
     totals: ctx.db.execute(sql`
@@ -391,15 +405,26 @@ async function buildSummaryContext(ctx: MemberContext, input: SummaryInput): Pro
   // ---- round trip 1: what are we looking at? ----
   const [setupRes, companyRows, savedRows] = await ctx.db.batch([
     ctx.db.execute(sql`
+      -- One row per ready period, carrying its end date. The fiscal-year filter
+      -- and the frequency ordering are applied below, once the company's fiscal
+      -- start month is known: it arrives in this same batch, so it cannot be
+      -- used to build this query's SQL (step 45). The window spans two calendar
+      -- years so any fiscal year starting in the requested one is fully covered.
+      --
+      -- Never interpolate a value into a comment in one of these templates:
+      -- drizzle turns every substitution into a bind parameter, and because the
+      -- parser strips comments the parameter is sent but never referenced, which
+      -- Postgres rejects with "could not determine data type of parameter"
+      -- (42P18). Keep interpolation in the WHERE clause only.
       SELECT period_type   AS "periodType",
-             currency_code AS "currencyCode"
+             currency_code AS "currencyCode",
+             period_end    AS "periodEnd"
       FROM payroll_periods
       WHERE company_id = ${companyId} AND status = 'ready'
-        AND period_end >= ${`${input.year}-01-01`}::date AND period_end < ${`${input.year + 1}-01-01`}::date
-      GROUP BY 1, 2
-      ORDER BY COUNT(*) DESC
+        AND period_end >= ${`${input.year}-01-01`}::date
+        AND period_end < ${`${input.year + 2}-01-01`}::date
     `),
-    ctx.db.select({ name: companies.name, currencyCode: companies.currencyCode })
+    ctx.db.select({ name: companies.name, currencyCode: companies.currencyCode, settings: companies.settings })
       .from(companies)
       .where(eq(companies.id, companyId)),
     ctx.db.select({ componentKey: componentCategories.componentKey, category: componentCategories.category })
@@ -407,13 +432,23 @@ async function buildSummaryContext(ctx: MemberContext, input: SummaryInput): Pro
       .where(eq(componentCategories.companyId, companyId)),
   ]);
 
-  const setups = parseRows(SetupRowSchema, setupRes.rows, "setup");
-  // Ordered by COUNT(*) DESC above, so index 0 is the most frequent.
-  const allPeriodTypes = [...new Set(setups.map((s) => s.periodType))] as PeriodType[];
-  const allCurrencies = [...new Set(setups.map((s) => s.currencyCode))];
-
   const companyRow = companyRows[0];
   const companyCurrency = companyRow?.currencyCode;
+  const companySettings = (companyRow?.settings ?? {}) as { fiscalStartMonth?: number };
+  const fiscalStartMonth = normaliseFiscalStartMonth(companySettings.fiscalStartMonth);
+
+  // Keep only the periods that fall in this fiscal year, then order cadences and
+  // currencies by how often they appear, so index 0 is the most frequent.
+  const allRows = parseRows(SetupRowSchema, setupRes.rows, "setup").filter(
+    (r) => fiscalYearOf(r.periodEnd, fiscalStartMonth) === input.year,
+  );
+  const countBy = <T extends string>(values: T[]): T[] => {
+    const counts = new Map<T, number>();
+    for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([v]) => v);
+  };
+  const allPeriodTypes = countBy(allRows.map((r) => r.periodType)) as PeriodType[];
+  const allCurrencies = countBy(allRows.map((r) => r.currencyCode));
 
   // Step 8 (A6): the organization's own currency wins when the year actually has
   // data in it; otherwise fall back to the most frequent, and only then to USD.
@@ -428,10 +463,10 @@ async function buildSummaryContext(ctx: MemberContext, input: SummaryInput): Pro
   for (const s of savedRows) savedCategories[s.componentKey] = s.category as Category;
 
   // ---- round trip 2: everything else, in one batch ----
-  const current = yearQueries(ctx, { companyId, periodType, currency, year: input.year });
-  const departments = departmentQueries(ctx, { companyId, periodType, currency, year: input.year });
-  const prevOpts = { companyId, periodType, currency, year: input.year - 1 };
-  const prevCte = validPeriodsCte(prevOpts.companyId, prevOpts.periodType, prevOpts.currency, prevOpts.year);
+  const current = yearQueries(ctx, { companyId, periodType, currency, year: input.year, fiscalStartMonth });
+  const departments = departmentQueries(ctx, { companyId, periodType, currency, year: input.year, fiscalStartMonth });
+  const prevOpts = { companyId, periodType, currency, year: input.year - 1, fiscalStartMonth };
+  const prevCte = validPeriodsCte(prevOpts.companyId, prevOpts.periodType, prevOpts.currency, prevOpts.year, fiscalStartMonth);
 
   const [
     periodRes,
@@ -530,6 +565,7 @@ async function buildSummaryContext(ctx: MemberContext, input: SummaryInput): Pro
     previousYearLastEmployeeIds: prevLastIds.length > 0 ? prevLastIds : undefined,
     savedCategories,
     departments: departmentInputs,
+    fiscalStartMonth,
   });
 
   return {
@@ -689,24 +725,30 @@ export const annualRouter = router({
         return { latestYear: null, year: null, currency: null, categories: [] };
       }
 
-      const [setupRes, savedRows] = await ctx.db.batch([
+      const [setupRes, savedRows, companyRows] = await ctx.db.batch([
         ctx.db.execute(sql`
           SELECT period_type   AS "periodType",
-                 currency_code AS "currencyCode"
+                 currency_code AS "currencyCode",
+                 period_end    AS "periodEnd"
           FROM payroll_periods
           WHERE company_id = ${companyId} AND status = 'ready'
-            AND period_end >= ${`${year}-01-01`}::date AND period_end < ${`${year + 1}-01-01`}::date
-          GROUP BY 1, 2
-          ORDER BY COUNT(*) DESC
+            AND period_end >= ${`${year}-01-01`}::date
+            AND period_end < ${`${year + 2}-01-01`}::date
         `),
         ctx.db.select().from(componentCategories).where(eq(componentCategories.companyId, companyId)),
+        ctx.db.select({ settings: companies.settings }).from(companies).where(eq(companies.id, companyId)),
       ]);
 
-      const setups = parseRows(SetupRowSchema, setupRes.rows, "setup");
+      const settings = (companyRows[0]?.settings ?? {}) as { fiscalStartMonth?: number };
+      const fiscalStartMonth = normaliseFiscalStartMonth(settings.fiscalStartMonth);
+
+      const setups = parseRows(SetupRowSchema, setupRes.rows, "setup").filter(
+        (r) => fiscalYearOf(r.periodEnd, fiscalStartMonth) === year,
+      );
       const periodType = input?.periodType ?? (setups[0]?.periodType as PeriodType | undefined) ?? "monthly";
       const currency = input?.currency?.toUpperCase() ?? setups[0]?.currencyCode ?? "USD";
 
-      const cte = validPeriodsCte(companyId, periodType, currency, year);
+      const cte = validPeriodsCte(companyId, periodType, currency, year, fiscalStartMonth);
       const [keysRes, amountRes] = await ctx.db.batch([
         ctx.db.execute(sql`
           WITH ${cte}
@@ -946,6 +988,180 @@ export const annualRouter = router({
    * the dashboard spent tokens. It is now side-effect free; generation is the
    * mutation below.
    */
+  /** Step 42: the workbook, built from the same summary the page renders. */
+  exportWorkbook: memberProcedure
+    .input(z.object({
+      year: z.number().int().min(2000).max(2100),
+      periodType: PeriodTypeSchema.optional(),
+      currency: z.string().length(3).optional(),
+      forecastMethod: ForecastMethodSchema.optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const { summary, companyName } = await loadSummaryContext(ctx, input);
+      const base64 = buildAnnualWorkbook(summary, {
+        companyName: companyName ?? "Company",
+        generatedAt: new Date(),
+        generatedBy: ctx.currentUser.id,
+      });
+      const safeName = (companyName ?? "company").replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase();
+      return {
+        filename: `${safeName}-annual-${summary.year}-${summary.currency}.xlsx`,
+        base64,
+        sheets: annualWorkbookSheets(summary),
+      };
+    }),
+
+  /**
+   * Step 44: the periods behind one bar or department.
+   *
+   * Available to any member — these are the same aggregates already on the page,
+   * just filtered. Employee-level rows are a separate, admin-only procedure.
+   */
+  drillDown: memberProcedure
+    .input(z.object({
+      year: z.number().int().min(2000).max(2100),
+      periodType: PeriodTypeSchema.optional(),
+      currency: z.string().length(3).optional(),
+      forecastMethod: ForecastMethodSchema.optional(),
+      department: z.string().max(200).optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const { summary } = await loadSummaryContext(ctx, input);
+
+      if (!input.department) {
+        return {
+          scope: "year" as const,
+          department: null,
+          periods: summary.periods,
+          total: summary.bridge.fullYear.totalEmploymentCost,
+        };
+      }
+
+      const dept = summary.departments.find((d) => d.department === input.department);
+      if (!dept) throw new TRPCError({ code: "NOT_FOUND", message: "Department not found" });
+
+      return {
+        scope: "department" as const,
+        department: dept,
+        periods: summary.periods,
+        total: dept.forecast,
+      };
+    }),
+
+  /**
+   * Step 44: employee rows, admins only.
+   *
+   * This is the only place the annual feature exposes individual pay, so it is
+   * gated on the admin role rather than the editor roles — a manager can change
+   * company settings without being able to read every salary.
+   */
+  drillDownEmployees: adminProcedure
+    .input(z.object({
+      year: z.number().int().min(2000).max(2100),
+      periodType: PeriodTypeSchema,
+      currency: CurrencyCodeSchema,
+      department: z.string().max(200).optional(),
+      limit: z.number().int().min(1).max(500).default(100),
+    }))
+    .query(async ({ ctx, input }) => {
+      const cte = validPeriodsCte(ctx.companyId, input.periodType, input.currency, input.year);
+      const res = await ctx.db.execute(sql`
+        WITH ${cte}
+        SELECT r.employee_external_id AS "employeeExternalId",
+               MAX(r.employee_name)   AS "employeeName",
+               COALESCE(r.department, 'Unassigned') AS department,
+               COUNT(*)::int          AS "periodCount",
+               COALESCE(SUM(r.gross_salary), 0)::numeric AS gross,
+               COALESCE(SUM(r.net_salary), 0)::numeric   AS net
+        FROM valid_periods p
+        JOIN snaps r ON r.payroll_period_id = p.id
+        ${input.department ? sql`WHERE COALESCE(r.department, 'Unassigned') = ${input.department}` : sql``}
+        GROUP BY r.employee_external_id, COALESCE(r.department, 'Unassigned')
+        ORDER BY 5 DESC
+        LIMIT ${input.limit}
+      `);
+
+      return {
+        employees: parseRows(
+          z.object({
+            employeeExternalId: z.string(),
+            employeeName: z.string().nullable(),
+            department: z.string(),
+            periodCount: IntLike,
+            gross: Numeric,
+            net: Numeric,
+          }),
+          res.rows,
+          "employee drill-down",
+        ),
+      };
+    }),
+
+  /**
+   * Step 46: who changed which category or budget, and when.
+   *
+   * Company-wide settings are editable by any admin or manager, so a change that
+   * moves money between buckets has to be attributable after the fact.
+   */
+  auditTrail: memberProcedure
+    .input(z.object({
+      limit: z.number().int().min(1).max(200).default(50),
+      entity: z.enum(["component_category", "annual_budget"]).optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      const res = await ctx.db.execute(sql`
+        SELECT a.id,
+               a.entity,
+               a.entity_key  AS "entityKey",
+               a.old_value   AS "oldValue",
+               a.new_value   AS "newValue",
+               a.created_at  AS "createdAt",
+               u.name        AS "userName",
+               u.email       AS "userEmail"
+        FROM annual_audit_log a
+        LEFT JOIN users u ON u.id = a.user_id
+        WHERE a.company_id = ${ctx.companyId}
+          ${input.entity ? sql`AND a.entity = ${input.entity}` : sql``}
+        ORDER BY a.created_at DESC
+        LIMIT ${input.limit}
+      `);
+
+      return {
+        entries: parseRows(
+          z.object({
+            id: z.string(),
+            entity: z.string(),
+            entityKey: z.string(),
+            oldValue: z.unknown().nullable(),
+            newValue: z.unknown().nullable(),
+            createdAt: z.union([z.string(), z.date()]).transform(toIsoTimestamp),
+            userName: z.string().nullable(),
+            userEmail: z.string().nullable(),
+          }),
+          res.rows,
+          "audit entry",
+        ),
+      };
+    }),
+
+  /** Step 45: the company's fiscal-year start month. */
+  setFiscalStartMonth: editorProcedure
+    .input(z.object({ month: z.number().int().min(1).max(12) }))
+    .mutation(async ({ ctx, input }) => {
+      const company = await ctx.db.query.companies.findFirst({
+        where: eq(companies.id, ctx.companyId),
+        columns: { settings: true },
+      });
+      const settings = (company?.settings ?? {}) as Record<string, unknown>;
+      await ctx.db.update(companies)
+        .set({ settings: { ...settings, fiscalStartMonth: input.month }, updatedAt: new Date() })
+        .where(eq(companies.id, ctx.companyId));
+      // The memo keys on inputs, not on settings, so it must be dropped when a
+      // setting that changes every boundary is edited.
+      summaryMemo.clear();
+      return { month: input.month };
+    }),
+
   /**
    * Step 41: a company-level switch that turns AI off entirely.
    *
