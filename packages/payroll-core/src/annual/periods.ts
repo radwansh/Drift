@@ -1,5 +1,6 @@
-import type { AnnualPeriodInput, ExpectedSlot, PeriodType } from "./types";
-import { addDays, endOfMonth, periodYear, withinYear, yearStart } from "./dates";
+import type { ExpectedSlot, PeriodType } from "./types";
+import { addDays, endOfMonth, withinYear, yearStart } from "./dates";
+import { assignSlot } from "./slots";
 
 export const MONTH_NAMES = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -9,6 +10,10 @@ export const MONTH_NAMES = [
 /**
  * Keep the most recent upload per (period_type, period_start, period_end).
  * Later createdAt wins; returns the deduplicated set sorted by periodStart.
+ *
+ * This handles re-uploads of the *same* period. An off-cycle run with different
+ * dates that belongs to the same calendar slot is a separate concern, merged by
+ * groupBySlot in slots.ts.
  */
 export function dedupePeriods<T extends { periodType: string; periodStart: string; periodEnd: string; createdAt: string }>(
   periods: readonly T[],
@@ -20,6 +25,13 @@ export function dedupePeriods<T extends { periodType: string; periodStart: strin
     if (!existing || p.createdAt > existing.createdAt) newest.set(key, p);
   }
   return [...newest.values()].sort((a, b) => a.periodStart.localeCompare(b.periodStart));
+}
+
+/** How many uploads were superseded by de-duplication (for DUPLICATES_IGNORED). */
+export function countSupersededUploads<T extends { periodType: string; periodStart: string; periodEnd: string; createdAt: string }>(
+  periods: readonly T[],
+): number {
+  return periods.length - dedupePeriods(periods).length;
 }
 
 /**
@@ -71,47 +83,48 @@ export function generateExpectedPeriods(
     .map((s, i) => ({ label: `${prefix}${i + 1}`, start: s.start, end: s.end, index: i + 1 }));
 }
 
-function maxEnd(actual: readonly { periodEnd: string }[]): string | null {
-  if (actual.length === 0) return null;
-  return actual.map((a) => a.periodEnd).sort((a, b) => a.localeCompare(b))[actual.length - 1] ?? null;
+/** Slot indexes that have at least one uploaded period, via the shared slot model. */
+export function coveredSlotIndexes(
+  actual: readonly { periodEnd: string }[],
+  expected: readonly ExpectedSlot[],
+  cadence: PeriodType,
+): Set<number> {
+  const covered = new Set<number>();
+  for (const p of actual) {
+    const slot = assignSlot(p, cadence, expected);
+    if (slot) covered.add(slot.index);
+  }
+  return covered;
 }
 
 /**
- * Missing periods: expected slots with no uploaded period whose END is on or
- * before the last uploaded end. Leading gaps (before the first upload) and the
- * future (after the last upload) are never flagged.
+ * Missing periods: expected slots with no uploaded period at or before the newest
+ * covered slot.
+ *
+ * Leading gaps ARE flagged — a year whose first upload is March is missing
+ * January and February. (The old comment here claimed they never were, which
+ * contradicted the code and its own test; finding C17/P19.) Only the future,
+ * after the last upload, is excluded.
  */
 export function detectMissingPeriods(
   actual: readonly { periodEnd: string }[],
   expected: readonly ExpectedSlot[],
+  cadence: PeriodType = "monthly",
 ): ExpectedSlot[] {
-  const lastEnd = maxEnd(actual);
-  if (lastEnd === null) return [];
-  const uploaded = new Set(actual.map((a) => a.periodEnd));
-  return expected.filter((s) => s.end <= lastEnd && !uploaded.has(s.end));
+  const covered = coveredSlotIndexes(actual, expected, cadence);
+  if (covered.size === 0) return [];
+  const lastCovered = Math.max(...covered);
+  return expected.filter((s) => s.index <= lastCovered && !covered.has(s.index));
 }
 
 /** Expected slots that still lie in the future after the last upload. */
 export function futureExpectedPeriods(
   actual: readonly { periodEnd: string }[],
   expected: readonly ExpectedSlot[],
+  cadence: PeriodType = "monthly",
 ): ExpectedSlot[] {
-  const lastEnd = maxEnd(actual);
-  if (lastEnd === null) return [...expected];
-  return expected.filter((s) => s.end > lastEnd);
-}
-
-/** Actual coverage for the year after deduplicating uploads. */
-export function countsPerCadence(
-  periods: readonly Pick<AnnualPeriodInput, "periodType" | "periodStart" | "periodEnd" | "createdAt">[],
-  year: number,
-): Record<PeriodType, number> {
-  const deduped = dedupePeriods(periods);
-  const counts: Record<PeriodType, number> = { monthly: 0, weekly: 0, bi_monthly: 0, bi_weekly: 0 };
-  for (const p of deduped) {
-    if (periodYear(p.periodEnd) === year && counts[p.periodType as PeriodType] !== undefined) {
-      counts[p.periodType as PeriodType] += 1;
-    }
-  }
-  return counts;
+  const covered = coveredSlotIndexes(actual, expected, cadence);
+  if (covered.size === 0) return [...expected];
+  const lastCovered = Math.max(...covered);
+  return expected.filter((s) => s.index > lastCovered);
 }

@@ -107,14 +107,22 @@ export interface CategoryTotals {
   uncategorisedKeys: string[];
 }
 
+/**
+ * "estimated" is a past slot with no upload whose figures were projected
+ * (step 14) — distinct from "forecast", which is the future. The UI draws them
+ * differently: estimated outlined, missing hatched, forecast at 40% opacity.
+ */
+export type PeriodKind = "actual" | "estimated" | "forecast" | "missing";
+
 export interface PeriodResult {
   label: string;
   start: string;
   end: string;
-  kind: "actual" | "forecast";
+  kind: PeriodKind;
   gross: Money;
   net: Money;
-  employerCost: Money;
+  /** Gross plus employer costs. Replaces the old on-costs-only `employerCost`. */
+  totalEmploymentCost: Money;
   headcount: number | null;
   joiners: number | null;
   leavers: number | null;

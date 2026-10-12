@@ -5,15 +5,19 @@ import type {
   ExpectedSlot,
   ForecastMethod,
   Money,
+  PeriodKind,
   PeriodType,
 } from "./types";
-import { EMPLOYEE_DEDUCTION_CATEGORIES, EMPLOYER_COST_CATEGORIES, MONEY_CATEGORIES, QUANTITY_CATEGORIES } from "./types";
+import { EMPLOYEE_DEDUCTION_CATEGORIES, EMPLOYER_COST_CATEGORIES, QUANTITY_CATEGORIES } from "./types";
 import { classifyComponent } from "./classify";
 import { buildCategoryTotals, sumCategories } from "./categoryTotals";
 import { buildForecast } from "./forecast";
 import { computeHeadcountFlows, type HeadcountFlows } from "./headcount";
 import { computeYoY, type YoYResult } from "./yoy";
-import { detectMissingPeriods, dedupePeriods, futureExpectedPeriods, generateExpectedPeriods } from "./periods";
+import { countSupersededUploads, dedupePeriods, generateExpectedPeriods } from "./periods";
+import { splitCoverage } from "./slots";
+import * as warn from "./warnings";
+import type { AnnualWarning } from "./warnings";
 import { average, pct, roundMoney } from "./math";
 
 export interface DepartmentTotalsInput {
@@ -25,6 +29,13 @@ export interface DepartmentTotalsInput {
     posRows?: number;
   }[];
   headcounts: readonly number[];
+  /**
+   * Department gross and net straight from SQL (step 15). Without these the
+   * department cost has to be reconstructed from components, which is what led
+   * to employee deductions being added on top of earnings (finding C6).
+   */
+  gross?: number;
+  net?: number;
 }
 
 export interface DepartmentView {
@@ -43,6 +54,9 @@ export interface BridgeLine {
   employerCosts: Money;
   totalEmploymentCost: Money;
   employeeDeductions: Money;
+  /** Gross not accounted for by mapped earnings (step 11). */
+  earningsBalance: Money;
+  /** Gross minus net minus mapped deductions. */
   balance: Money;
   net: Money;
 }
@@ -53,6 +67,8 @@ export interface Coverage {
   percent: number | null;
   lastPeriodEnd: string | null;
   missing: ExpectedSlot[];
+  /** Past slots whose figures were estimated rather than uploaded (step 14). */
+  estimatedLabels: string[];
 }
 
 export interface AnnualSummaryOptions {
@@ -67,6 +83,26 @@ export interface AnnualSummaryOptions {
   previousYearLastEmployeeIds?: string[];
   savedCategories?: Record<string, Category>;
   departments?: DepartmentTotalsInput[];
+  /**
+   * Estimate missing past slots so "full year" means a whole year (step 14,
+   * finding A7). On by default: with June missing, a 12-month budget was being
+   * compared against an 11-month actual, hiding roughly USD 390K of variance.
+   */
+  estimateMissing?: boolean;
+}
+
+export interface AnnualPeriodRow {
+  label: string;
+  kind: PeriodKind;
+  gross: Money;
+  net: Money;
+  /** Gross plus employer costs (step 16, finding C7). */
+  totalEmploymentCost: Money;
+  /** Employer on-costs alone, for the statutory chart. */
+  employerCosts: Money;
+  headcount: number | null;
+  joiners: number | null;
+  leavers: number | null;
 }
 
 export interface AnnualSummary {
@@ -78,14 +114,14 @@ export interface AnnualSummary {
   forecastMethod: ForecastMethod;
   methodsAvailable: ForecastMethod[];
   assumptions: string[];
-  warnings: string[];
+  warnings: AnnualWarning[];
   coverage: Coverage;
   missingLabels: string[];
   categories: CategoryTotals;
   quantities: Partial<Record<"absence_days" | "other_quantity", number>>;
   bridge: { actual: BridgeLine; forecast: BridgeLine; fullYear: BridgeLine };
   forecastPerPeriod: { label: string; gross: Money; employeeDeductions: Money; employerCosts: Money; net: Money }[];
-  periods: { label: string; kind: "actual" | "forecast"; gross: Money; net: Money; employerCosts: Money; headcount: number | null; joiners: number | null; leavers: number | null }[];
+  periods: AnnualPeriodRow[];
   headcount: HeadcountFlows;
   avgHeadcountYtd: number;
   avgHeadcountFullYear: number;
@@ -103,6 +139,7 @@ function buildBridge(
   gross: Money,
   employerCosts: Money,
   employeeDeductions: Money,
+  earningsBalance: Money,
   balance: Money,
   net: Money,
 ): BridgeLine {
@@ -113,6 +150,7 @@ function buildBridge(
     employerCosts: ec,
     totalEmploymentCost: roundMoney(g + ec),
     employeeDeductions: roundMoney(employeeDeductions),
+    earningsBalance: roundMoney(earningsBalance),
     balance: roundMoney(balance),
     net: roundMoney(net),
   };
@@ -131,31 +169,38 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
     previousYearLastEmployeeIds,
   } = opts;
   const resolve = resolveFor(savedCategories);
+  const estimateMissing = opts.estimateMissing ?? true;
 
-  const warnings: string[] = [];
-  if (allPeriodTypes.length > 1) warnings.push("MIXED_CADENCE: multiple pay cadences detected in the year.");
-  if (allCurrencies.length > 1) warnings.push("MULTI_CURRENCY: multiple currencies detected in the year.");
+  const warnings: AnnualWarning[] = [];
+  if (allPeriodTypes.length > 1) warnings.push(warn.mixedCadence(allPeriodTypes));
+  if (allCurrencies.length > 1) warnings.push(warn.mixedCurrency(allCurrencies));
 
-  let actual = dedupePeriods(opts.periods);
-  let expected: ExpectedSlot[] = generateExpectedPeriods(periodType, year, actual[0]?.periodStart);
+  const superseded = countSupersededUploads(opts.periods);
+  if (superseded > 0) warnings.push(warn.duplicatesIgnored(superseded));
+
+  const deduped = dedupePeriods(opts.periods);
+  let expected: ExpectedSlot[] = generateExpectedPeriods(periodType, year, deduped[0]?.periodStart);
   if (expected.length === 0) expected = generateExpectedPeriods(periodType, year);
-  let missing: ExpectedSlot[] = [];
-  let remaining: ExpectedSlot[] = [];
+
+  // One slot model drives coverage, labels, merging and alignment (step 10).
+  const coverageSplit = splitCoverage(deduped, periodType, expected);
+  const actual = coverageSplit.covered.map((c) => c.period);
+  const actualSlots = coverageSplit.covered.map((c) => c.slot);
+  const missing = coverageSplit.missingPast;
+  const remaining = coverageSplit.remaining;
 
   if (actual.length === 0) {
-    warnings.push("NO_DATA: no ready payroll periods found for this year and cadence.");
+    warnings.push(warn.noData());
   } else {
-    missing = detectMissingPeriods(actual, expected);
-    remaining = futureExpectedPeriods(actual, expected);
-    if (missing.length > 0) {
-      warnings.push(`MISSING_PERIODS: ${missing.map((m) => m.label).join(", ")}`);
-    }
+    if (missing.length > 0) warnings.push(warn.missingPeriods(missing));
+    if (actual.length < 3) warnings.push(warn.lowHistory(actual.length));
   }
 
   const periodRows = actual.map((p) => buildCategoryTotals(p.components, resolve));
   const ytdCategories = sumCategories(periodRows.map((r) => r.byCategory));
   const ytdGross = roundMoney(actual.reduce((a, p) => a + p.gross, 0));
   const ytdNet = roundMoney(actual.reduce((a, p) => a + p.net, 0));
+
   const quantityTotals: Partial<Record<"absence_days" | "other_quantity", number>> = {};
   for (const row of periodRows) {
     for (const q of QUANTITY_CATEGORIES) {
@@ -167,14 +212,29 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
   const actualEmployeeDeductions = sumDeductions(periodRows);
   const actualEmployerCosts = sumEmployerCosts(periodRows);
   const actualBalance = ytdGross - ytdNet - actualEmployeeDeductions;
+  const actualEarnings = sumEarnings(periodRows);
+  const actualEarningsBalance = ytdGross - actualEarnings;
 
-  if (actual.length > 0 && ytdGross > 0 && Math.abs(actualBalance) / ytdGross > 0.02) {
-    warnings.push(
-      `RECONCILIATION_GAP: gross minus net does not fully reconcile with the mapped employee deductions (unreconciled balance ${pct(Math.abs(actualBalance), ytdGross)?.toFixed(1) ?? "0.0"}% of gross).`,
-    );
+  // RECONCILIATION_GAP now covers both balancing lines (step 19).
+  if (actual.length > 0 && ytdGross > 0) {
+    if (Math.abs(actualBalance) / ytdGross > 0.02) {
+      warnings.push(
+        warn.reconciliationGap("unreconciled_deductions", actualBalance, pct(Math.abs(actualBalance), ytdGross)),
+      );
+    }
+    if (Math.abs(actualEarningsBalance) / ytdGross > 0.02) {
+      warnings.push(
+        warn.reconciliationGap("other_earnings_balance", actualEarningsBalance, pct(Math.abs(actualEarningsBalance), ytdGross)),
+      );
+    }
   }
 
-  const headcount = computeHeadcountFlows(actual, previousYearLastEmployeeIds);
+  const headcount = computeHeadcountFlows({
+    periods: actual,
+    previousYearLastEmployeeIds,
+    slotIndexes: actualSlots.map((s) => s.index),
+    periodsPerYear: expected.length,
+  });
   const avgHeadcountYtd = headcount.avgHeadcount;
   const lastHeadcount = actual.length > 0 ? actual[actual.length - 1]?.headcount ?? 0 : 0;
 
@@ -185,27 +245,27 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
         expectedCount: generateExpectedPeriods(periodType, year - 1, previousYear.periods[0]?.periodStart).length,
       }
     : undefined;
+
   const forecast = buildForecast({
     year,
     periodType,
     method: forecastMethod,
     actual,
     remaining: forecastAvailable ? remaining : [],
+    missingPast: estimateMissing && actual.length > 0 ? missing : [],
+    elapsedSlotIndexes: actualSlots.map((s) => s.index),
     previousYear: previousYearForForecast,
     resolve,
   });
 
-  const forecastGross = forecast.gross;
-  const forecastDeductions = forecast.employeeDeductions;
-  const forecastEmployerCosts = forecast.employerCosts;
-  const forecastBalance = forecast.balance;
-  const forecastNet = forecast.net;
-
-  const fullYearGross = roundMoney(ytdGross + forecastGross);
-  const fullYearNet = roundMoney(ytdNet + forecastNet);
-  const fullYearEmployerCosts = roundMoney(actualEmployerCosts + forecastEmployerCosts);
-  const fullYearDeductions = roundMoney(actualEmployeeDeductions + forecastDeductions);
-  const fullYearBalance = roundMoney(actualBalance + forecastBalance);
+  // Full year = uploaded + estimated past gaps + forecast future (step 14).
+  const est = forecast.estimated;
+  const fullYearGross = roundMoney(ytdGross + est.gross + forecast.gross);
+  const fullYearNet = roundMoney(ytdNet + est.net + forecast.net);
+  const fullYearEmployerCosts = roundMoney(actualEmployerCosts + est.employerCosts + forecast.employerCosts);
+  const fullYearDeductions = roundMoney(actualEmployeeDeductions + est.employeeDeductions + forecast.employeeDeductions);
+  const fullYearBalance = roundMoney(actualBalance + est.balance + forecast.balance);
+  const fullYearEarningsBalance = roundMoney(actualEarningsBalance + est.earningsBalance + forecast.earningsBalance);
 
   const signState = new Map<string, { neg: boolean; pos: boolean }>();
   for (const p of actual) {
@@ -219,10 +279,10 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
   const mixedKeys = [...signState.entries()]
     .filter(([key, s]) => s.neg && s.pos && isDedOrEmployer(resolve(key)))
     .map(([key]) => key);
-  if (mixedKeys.length > 0) warnings.push(`MIXED_SIGN: ${mixedKeys.join(", ")}`);
+  if (mixedKeys.length > 0) warnings.push(warn.mixedSign(mixedKeys));
 
   const uncategorisedKeys = Array.from(new Set(periodRows.flatMap((r) => r.uncategorisedKeys)));
-  if (uncategorisedKeys.length > 0) warnings.push(`UNCATEGORISED: ${uncategorisedKeys.join(", ")}`);
+  if (uncategorisedKeys.length > 0) warnings.push(warn.uncategorised(uncategorisedKeys));
 
   const statutory = {
     effectiveTaxRate: pct(ytdCategories.income_tax ?? 0, ytdGross),
@@ -241,72 +301,112 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
     overtimePctOfBase: pct(variableMoneyValue("overtime"), variableMoneyValue("base_salary")),
   };
 
-  const yoy = computeYoY(actual, previousYear?.periods ?? [], forecastAvailable ? fullYearGross : undefined);
+  const employerCostForPeriod = (p: AnnualPeriodInput): number => {
+    const row = buildCategoryTotals(p.components, resolve).byCategory;
+    return (row.social_security_employer ?? 0) + (row.other_employer_cost ?? 0);
+  };
 
+  const yoy = computeYoY({
+    current: actual,
+    previous: previousYear?.periods ?? [],
+    forecastFullYearGross: forecastAvailable ? fullYearGross : undefined,
+    employerCostFor: employerCostForPeriod,
+  });
+
+  // ---- departments (step 15, finding C6) ----
+  const companyGrowth = ytdGross > 0 ? fullYearGross / ytdGross : 1;
   const departments: DepartmentView[] = (opts.departments ?? []).map((d) => {
     const components = d.components.map((c) => ({ key: c.key, total: c.total, negRows: c.negRows ?? 0, posRows: c.posRows ?? 0 }));
     const row = buildCategoryTotals(components, resolve);
-    const money = MONEY_CATEGORIES.reduce((acc, c) => acc + (row.byCategory[c] ?? 0), 0);
+    const employerCosts = EMPLOYER_COST_CATEGORIES.reduce((acc, c) => acc + (row.byCategory[c] ?? 0), 0);
+    // Cost = gross + employer costs. Employee deductions are already *inside*
+    // gross, so adding them (as v1 did) inflated every department by its own
+    // withholdings and pushed cost per head above the company average.
+    const deptGross = typeof d.gross === "number" ? d.gross : sumEarnings([row]);
+    const actualDep = roundMoney(deptGross + employerCosts);
     const avgHeadcount = average(d.headcounts);
-    const actualDep = roundMoney(money);
-    const growth = ytdGross > 0 ? fullYearGross / ytdGross : 1;
     return {
       department: d.department,
       avgHeadcount: roundMoney(avgHeadcount),
       actual: actualDep,
-      forecast: roundMoney(actualDep * growth),
+      forecast: roundMoney(actualDep * companyGrowth),
       shareOfTotal: null,
       costPerHead: avgHeadcount > 0 ? roundMoney(actualDep / avgHeadcount) : 0,
-      absencesDays: row.quantities.absence_days ?? 0,
-      absencesAmount: row.byCategory.absence_deduction ?? 0,
+      absencesDays: roundMoney(row.quantities.absence_days ?? 0),
+      absencesAmount: roundMoney(row.byCategory.absence_deduction ?? 0),
     };
   });
   const totalDeptActual = departments.reduce((a, d) => a + d.actual, 0);
   for (const d of departments) d.shareOfTotal = pct(d.actual, totalDeptActual);
 
-  const absencesByDepartment = [...departments]
-    .sort((a, b) => b.absencesDays - a.absencesDays || b.absencesAmount - a.absencesAmount)
-    .slice(0, 5);
-
-  const periodLabelFor = (end: string): string => {
-    const slot = expected.find((s) => s.end === end);
-    return slot ? slot.label : end;
-  };
-
-  const periods: {
-    label: string;
-    kind: "actual" | "forecast";
-    gross: Money;
-    net: Money;
-    employerCosts: Money;
-    headcount: number | null;
-    joiners: number | null;
-    leavers: number | null;
-  }[] = actual.map((p, i) => ({
-    label: periodLabelFor(p.periodEnd),
-    kind: "actual",
-    gross: p.gross,
-    net: p.net,
-    employerCosts: roundMoney(
+  // ---- period series (step 16, finding C7) ----
+  const slotLabelByIndex = new Map(expected.map((s) => [s.index, s.label]));
+  const rows: AnnualPeriodRow[] = actual.map((p, i) => {
+    const employerCosts = roundMoney(
       (periodRows[i]?.byCategory.social_security_employer ?? 0) +
         (periodRows[i]?.byCategory.other_employer_cost ?? 0),
-    ),
-    headcount: p.headcount,
-    joiners: headcount.perPeriod[i]?.joiners ?? null,
-    leavers: headcount.perPeriod[i]?.leavers ?? null,
-  }));
+    );
+    return {
+      label: slotLabelByIndex.get(actualSlots[i]?.index ?? -1) ?? p.periodEnd,
+      kind: "actual" as PeriodKind,
+      gross: p.gross,
+      net: p.net,
+      totalEmploymentCost: roundMoney(p.gross + employerCosts),
+      employerCosts,
+      headcount: p.headcount,
+      joiners: headcount.perPeriod[i]?.joiners ?? null,
+      leavers: headcount.perPeriod[i]?.leavers ?? null,
+    };
+  });
+
+  for (const ep of forecast.perEstimated) {
+    rows.push({
+      label: ep.slot.label,
+      kind: "estimated",
+      gross: ep.gross,
+      net: ep.net,
+      totalEmploymentCost: roundMoney(ep.gross + ep.employerCosts),
+      employerCosts: ep.employerCosts,
+      headcount: lastHeadcount,
+      joiners: null,
+      leavers: null,
+    });
+  }
+  // Any gap left unestimated is still drawn, so a missing month never silently
+  // disappears from the chart (finding U8).
+  if (!estimateMissing) {
+    for (const slot of missing) {
+      rows.push({
+        label: slot.label,
+        kind: "missing",
+        gross: 0,
+        net: 0,
+        totalEmploymentCost: 0,
+        employerCosts: 0,
+        headcount: null,
+        joiners: null,
+        leavers: null,
+      });
+    }
+  }
   for (const fp of forecast.perPeriod) {
-    periods.push({
+    rows.push({
       label: fp.slot.label,
       kind: "forecast",
       gross: fp.gross,
       net: fp.net,
+      totalEmploymentCost: roundMoney(fp.gross + fp.employerCosts),
       employerCosts: fp.employerCosts,
       headcount: lastHeadcount,
       joiners: null,
       leavers: null,
     });
   }
+  rows.sort((a, b) => {
+    const ia = expected.findIndex((s) => s.label === a.label);
+    const ib = expected.findIndex((s) => s.label === b.label);
+    return (ia === -1 ? Number.MAX_SAFE_INTEGER : ia) - (ib === -1 ? Number.MAX_SAFE_INTEGER : ib);
+  });
 
   const coverage: Coverage = {
     expected: expected.length === 0 && actual.length === 0 ? 0 : expected.length,
@@ -314,10 +414,12 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
     percent: expected.length > 0 ? pct(actual.length, expected.length) : null,
     lastPeriodEnd: actual.length > 0 ? actual[actual.length - 1]?.periodEnd ?? null : null,
     missing,
+    estimatedLabels: forecast.perEstimated.map((e) => e.slot.label),
   };
 
   const headcountFullYearCounts = [
     ...headcount.perPeriod.map((p) => p.headcount),
+    ...forecast.perEstimated.map(() => lastHeadcount),
     ...forecast.perPeriod.map(() => lastHeadcount),
   ];
 
@@ -345,9 +447,23 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
     },
     quantities: quantityTotals,
     bridge: {
-      actual: buildBridge(ytdGross, actualEmployerCosts, actualEmployeeDeductions, actualBalance, ytdNet),
-      forecast: buildBridge(forecastGross, forecastEmployerCosts, forecastDeductions, forecastBalance, forecastNet),
-      fullYear: buildBridge(fullYearGross, fullYearEmployerCosts, fullYearDeductions, fullYearBalance, fullYearNet),
+      actual: buildBridge(ytdGross, actualEmployerCosts, actualEmployeeDeductions, actualEarningsBalance, actualBalance, ytdNet),
+      forecast: buildBridge(
+        roundMoney(est.gross + forecast.gross),
+        roundMoney(est.employerCosts + forecast.employerCosts),
+        roundMoney(est.employeeDeductions + forecast.employeeDeductions),
+        roundMoney(est.earningsBalance + forecast.earningsBalance),
+        roundMoney(est.balance + forecast.balance),
+        roundMoney(est.net + forecast.net),
+      ),
+      fullYear: buildBridge(
+        fullYearGross,
+        fullYearEmployerCosts,
+        fullYearDeductions,
+        fullYearEarningsBalance,
+        fullYearBalance,
+        fullYearNet,
+      ),
     },
     forecastPerPeriod: forecast.perPeriod.map((fp) => ({
       label: fp.slot.label,
@@ -356,7 +472,7 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
       employerCosts: fp.employerCosts,
       net: fp.net,
     })),
-    periods,
+    periods: rows,
     headcount,
     avgHeadcountYtd,
     avgHeadcountFullYear: headcountFullYearCounts.length > 0 ? average(headcountFullYearCounts) : 0,
@@ -372,19 +488,33 @@ function isDedOrEmployer(category: Category): boolean {
 }
 
 function sumDeductions(rows: readonly CategoryTotals[]): number {
-  return rows.reduce((acc, r) => {
-    return (
+  return rows.reduce(
+    (acc, r) =>
       acc +
       (r.byCategory.income_tax ?? 0) +
       (r.byCategory.social_security_employee ?? 0) +
       (r.byCategory.other_deduction ?? 0) +
-      (r.byCategory.absence_deduction ?? 0)
-    );
-  }, 0);
+      (r.byCategory.absence_deduction ?? 0),
+    0,
+  );
 }
 
 function sumEmployerCosts(rows: readonly CategoryTotals[]): number {
-  return rows.reduce((acc, r) => {
-    return acc + (r.byCategory.social_security_employer ?? 0) + (r.byCategory.other_employer_cost ?? 0);
-  }, 0);
+  return rows.reduce(
+    (acc, r) => acc + (r.byCategory.social_security_employer ?? 0) + (r.byCategory.other_employer_cost ?? 0),
+    0,
+  );
+}
+
+function sumEarnings(rows: readonly CategoryTotals[]): number {
+  return rows.reduce(
+    (acc, r) =>
+      acc +
+      (r.byCategory.base_salary ?? 0) +
+      (r.byCategory.allowance ?? 0) +
+      (r.byCategory.bonus_commission ?? 0) +
+      (r.byCategory.overtime ?? 0) +
+      (r.byCategory.other_earning ?? 0),
+    0,
+  );
 }

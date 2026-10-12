@@ -2,6 +2,8 @@ export * from "./types";
 export * from "./dates";
 export * from "./classify";
 export * from "./periods";
+export * from "./slots";
+export * from "./warnings";
 export * from "./categoryTotals";
 export * from "./forecast";
 export * from "./headcount";

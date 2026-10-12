@@ -30,33 +30,13 @@ import { AlertCircle, AlertTriangle, Info, CalendarDays, RefreshCw } from "lucid
 import { cn } from "@/lib/utils";
 import { PERIOD_TYPE_LABELS } from "@/lib/constants";
 
-const WARNING_SEVERITY: Record<string, "critical" | "warning" | "info"> = {
-  RECONCILIATION_GAP: "critical",
-  MISSING_PERIODS: "warning",
-  MIXED_SIGN: "warning",
-  MIXED_CADENCE: "warning",
-  MULTI_CURRENCY: "warning",
-  MIXED_CURRENCY: "warning",
-  UNCATEGORISED: "warning",
-  LOW_HISTORY: "warning",
-  DUPLICATES_IGNORED: "info",
-  NO_DATA: "info",
-};
-
+// Severity, title and detail now arrive on the warning itself (step 19), so this
+// component no longer splits warning strings to recover them.
 const SEVERITY_STYLES: Record<"critical" | "warning" | "info", { icon: typeof Info; className: string }> = {
   critical: { icon: AlertCircle, className: "anomaly-critical" },
   warning: { icon: AlertTriangle, className: "anomaly-warning" },
   info: { icon: Info, className: "anomaly-info" },
 };
-
-function severityFor(message: string): "critical" | "warning" | "info" {
-  const code = message.split(":")[0]?.trim().toUpperCase() ?? "";
-  return WARNING_SEVERITY[code] ?? "info";
-}
-
-function formatWarning(message: string): string {
-  return message.replace(/^[A-Z_]+:/, "").trim();
-}
 
 const METHOD_LABELS: Record<string, string> = {
   run_rate: "Run rate",
@@ -189,7 +169,7 @@ export function AnnualDashboard({
         {summary && (
           <CategoryManager
             currency={summary.currency}
-            hasUncategorised={summary.warnings.some((w) => w.includes("UNCATEGORISED"))}
+            hasUncategorised={summary.warnings.some((w) => w.code === "UNCATEGORISED")}
           />
         )}
 
@@ -204,26 +184,33 @@ export function AnnualDashboard({
       </div>
 
       {summary && summary.warnings.length > 0 && (
-        <div className="flex flex-col gap-2">
-          {summary.warnings.map((warning, i) => {
-            const severity = severityFor(warning);
-            const meta = SEVERITY_STYLES[severity];
+        // One polite live region for the whole strip rather than role="alert" per
+        // line, which made screen readers interrupt once per warning (finding U2).
+        <div className="flex flex-col gap-2" role="status" aria-live="polite">
+          {summary.warnings.map((warning) => {
+            const meta = SEVERITY_STYLES[warning.severity];
             const Icon = meta.icon;
-            const code = warning.split(":")[0]?.trim().toUpperCase() ?? "";
             return (
               <div
-                key={i}
-                role="alert"
+                key={warning.code + warning.items.join("|")}
                 className={cn("flex items-start gap-2 rounded-lg border px-3 py-2 text-sm", meta.className)}
               >
                 <Icon className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{formatWarning(warning)}</span>
-                {code === "MISSING_PERIODS" && (
+                <span className="min-w-0">
+                  <span className="font-medium">{warning.title}</span>{" "}
+                  <span className="text-muted-foreground">{warning.detail}</span>
+                  {warning.items.length > 0 && (
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {warning.items.join(", ")}
+                    </span>
+                  )}
+                </span>
+                {warning.action.type === "upload_period" && (
                   <Link
                     href="/payroll-periods"
                     className="ml-auto shrink-0 underline underline-offset-2"
                   >
-                    View missing uploads
+                    Upload
                   </Link>
                 )}
               </div>

@@ -1,5 +1,19 @@
+/**
+ * Under test, a non-finite amount is a bug in the caller, not something to paper
+ * over (finding C17). In production it still coerces to 0 so a single bad
+ * component cannot blank the whole dashboard.
+ */
+const THROW_ON_NON_FINITE =
+  typeof process !== "undefined" &&
+  (process.env?.["VITEST"] === "true" || process.env?.["NODE_ENV"] === "test");
+
 export function roundMoney(value: number): number {
-  if (!Number.isFinite(value)) return 0;
+  if (!Number.isFinite(value)) {
+    if (THROW_ON_NON_FINITE) {
+      throw new Error(`roundMoney received a non-finite value: ${value}`);
+    }
+    return 0;
+  }
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
@@ -17,8 +31,13 @@ export function pct(num: number, den: number): number | null {
   return (num / den) * 100;
 }
 
-export function safeRatio(prev: number, curr: number): number {
-  if (!Number.isFinite(prev) || !Number.isFinite(curr)) return 1;
-  if (prev === 0) return curr === 0 ? 1 : 1;
-  return curr / prev;
+/**
+ * Signed percentage change, or null when the base is zero.
+ *
+ * v1 returned +100% against a zero base (finding C10/P16), which read as "payroll
+ * doubled" when the truth is that there is nothing to compare against.
+ */
+export function pctChange(current: number, previous: number): number | null {
+  if (previous === 0 || !Number.isFinite(previous)) return null;
+  return ((current - previous) / previous) * 100;
 }

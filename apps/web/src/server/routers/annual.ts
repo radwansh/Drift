@@ -89,6 +89,10 @@ const DepartmentHeadcountRowSchema = z.object({
   department: z.string(),
   periodEnd: z.union([z.string(), z.date()]).transform(toIsoDate),
   headcount: IntLike,
+  // Department gross/net straight from SQL (step 15): the engine needs real gross
+  // to cost a department, rather than reconstructing it from components.
+  gross: Numeric,
+  net: Numeric,
 });
 
 const SetupRowSchema = z.object({
@@ -264,7 +268,9 @@ async function loadDepartments(ctx: ProtectedContext, opts: { companyId: string;
       WITH ${cte}
       SELECT COALESCE(r.department, 'Unassigned') AS department,
              p.period_end AS "periodEnd",
-             COUNT(DISTINCT r.employee_external_id)::int AS headcount
+             COUNT(DISTINCT r.employee_external_id)::int AS headcount,
+             COALESCE(SUM(r.gross_salary), 0)::numeric AS gross,
+             COALESCE(SUM(r.net_salary), 0)::numeric   AS net
       FROM valid_periods p
       JOIN snaps r ON r.payroll_period_id = p.id
       GROUP BY 1, 2
@@ -276,10 +282,14 @@ async function loadDepartments(ctx: ProtectedContext, opts: { companyId: string;
   const periodEnds = [...new Set(headcounts.map((h) => h.periodEnd))].sort();
 
   const headcountsByDepartment = new Map<string, Map<string, number>>();
+  const grossByDepartment = new Map<string, number>();
+  const netByDepartment = new Map<string, number>();
   for (const h of headcounts) {
     const dept = headcountsByDepartment.get(h.department) ?? new Map<string, number>();
     dept.set(h.periodEnd, h.headcount);
     headcountsByDepartment.set(h.department, dept);
+    grossByDepartment.set(h.department, (grossByDepartment.get(h.department) ?? 0) + h.gross);
+    netByDepartment.set(h.department, (netByDepartment.get(h.department) ?? 0) + h.net);
   }
 
   const componentsByDepartment = new Map<string, Map<string, number>>();
@@ -296,6 +306,8 @@ async function loadDepartments(ctx: ProtectedContext, opts: { companyId: string;
       department,
       components: [...componentMap.entries()].map(([key, total]) => ({ key, total })),
       headcounts: periodEnds.map((end) => deptHeadcounts.get(end) ?? 0),
+      gross: grossByDepartment.get(department) ?? 0,
+      net: netByDepartment.get(department) ?? 0,
     };
   });
 
@@ -433,16 +445,8 @@ function buildInsightPayload(summary: AnnualSummary, companyName?: string): Annu
 }
 
 export const annualRouter = router({
-  getYears: protectedProcedure.query(async ({ ctx }) => {
-    const { companyId } = await getCompany(ctx);
-    const res = await ctx.db.execute(sql`
-      SELECT DISTINCT EXTRACT(YEAR FROM period_end)::int AS year
-      FROM payroll_periods
-      WHERE company_id = ${companyId} AND status = 'ready'
-      ORDER BY year DESC
-    `);
-    return { years: parseRows(z.object({ year: IntLike }), res.rows, "year").map((r) => r.year) };
-  }),
+  // `getYears` was removed in step 21 (finding C17): it was never called, because
+  // the annual page is a server component that queries the years itself.
 
   getSummary: protectedProcedure
     .input(z.object({
