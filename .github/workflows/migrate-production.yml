@@ -26,8 +26,11 @@ jobs:
   migrate:
     needs: guard
     runs-on: ubuntu-latest
-    # The approval gate. Configure required reviewers on this environment.
-    environment: production
+    # The approval gate. Must match the EXISTING environment name exactly — the
+    # repo's is "Production". Naming a non-existent environment here makes
+    # GitHub create it on first run with no required reviewers, which silently
+    # removes the gate this workflow exists to provide.
+    environment: Production
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
