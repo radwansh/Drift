@@ -1,6 +1,11 @@
 import { requireDb } from "@saas/db";
 import { eq } from "drizzle-orm";
-import { payrollPeriods, employeeSnapshots, uploadSessions } from "@saas/db";
+import {
+  payrollPeriods,
+  employeeSnapshots,
+  uploadSessions,
+  rebuildPeriodComponentTotals,
+} from "@saas/db";
 
 interface Mapping {
   sourceColumn: string;
@@ -95,6 +100,13 @@ export async function processUpload(input: ProcessInput): Promise<ProcessResult>
       netSalary: String(s.netSalary),
     })),
   );
+
+  // Step 31: build the per-period aggregates now, while the data is hot, so the
+  // annual dashboard never has to unnest the components JSON at read time.
+  // Deliberately before the period is marked ready: the annual queries only
+  // consider ready periods, so this ordering means a period is never visible
+  // without its aggregates.
+  await rebuildPeriodComponentTotals(db, period.id);
 
   await db.update(payrollPeriods)
     .set({ status: "ready" })

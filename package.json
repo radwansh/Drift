@@ -13,7 +13,8 @@
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
     "db:generate": "pnpm --filter @saas/db db:generate",
     "db:migrate": "pnpm --filter @saas/db db:migrate",
-    "db:seed": "pnpm --filter @saas/db db:seed"
+    "db:seed": "pnpm --filter @saas/db db:seed",
+    "db:backfill-period-totals": "pnpm --filter @saas/db db:backfill-period-totals"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

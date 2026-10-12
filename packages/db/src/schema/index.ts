@@ -13,3 +13,4 @@ export { componentCategories } from "./componentCategories";
 export { annualBudgets, annualBudgetPhasing } from "./annualBudgets";
 export { annualInsightCaches } from "./annualInsightCaches";
 export { annualAuditLog } from "./annualAuditLog";
+export { periodComponentTotals } from "./periodComponentTotals";

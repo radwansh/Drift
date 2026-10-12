@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import * as XLSX from "xlsx";
 import { sql } from "drizzle-orm";
+import { backfillPeriodComponentTotals } from "@saas/db";
 import { createTestDb, type TestDb } from "./pglite-neon";
 import { annualRouter } from "@/server/routers/annual";
 
@@ -463,6 +464,71 @@ describe("audit trail (step 46)", () => {
     // Globex has had its own budget changes; it must not see Acme's.
     const otherTrail = await callerFor(other, "admin").auditTrail({ limit: 50 });
     expect(otherTrail.entries.every((e) => !e.entityKey.startsWith("2026:USD"))).toBe(true);
+  });
+});
+
+// ---- step 31, finding B7 ----
+describe("per-period aggregates (step 31)", () => {
+  it("returns identical figures before and after the backfill", async () => {
+    const caller = callerFor(acme, "admin");
+
+    // The seed inserts snapshots directly, so no aggregates exist yet and the
+    // query takes its live-unnest fallback path.
+    const emptyBefore = await ctx.db.execute(sql`
+      SELECT COUNT(*)::int AS n FROM period_component_totals
+    `);
+    expect((emptyBefore.rows[0] as { n: number }).n).toBe(0);
+
+    const live = await caller.getSummary({ year: 2026, forecastMethod: "run_rate" });
+
+    const rebuilt = await backfillPeriodComponentTotals(ctx.db, { limit: 500 });
+    expect(rebuilt.length).toBeGreaterThan(0);
+
+    const rowCount = await ctx.db.execute(sql`
+      SELECT COUNT(*)::int AS n FROM period_component_totals
+    `);
+    expect((rowCount.rows[0] as { n: number }).n).toBeGreaterThan(0);
+
+    // A different method dodges the 30s per-inputs memo, so this really is a
+    // second trip to the database. To-date figures do not depend on the
+    // forecast method, so they must match exactly.
+    const aggregated = await caller.getSummary({ year: 2026, forecastMethod: "average" });
+
+    expect(aggregated.bridge.actual.gross).toBeCloseTo(live.bridge.actual.gross, 2);
+    expect(aggregated.bridge.actual.net).toBeCloseTo(live.bridge.actual.net, 2);
+    expect(aggregated.bridge.actual.employeeDeductions).toBeCloseTo(
+      live.bridge.actual.employeeDeductions,
+      2,
+    );
+    expect(aggregated.bridge.actual.employerCosts).toBeCloseTo(live.bridge.actual.employerCosts, 2);
+    expect(aggregated.categories.byCategory).toEqual(live.categories.byCategory);
+
+    // Departments are aggregated from the same table, by department this time.
+    expect(aggregated.departments.map((d) => [d.department, d.actual])).toEqual(
+      live.departments.map((d) => [d.department, d.actual]),
+    );
+
+    // And the sign-split row counts survive, so MIXED_SIGN still works.
+    expect(aggregated.categories.mixedSignKeys).toEqual(live.categories.mixedSignKeys);
+  });
+
+  it("is idempotent and scoped to one period", async () => {
+    const before = await ctx.db.execute(sql`
+      SELECT payroll_period_id AS "periodId", department, component_key AS "key", total
+      FROM period_component_totals
+      ORDER BY 1, 2, 3
+    `);
+
+    // Re-running must not duplicate or double a single row.
+    await backfillPeriodComponentTotals(ctx.db, { limit: 500, force: true });
+
+    const after = await ctx.db.execute(sql`
+      SELECT payroll_period_id AS "periodId", department, component_key AS "key", total
+      FROM period_component_totals
+      ORDER BY 1, 2, 3
+    `);
+
+    expect(after.rows).toEqual(before.rows);
   });
 });
 

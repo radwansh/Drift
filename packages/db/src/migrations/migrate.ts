@@ -10,7 +10,6 @@ async function main() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     )`,
   );
-  const { sql } = await import("drizzle-orm");
   const { migrate } = await import("drizzle-orm/neon-http/migrator");
   await migrate(db, { migrationsFolder: "./src/migrations" });
   console.log("Migrations complete.");

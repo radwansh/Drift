@@ -57,17 +57,114 @@ describe("PGlite harness (step 4)", () => {
 });
 
 describe("migration idempotency (finding B2, step 30)", () => {
-  // The review found that re-running migration 0004 fails with
-  // "relation annual_budgets already exists". Marked `it.fails` per step 5 and
-  // flipped to `it` by step 30.
-  it.fails("re-runs every migration as a no-op", async () => {
+  /**
+   * Was `it.fails`: re-running migration 0004 failed with 'relation
+   * "annual_budgets" already exists' (finding B2). Flipped to `it` by step 30.
+   *
+   * This asserts the strong property — the whole set re-applies cleanly, not
+   * just 0004 — because drizzle keys applied migrations on a hash of the file,
+   * so editing any migration makes it run again on a database that already had
+   * it. Guarding all of them means that is always a no-op rather than an outage.
+   */
+  it("re-runs every migration as a no-op", async () => {
     const pg = new PGlite();
     await pg.waitReady;
     try {
       await applyMigrations(pg);
       await applyMigrations(pg);
+      // A third pass, to catch anything that is only idempotent once.
+      await applyMigrations(pg);
     } finally {
       await pg.close();
     }
+  });
+});
+
+/**
+ * Step 27 (finding B1): the annual filters must be served by an index.
+ *
+ * PGlite is real Postgres compiled to WASM, so these plans are genuine. The
+ * planner only prefers an index when the table is big enough and the statistics
+ * are current, hence the row volume and the explicit ANALYZE — on a ten-row
+ * table a sequential scan is correctly cheaper and the assertion would say
+ * nothing.
+ */
+describe("annual indexes (step 27)", () => {
+  let pg: PGlite;
+
+  beforeAll(async () => {
+    pg = new PGlite();
+    await pg.waitReady;
+    await applyMigrations(pg);
+
+    const company = (await pg.query<{ id: string }>(
+      `INSERT INTO companies (name, slug, currency_code) VALUES ('Perf', 'perf', 'USD') RETURNING id`,
+    )).rows[0]!.id;
+
+    // Enough periods across several cadences and currencies that a sequential
+    // scan is the expensive option.
+    await pg.exec(`
+      INSERT INTO payroll_periods
+        (company_id, period_type, period_start, period_end, currency_code, status, source)
+      SELECT '${company}',
+             (ARRAY['monthly','weekly','bi_monthly'])[1 + (g % 3)],
+             make_date(2020 + (g / 12)::int, 1 + (g % 12), 1),
+             make_date(2020 + (g / 12)::int, 1 + (g % 12), 28),
+             (ARRAY['USD','LBP','EUR'])[1 + (g % 3)],
+             'ready', 'upload'
+      FROM generate_series(0, 1199) g
+    `);
+
+    // Snapshots spread across many periods. Selectivity is the whole point: if
+    // every row shared one payroll_period_id, filtering to that period would
+    // select the entire table and a sequential scan would rightly win, so the
+    // assertion would prove nothing about the index.
+    await pg.exec(`
+      INSERT INTO employee_snapshots
+        (payroll_period_id, employee_external_id, employee_name, department,
+         components, gross_salary, net_salary, currency_code)
+      SELECT p.id, 'E' || g, 'Employee ' || g, 'Ops',
+             '{"Base Salary": "1000.00"}'::jsonb, 1000, 800, 'USD'
+      FROM (SELECT id FROM payroll_periods ORDER BY period_end LIMIT 300) p
+      CROSS JOIN generate_series(0, 49) g
+    `);
+
+    await pg.exec("ANALYZE payroll_periods; ANALYZE employee_snapshots;");
+  }, 180_000);
+
+  afterAll(async () => {
+    await pg?.close();
+  });
+
+  async function plan(query: string): Promise<string> {
+    const res = await pg.query<{ "QUERY PLAN": string }>(`EXPLAIN ${query}`);
+    return res.rows.map((r) => r["QUERY PLAN"]).join("\n");
+  }
+
+  it("serves the annual period filter with an index scan", async () => {
+    const text = await plan(`
+      SELECT id FROM payroll_periods
+      WHERE company_id = (SELECT id FROM companies LIMIT 1)
+        AND status = 'ready'
+        AND period_type = 'monthly'
+        AND currency_code = 'USD'
+        AND period_end >= '2024-01-01'::date
+        AND period_end < '2025-01-01'::date
+    `);
+
+    expect(text).toMatch(/Index (Only )?Scan|Bitmap Index Scan/);
+    expect(text).toContain("payroll_periods_annual_idx");
+  });
+
+  it("serves the snapshot de-duplication with an index scan", async () => {
+    const text = await plan(`
+      SELECT DISTINCT ON (payroll_period_id, employee_external_id) id
+      FROM employee_snapshots
+      WHERE payroll_period_id = (SELECT id FROM payroll_periods LIMIT 1)
+      ORDER BY payroll_period_id, employee_external_id, created_at DESC
+    `);
+
+    expect(text).toMatch(/Index (Only )?Scan|Bitmap Index Scan/);
+    expect(text).toContain("employee_snapshots_period_employee_idx");
   });
 });

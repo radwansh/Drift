@@ -43,6 +43,20 @@
       "when": 1791586723845,
       "tag": "0005_annual_constraints",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791673123845,
+      "tag": "0006_annual_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791759523845,
+      "tag": "0007_period_component_totals",
+      "breakpoints": true
     }
   ]
 }

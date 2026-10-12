@@ -19,13 +19,13 @@ ALTER TABLE annual_budgets ADD COLUMN IF NOT EXISTS basis varchar(20) NOT NULL D
 
 DO $$ BEGIN
   ALTER TABLE annual_budgets ADD CONSTRAINT annual_budgets_currency_iso CHECK (currency ~ '^[A-Z]{3}$');
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+EXCEPTION WHEN duplicate_object THEN NULL; WHEN duplicate_table THEN NULL; END $$;
 --> statement-breakpoint
 
 DO $$ BEGIN
   ALTER TABLE annual_budgets ADD CONSTRAINT annual_budgets_basis_valid
     CHECK (basis IN ('gross', 'employer_cost', 'net'));
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+EXCEPTION WHEN duplicate_object THEN NULL; WHEN duplicate_table THEN NULL; END $$;
 --> statement-breakpoint
 
 CREATE TABLE IF NOT EXISTS annual_budget_phasing (
@@ -39,13 +39,13 @@ CREATE TABLE IF NOT EXISTS annual_budget_phasing (
 DO $$ BEGIN
   ALTER TABLE annual_budget_phasing ADD CONSTRAINT annual_budget_phasing_month_valid
     CHECK (month BETWEEN 1 AND 12);
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+EXCEPTION WHEN duplicate_object THEN NULL; WHEN duplicate_table THEN NULL; END $$;
 --> statement-breakpoint
 
 DO $$ BEGIN
   ALTER TABLE annual_budget_phasing ADD CONSTRAINT annual_budget_phasing_budget_month_unique
     UNIQUE (budget_id, month);
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+EXCEPTION WHEN duplicate_object THEN NULL; WHEN duplicate_table THEN NULL; END $$;
 --> statement-breakpoint
 
 -- B3: the category column was a free varchar(40); the spec asked for a closed set.
@@ -55,7 +55,7 @@ DO $$ BEGIN
     'income_tax','social_security_employee','other_deduction','absence_deduction',
     'social_security_employer','other_employer_cost','absence_days','other_quantity',
     'ignore','uncategorised'));
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+EXCEPTION WHEN duplicate_object THEN NULL; WHEN duplicate_table THEN NULL; END $$;
 --> statement-breakpoint
 
 ALTER TABLE component_categories ADD COLUMN IF NOT EXISTS updated_by uuid REFERENCES users(id) ON DELETE SET NULL;

@@ -225,17 +225,41 @@ function yearQueries(ctx: MemberContext, opts: { companyId: string; periodType: 
       LEFT JOIN snaps r ON r.payroll_period_id = p.id
       GROUP BY p.id
     `),
+    /**
+     * Step 31 (finding B7): read the pre-computed aggregates, and fall back to
+     * the live unnest only for periods that have none yet.
+     *
+     * The fallback is what makes this safe to deploy before the backfill has
+     * run — and keeps a period uploaded by an older build correct. Both halves
+     * aggregate identically, so which one answers is invisible to the caller.
+     */
     components: ctx.db.execute(sql`
-      WITH ${cte}
-      SELECT p.id, x.key,
-             COALESCE(SUM((x.value #>> '{}')::numeric), 0) AS total,
-             COUNT(*) FILTER (WHERE (x.value #>> '{}')::numeric < 0)::int AS "negRows",
-             COUNT(*) FILTER (WHERE (x.value #>> '{}')::numeric > 0)::int AS "posRows"
-      FROM valid_periods p
-      JOIN snaps r ON r.payroll_period_id = p.id
-      CROSS JOIN LATERAL jsonb_each(r.components) x
-      WHERE ${numericComponentFilter}
-      GROUP BY p.id, x.key
+      WITH ${cte},
+      aggregated AS (
+        SELECT t.payroll_period_id AS id,
+               t.component_key     AS key,
+               SUM(t.total)        AS total,
+               SUM(t.neg_rows)::int AS neg_rows,
+               SUM(t.pos_rows)::int AS pos_rows
+        FROM period_component_totals t
+        WHERE t.payroll_period_id IN (SELECT id FROM valid_periods)
+        GROUP BY t.payroll_period_id, t.component_key
+      ),
+      live AS (
+        SELECT p.id, x.key,
+               COALESCE(SUM((x.value #>> '{}')::numeric), 0) AS total,
+               COUNT(*) FILTER (WHERE (x.value #>> '{}')::numeric < 0)::int AS neg_rows,
+               COUNT(*) FILTER (WHERE (x.value #>> '{}')::numeric > 0)::int AS pos_rows
+        FROM valid_periods p
+        JOIN snaps r ON r.payroll_period_id = p.id
+        CROSS JOIN LATERAL jsonb_each(r.components) x
+        WHERE ${numericComponentFilter}
+          AND p.id NOT IN (SELECT DISTINCT payroll_period_id FROM period_component_totals)
+        GROUP BY p.id, x.key
+      )
+      SELECT id, key, total, neg_rows AS "negRows", pos_rows AS "posRows" FROM aggregated
+      UNION ALL
+      SELECT id, key, total, neg_rows AS "negRows", pos_rows AS "posRows" FROM live
     `),
     employees: ctx.db.execute(sql`
       WITH ${cte}
@@ -252,15 +276,28 @@ function departmentQueries(ctx: MemberContext, opts: { companyId: string; period
   const cte = validPeriodsCte(companyId, periodType, currency, year, fiscalStartMonth);
 
   return {
+    /** Same aggregate-first-with-fallback shape as the period components (step 31). */
     totals: ctx.db.execute(sql`
-      WITH ${cte}
-      SELECT COALESCE(r.department, 'Unassigned') AS department, x.key,
-             COALESCE(SUM((x.value #>> '{}')::numeric), 0) AS total
-      FROM valid_periods p
-      JOIN snaps r ON r.payroll_period_id = p.id
-      CROSS JOIN LATERAL jsonb_each(r.components) x
-      WHERE ${numericComponentFilter}
-      GROUP BY 1, 2
+      WITH ${cte},
+      aggregated AS (
+        SELECT t.department, t.component_key AS key, SUM(t.total) AS total
+        FROM period_component_totals t
+        WHERE t.payroll_period_id IN (SELECT id FROM valid_periods)
+        GROUP BY t.department, t.component_key
+      ),
+      live AS (
+        SELECT COALESCE(r.department, 'Unassigned') AS department, x.key,
+               COALESCE(SUM((x.value #>> '{}')::numeric), 0) AS total
+        FROM valid_periods p
+        JOIN snaps r ON r.payroll_period_id = p.id
+        CROSS JOIN LATERAL jsonb_each(r.components) x
+        WHERE ${numericComponentFilter}
+          AND p.id NOT IN (SELECT DISTINCT payroll_period_id FROM period_component_totals)
+        GROUP BY 1, 2
+      )
+      SELECT department, key, SUM(total) AS total
+      FROM (SELECT * FROM aggregated UNION ALL SELECT * FROM live) u
+      GROUP BY department, key
     `),
     headcounts: ctx.db.execute(sql`
       WITH ${cte}
