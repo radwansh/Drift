@@ -36,7 +36,9 @@ export function AnnualMix({ summary }: AnnualMixProps) {
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-4 text-sm">
             <span className="text-muted-foreground truncate">Fixed (base + allowance + other earnings)</span>
-            <span className="tabular-nums text-right whitespace-nowrap">{[formatPct(fixedShare)]}</span>
+            {/* Was `{[formatPct(fixedShare)]}` — an array, which React rendered
+                without the surrounding text it needed (finding U15). */}
+            <span className="tabular-nums text-right whitespace-nowrap">{formatPct(fixedShare)}</span>
           </div>
           <div className="flex items-center justify-between gap-4 text-sm">
             <span className="text-muted-foreground truncate">Variable (bonus + commission + overtime)</span>
@@ -64,6 +66,15 @@ export function AnnualMix({ summary }: AnnualMixProps) {
         <p className="text-xs text-muted-foreground">
           Fixed {formatMoney(mix.fixed, summary.currency)} · Variable {formatMoney(mix.variable, summary.currency)} ·
           Gross to date {formatMoney(gross, summary.currency)}
+          {/* Say why the two shares do not reach 100% rather than leaving a
+              silent gap (KPI 12). */}
+          {summary.bridge.actual.earningsBalance !== 0 && (
+            <>
+              {" · "}
+              {formatMoney(summary.bridge.actual.earningsBalance, summary.currency)} of gross is not categorised, so
+              fixed and variable do not add to 100%.
+            </>
+          )}
         </p>
       </CardContent>
     </Card>

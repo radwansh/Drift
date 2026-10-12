@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { useCallback, useState } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { keepPreviousData } from "@tanstack/react-query";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,20 +23,13 @@ import { AnnualAbsences } from "@/components/annual/annual-absences";
 import { AnnualDepartments } from "@/components/annual/annual-departments";
 import { AnnualYoY } from "@/components/annual/annual-yoy";
 import { AnnualMix } from "@/components/annual/annual-mix";
+import { AnnualWarnings } from "@/components/annual/annual-warnings";
 import { CategoryManager } from "@/components/annual/category-manager";
 import { BudgetInput, AnnualBudgetCard } from "@/components/annual/annual-budget";
 import { AnnualInsights } from "@/components/annual/annual-insights";
-import { AlertCircle, AlertTriangle, Info, CalendarDays, RefreshCw } from "lucide-react";
+import { AlertCircle, CalendarDays, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PERIOD_TYPE_LABELS } from "@/lib/constants";
-
-// Severity, title and detail now arrive on the warning itself (step 19), so this
-// component no longer splits warning strings to recover them.
-const SEVERITY_STYLES: Record<"critical" | "warning" | "info", { icon: typeof Info; className: string }> = {
-  critical: { icon: AlertCircle, className: "anomaly-critical" },
-  warning: { icon: AlertTriangle, className: "anomaly-warning" },
-  info: { icon: Info, className: "anomaly-info" },
-};
 
 const METHOD_LABELS: Record<string, string> = {
   run_rate: "Run rate",
@@ -44,6 +37,24 @@ const METHOD_LABELS: Record<string, string> = {
   prior_year: "Prior year",
 };
 
+type PeriodTypeValue = "monthly" | "weekly" | "bi_monthly" | "bi_weekly";
+type MethodValue = "run_rate" | "average" | "prior_year";
+
+const PERIOD_TYPES: PeriodTypeValue[] = ["monthly", "weekly", "bi_monthly", "bi_weekly"];
+const METHODS: MethodValue[] = ["run_rate", "average", "prior_year"];
+
+/**
+ * The annual dashboard (step 38, findings U12, U13, U14).
+ *
+ * Controls live in the URL rather than in component state. Two things follow.
+ * First, a pasted or reloaded URL reproduces the exact view — previously only
+ * the year survived, so a cadence or currency selection could not be shared.
+ * Second, the page stops fetching the summary twice: an effect used to copy the
+ * server's resolved `periodType` and `currency` into state, which changed the
+ * query key and triggered a second request on every load and year change
+ * (finding U13). The server resolves its own defaults and the client simply
+ * leaves those params absent until the user picks something.
+ */
 export function AnnualDashboard({
   initialYear,
   availableYears,
@@ -52,61 +63,77 @@ export function AnnualDashboard({
   availableYears: number[];
 }) {
   const router = useRouter();
-  const [year, setYear] = useState(initialYear);
-  const [periodType, setPeriodType] = useState<string | null>(null);
-  const [currency, setCurrency] = useState<string | null>(null);
-  const [forecastMethod, setForecastMethod] = useState<string>("run_rate");
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [categoriserOpen, setCategoriserOpen] = useState(0);
+
+  const yearParam = Number(searchParams.get("year"));
+  const year = Number.isInteger(yearParam) && yearParam > 2000 ? yearParam : initialYear;
+
+  const cadenceParam = searchParams.get("cadence");
+  const cadence = PERIOD_TYPES.includes(cadenceParam as PeriodTypeValue)
+    ? (cadenceParam as PeriodTypeValue)
+    : undefined;
+
+  const currencyParam = searchParams.get("currency");
+  const currency = currencyParam && /^[A-Za-z]{3}$/.test(currencyParam)
+    ? currencyParam.toUpperCase()
+    : undefined;
+
+  const methodParam = searchParams.get("method");
+  const method = METHODS.includes(methodParam as MethodValue) ? (methodParam as MethodValue) : undefined;
+
+  const setParams = useCallback(
+    (next: Record<string, string | null>) => {
+      const params = new URLSearchParams(searchParams.toString());
+      for (const [key, value] of Object.entries(next)) {
+        if (value === null) params.delete(key);
+        else params.set(key, value);
+      }
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    },
+    [router, pathname, searchParams],
+  );
 
   const summaryQuery = trpc.annual.getSummary.useQuery(
+    { year, periodType: cadence, currency, forecastMethod: method },
     {
-      year,
-      periodType: (periodType ?? undefined) as "monthly" | "weekly" | "bi_monthly" | "bi_weekly" | undefined,
-      currency: currency ?? undefined,
-      forecastMethod: forecastMethod as "run_rate" | "average" | "prior_year",
+      retry: 1,
+      // Keep the previous year's figures on screen while the next load runs,
+      // instead of collapsing the whole page to skeletons (finding U13).
+      placeholderData: keepPreviousData,
     },
-    { retry: 1 },
   );
 
   const summary = summaryQuery.data ?? null;
-
-  useEffect(() => {
-    if (!summaryQuery.data) return;
-    if (periodType === null) setPeriodType(summaryQuery.data.periodType);
-    if (currency === null) setCurrency(summaryQuery.data.currency);
-    if (!summaryQuery.data.methodsAvailable.includes(forecastMethod as "run_rate" | "average" | "prior_year")) {
-      setForecastMethod("run_rate");
-    }
-  }, [summaryQuery.data, periodType, currency, forecastMethod]);
-
-  useEffect(() => {
-    if (initialYear !== year) setYear(initialYear);
-  }, [initialYear]);
-
-  const handleYearChange = (nextYear: number) => {
-    setYear(nextYear);
-    setPeriodType(null);
-    setCurrency(null);
-  };
-
   const methodsAvailable = summary?.methodsAvailable ?? ["run_rate", "average"];
+  const openCategoriser = useCallback(() => setCategoriserOpen((n) => n + 1), []);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold">Annual Salaries Dashboard</h2>
-          <p className="text-muted-foreground mt-1">Calendar-year payroll totals and forecast</p>
+          <h2 className="text-2xl font-bold">Annual salaries</h2>
+          <p className="mt-1 text-muted-foreground">Calendar-year payroll totals and forecast</p>
         </div>
-        <YearSelector initialYear={year} availableYears={availableYears} onYearChange={handleYearChange} />
+        <YearSelector
+          initialYear={year}
+          availableYears={availableYears}
+          // Changing the year clears the cadence and currency so the server can
+          // resolve them again for that year.
+          onYearChange={(next) =>
+            setParams({ year: String(next), cadence: null, currency: null })
+          }
+        />
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
         {summary && summary.allPeriodTypes.length > 1 && (
           <Select
-            value={periodType ?? summary.periodType}
-            onValueChange={(v) => setPeriodType(v)}
+            value={summary.periodType}
+            onValueChange={(v) => setParams({ cadence: v })}
           >
-            <SelectTrigger aria-label="Select period type" className="w-44">
+            <SelectTrigger aria-label="Pay cadence" className="w-44">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -120,11 +147,8 @@ export function AnnualDashboard({
         )}
 
         {summary && summary.allCurrencies.length > 1 && (
-          <Select
-            value={currency ?? summary.currency}
-            onValueChange={(v) => setCurrency(v)}
-          >
-            <SelectTrigger aria-label="Select currency" className="w-28">
+          <Select value={summary.currency} onValueChange={(v) => setParams({ currency: v })}>
+            <SelectTrigger aria-label="Currency" className="w-28">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -137,8 +161,11 @@ export function AnnualDashboard({
           </Select>
         )}
 
-        <Select value={forecastMethod} onValueChange={(v) => setForecastMethod(v)}>
-          <SelectTrigger aria-label="Select forecast method" className="w-40">
+        <Select
+          value={summary?.forecastMethod ?? method ?? "run_rate"}
+          onValueChange={(v) => setParams({ method: v })}
+        >
+          <SelectTrigger aria-label="Forecast method" className="w-40">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -156,12 +183,13 @@ export function AnnualDashboard({
               "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium",
               summary.missingLabels.length > 0 ? "anomaly-warning" : "anomaly-info",
             )}
-            title={summary.missingLabels.length > 0 ? `Missing: ${summary.missingLabels.join(", ")}` : undefined}
           >
-            <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+            <CalendarDays className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             {summary.coverage.uploaded} of {summary.coverage.expected} periods
-            {summary.missingLabels.length > 0 && (
-              <span className="font-normal">· missing: {summary.missingLabels.join(", ")}</span>
+            {summary.coverage.estimatedLabels.length > 0 && (
+              <span className="font-normal">
+                · {summary.coverage.estimatedLabels.length} estimated
+              </span>
             )}
           </span>
         )}
@@ -172,6 +200,7 @@ export function AnnualDashboard({
             currency={summary.currency}
             periodType={summary.periodType}
             hasUncategorised={summary.warnings.some((w) => w.code === "UNCATEGORISED")}
+            openSignal={categoriserOpen}
           />
         )}
 
@@ -183,68 +212,51 @@ export function AnnualDashboard({
             disabled={summary.coverage.expected === 0}
           />
         )}
+
+        {summaryQuery.isFetching && !summaryQuery.isLoading && (
+          <span className="text-xs text-muted-foreground" role="status">
+            Updating…
+          </span>
+        )}
       </div>
 
-      {summary && summary.warnings.length > 0 && (
-        // One polite live region for the whole strip rather than role="alert" per
-        // line, which made screen readers interrupt once per warning (finding U2).
-        <div className="flex flex-col gap-2" role="status" aria-live="polite">
-          {summary.warnings.map((warning) => {
-            const meta = SEVERITY_STYLES[warning.severity];
-            const Icon = meta.icon;
-            return (
-              <div
-                key={warning.code + warning.items.join("|")}
-                className={cn("flex items-start gap-2 rounded-lg border px-3 py-2 text-sm", meta.className)}
-              >
-                <Icon className="mt-0.5 h-4 w-4 shrink-0" />
-                <span className="min-w-0">
-                  <span className="font-medium">{warning.title}</span>{" "}
-                  <span className="text-muted-foreground">{warning.detail}</span>
-                  {warning.items.length > 0 && (
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {warning.items.join(", ")}
-                    </span>
-                  )}
-                </span>
-                {warning.action.type === "upload_period" && (
-                  <Link
-                    href="/payroll-periods"
-                    className="ml-auto shrink-0 underline underline-offset-2"
-                  >
-                    Upload
-                  </Link>
-                )}
-              </div>
-            );
-          })}
-        </div>
+      {summary && (
+        <AnnualWarnings warnings={summary.warnings} onCategorise={openCategoriser} />
       )}
 
       {summaryQuery.isLoading ? (
         <AnnualKpiCards summary={null} />
       ) : summaryQuery.isError ? (
         <div className="flex flex-col items-center justify-center rounded-xl border bg-card py-16 text-center">
-          <AlertCircle className="h-8 w-8 text-destructive" />
+          <AlertCircle className="h-8 w-8 text-destructive" aria-hidden="true" />
           <h3 className="mt-4 text-lg font-semibold">Could not load the annual summary</h3>
-          <p className="mt-1 text-sm text-muted-foreground">Please try again.</p>
+          {/* A plain message: error.tsx used to print the raw error (finding U15). */}
+          <p className="mt-1 max-w-md text-sm text-muted-foreground">
+            Something went wrong while building the figures for {year}. Retrying usually works; if it
+            does not, the payroll data for this year may need re-uploading.
+          </p>
           <Button className="mt-4" onClick={() => summaryQuery.refetch()}>
-            <RefreshCw className="mr-2 h-4 w-4" />
+            <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
             Retry
           </Button>
         </div>
-      ) : summary && summary.coverage.uploaded === 0 && summary.coverage.expected === 0 ? (
+      ) : summary && summary.coverage.uploaded === 0 ? (
+        /* The empty state now shows whenever nothing is uploaded. It used to
+           require `expected === 0` as well, but coverage always expects 12
+           monthly slots, so a year with no data rendered a page of zeros
+           instead (finding U12). */
         <div className="flex flex-col items-center justify-center rounded-xl border bg-card py-16 text-center">
           <div className="rounded-full bg-muted p-4">
-            <CalendarDays className="h-8 w-8 text-muted-foreground" />
+            <CalendarDays className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
           </div>
-          <h3 className="mt-4 text-lg font-semibold">No payroll data for {summary.year}</h3>
+          <h3 className="mt-4 text-lg font-semibold">No payroll uploaded for {summary.year}</h3>
           <p className="mt-1 max-w-md text-sm text-muted-foreground">
-            Upload a payroll period to start building your annual dashboard. Periods with status ready and an
-            end date in {summary.year} count toward the year.
+            Upload a payroll period to start building the annual view. A period counts toward
+            {" "}
+            {summary.year} when its status is ready and its end date falls in that year.
           </p>
           <Button className="mt-4" onClick={() => router.push("/payroll-periods")}>
-            Go to Payroll Periods
+            Go to payroll periods
           </Button>
         </div>
       ) : summary ? (
@@ -253,27 +265,25 @@ export function AnnualDashboard({
 
           {summary.coverage.expected > 0 && <AnnualBudgetCard summary={summary} />}
 
-          {summary.coverage.uploaded > 0 && <AnnualInsights summary={summary} />}
+          <AnnualInsights summary={summary} />
 
-          <div className="grid grid-cols-1 gap-6">
-            <AnnualPeriodsChart summary={summary} />
-          </div>
+          <AnnualPeriodsChart summary={summary} />
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          {/* items-start, so a short card no longer stretches to match a tall
+              neighbour and leave a block of empty space (finding U14). */}
+          <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-2">
             <AnnualBridge summary={summary} />
             <AnnualStatutory summary={summary} />
           </div>
 
           <AnnualYoY summary={summary} />
 
-          <div className="grid grid-cols-1 gap-6">
-            <AnnualHeadcountChart summary={summary} />
-          </div>
+          <AnnualHeadcountChart summary={summary} />
 
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-            <AnnualCategories summary={summary} />
-            <div className="grid grid-cols-1 gap-6">
-              <AnnualAbsences summary={summary} />
+          <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-2">
+            <AnnualCategories summary={summary} onCategorise={openCategoriser} />
+            <div className="grid grid-cols-1 items-start gap-6">
+              <AnnualAbsences summary={summary} onCategorise={openCategoriser} />
               <AnnualMix summary={summary} />
             </div>
           </div>

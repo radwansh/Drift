@@ -118,6 +118,13 @@ export interface AnnualSummary {
   coverage: Coverage;
   missingLabels: string[];
   categories: CategoryTotals;
+  /**
+   * Per-category forecast (estimated gaps plus the future) and full year, so the
+   * components table can show To date / Forecast / Full year side by side
+   * (step 36, KPI 5).
+   */
+  categoryForecast: Partial<Record<Category, number>>;
+  categoryFullYear: Partial<Record<Category, number>>;
   quantities: Partial<Record<"absence_days" | "other_quantity", number>>;
   bridge: { actual: BridgeLine; forecast: BridgeLine; fullYear: BridgeLine };
   forecastPerPeriod: { label: string; gross: Money; employeeDeductions: Money; employerCosts: Money; net: Money }[];
@@ -266,6 +273,11 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
   const fullYearDeductions = roundMoney(actualEmployeeDeductions + est.employeeDeductions + forecast.employeeDeductions);
   const fullYearBalance = roundMoney(actualBalance + est.balance + forecast.balance);
   const fullYearEarningsBalance = roundMoney(actualEarningsBalance + est.earningsBalance + forecast.earningsBalance);
+
+  // Forecast covers both the estimated past gaps and the future, so the
+  // components table's "Full year" column reconciles with the bridge.
+  const categoryForecast = sumCategories([est.totals, forecast.totals]);
+  const categoryFullYear = sumCategories([ytdCategories, categoryForecast]);
 
   const signState = new Map<string, { neg: boolean; pos: boolean }>();
   for (const p of actual) {
@@ -445,6 +457,8 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
       mixedSignKeys: mixedKeys,
       uncategorisedKeys,
     },
+    categoryForecast: categoryForecast,
+    categoryFullYear: categoryFullYear,
     quantities: quantityTotals,
     bridge: {
       actual: buildBridge(ytdGross, actualEmployerCosts, actualEmployeeDeductions, actualEarningsBalance, actualBalance, ytdNet),

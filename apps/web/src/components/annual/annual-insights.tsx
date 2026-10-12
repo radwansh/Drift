@@ -39,12 +39,17 @@ export function AnnualInsights({ summary }: AnnualInsightsProps) {
   });
 
   const data = insightsQuery.data;
-  const bullets = generate.data?.bullets ?? data?.bullets ?? [];
+  const bullets: string[] = generate.data?.bullets ?? data?.bullets ?? [];
   const source = generate.data?.source ?? data?.source ?? null;
   const model = generate.data?.model ?? data?.model ?? null;
   const generatedAt = generate.data?.generatedAt ?? data?.generatedAt ?? null;
   const isBusy = insightsQuery.isLoading || generate.isPending;
   const canGenerate = data?.canGenerate ?? false;
+  const aiEnabled = data?.aiEnabled ?? true;
+
+  const setAiEnabled = trpc.annual.setAiEnabled.useMutation({
+    onSuccess: () => utils.annual.getInsights.invalidate(scope),
+  });
 
   return (
     <Card>
@@ -117,12 +122,34 @@ export function AnnualInsights({ summary }: AnnualInsightsProps) {
           </>
         ) : (
           <p className="flex items-start gap-2 text-sm text-muted-foreground">
-            <Info className="mt-0.5 h-4 w-4 shrink-0" />
-            {canGenerate
-              ? "No insights yet. Generate writes a short read of this year's figures."
-              : "Insights need an Anthropic API key. Without one, a rule-based summary is written from the figures instead."}
+            <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            {!aiEnabled
+              ? "AI is switched off for this company. A summary written from the figures is still available."
+              : canGenerate
+                ? "No insights yet. Generate writes a short read of this year's figures."
+                : "Insights need an Anthropic API key. Without one, a summary is written from the figures instead."}
           </p>
         )}
+
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-3">
+          {/* A privacy note that is actually true in both states. v1 claimed data
+              never left the company even when a key was configured (finding U7). */}
+          <p className="min-w-0 text-xs text-muted-foreground">
+            {aiEnabled && canGenerate
+              ? "Generating sends the aggregated figures on this page — totals by category, department and period — to Anthropic. No employee names or individual records are sent."
+              : "Nothing is sent to Anthropic. The summary is written from the figures in your database."}
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={setAiEnabled.isPending}
+            onClick={() => setAiEnabled.mutate({ enabled: !aiEnabled })}
+          >
+            {setAiEnabled.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
+            {aiEnabled ? "Turn AI off for this company" : "Turn AI on"}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );

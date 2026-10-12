@@ -621,6 +621,16 @@ function insightCacheKey(payload: AnnualInsightPayload): string {
 
 const PROMPT_VERSION = "v1";
 
+/** Company-level AI switch (step 41). Defaults to on when never set. */
+async function isAiEnabledForCompany(ctx: MemberContext): Promise<boolean> {
+  const company = await ctx.db.query.companies.findFirst({
+    where: eq(companies.id, ctx.companyId),
+    columns: { settings: true },
+  });
+  const settings = (company?.settings ?? {}) as { aiEnabled?: boolean };
+  return settings.aiEnabled !== false;
+}
+
 async function writeAudit(
   ctx: MemberContext,
   entry: { entity: string; entityKey: string; oldValue: unknown; newValue: unknown },
@@ -936,6 +946,27 @@ export const annualRouter = router({
    * the dashboard spent tokens. It is now side-effect free; generation is the
    * mutation below.
    */
+  /**
+   * Step 41: a company-level switch that turns AI off entirely.
+   *
+   * Stored on `companies.settings`, so an organization that does not want its
+   * payroll aggregates sent to a model can say so once rather than relying on
+   * nobody pressing Generate.
+   */
+  setAiEnabled: editorProcedure
+    .input(z.object({ enabled: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const company = await ctx.db.query.companies.findFirst({
+        where: eq(companies.id, ctx.companyId),
+        columns: { settings: true },
+      });
+      const settings = (company?.settings ?? {}) as Record<string, unknown>;
+      await ctx.db.update(companies)
+        .set({ settings: { ...settings, aiEnabled: input.enabled }, updatedAt: new Date() })
+        .where(eq(companies.id, ctx.companyId));
+      return { enabled: input.enabled };
+    }),
+
   getInsights: memberProcedure
     .input(z.object({
       year: z.number().int().min(2000).max(2100),
@@ -945,6 +976,7 @@ export const annualRouter = router({
     }))
     .query(async ({ ctx, input }) => {
       const { summary, companyName } = await loadSummaryContext(ctx, input);
+      const aiEnabled = await isAiEnabledForCompany(ctx);
       const payload = buildInsightPayload(summary, companyName);
       const dataHash = insightCacheKey(payload);
       const method = input.forecastMethod ?? summary.forecastMethod;
@@ -966,7 +998,8 @@ export const annualRouter = router({
           source: null,
           promptVersion: null,
           stale: true,
-          canGenerate: isAiAvailable,
+          canGenerate: isAiAvailable && aiEnabled,
+          aiEnabled,
         };
       }
 
@@ -978,7 +1011,8 @@ export const annualRouter = router({
         source: cached.source as "ai" | "rules",
         promptVersion: cached.promptVersion,
         stale: false,
-        canGenerate: isAiAvailable,
+        canGenerate: isAiAvailable && aiEnabled,
+        aiEnabled,
       };
     }),
 
@@ -996,6 +1030,16 @@ export const annualRouter = router({
       forecastMethod: ForecastMethodSchema.optional(),
     }))
     .mutation(async ({ ctx, input }) => {
+      // The company-level switch is checked server-side, not only hidden in the
+      // UI (step 41).
+      const aiEnabled = await isAiEnabledForCompany(ctx);
+      if (!aiEnabled) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "AI is switched off for this company.",
+        });
+      }
+
       const limit = await limitInsightGeneration(ctx.companyId);
       if (!limit.success) {
         throw new TRPCError({
@@ -1046,7 +1090,8 @@ export const annualRouter = router({
         source,
         promptVersion: PROMPT_VERSION,
         stale: false,
-        canGenerate: isAiAvailable,
+        canGenerate: isAiAvailable && aiEnabled,
+        aiEnabled,
         remaining: limit.remaining,
       };
     }),
