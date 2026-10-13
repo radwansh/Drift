@@ -24,8 +24,17 @@ Review date: 2026-10-13. Branch `fix/annual-steps` @ `bbe1bfd`.
 > - **4e** `comparisons.run`, `getById` and `getSummary` are all scoped by
 >   company — three unscoped reads, not the one originally recorded.
 >
-> Outstanding: **steps 5–8**, i.e. selectable empty years (6), findings 4b/4c
-> (7), and looking at the page in a browser (8).
+> - **5** The year selector fix, which is finding 4d above.
+> - **6** `availableYears` is the union of years-with-data and the current year
+>   ± 1, so an empty neighbouring year is selectable for year-on-year.
+> - **7** 4b: `payrollPeriods.create` **removed** — it wrote a `ready` period
+>   from totals alone, with no snapshots and no aggregates, and nothing called
+>   it. 4c: `users.clerk_user_id` is nullable as of migration 0008, so a
+>   company can have more than one pending invitation; `createCompany`'s
+>   `email: ""` was the same trap and is gone too.
+>
+> Outstanding: **step 8**, the browser walkthrough. Partially done — see below
+> for what was verified and what still needs a human with credentials.
 
 Reported symptoms:
 
@@ -351,10 +360,52 @@ cross-tenant tests in `apps/web/test/annual-router.test.ts`.
 
 Ten annual components were rewritten across steps 32–41 and **none has ever
 been rendered in a browser**; the Playwright checks for steps 32, 35 and 47
-have never run here (no browsers, no baselines). Once Steps 1–3 are in, upload
-the two files in `samples/` and walk the page: KPI cards, the periods chart
-with `estimated`/`forecast`/`missing` styling, the bridge, departments, YoY,
-insights, export. Expect to find layout problems that no unit test can catch.
+have never run here (no browsers, no baselines).
+
+**Verified by a local dev server** (Next 15.5.19, throwaway Clerk test keys, no
+`DATABASE_URL`):
+
+- The app boots and compiles.
+- `/` returns 200 with no database configured — the documented degradation in
+  `client.ts` works, the landing page does not depend on Postgres.
+- `/login` returns 200.
+- `/`, `/annual-salaries`, `/dashboard`, `/payroll-periods` and `/detailed` all
+  respond; the four tenant pages are blocked for an anonymous visitor and leak
+  nothing.
+
+**Not verified, and not verifiable without credentials.** Every tenant page is
+behind Clerk, so the actual walkthrough — the thing this step exists for —
+needs a real sign-in and a database. Specifically untested: every annual
+component's rendered layout, the periods chart's `estimated`/`forecast`/
+`missing` styling, the bridge, departments, YoY, insights, export, and the
+rewritten dashboard and detailed views now that both read the server.
+
+One loose end found while smoke testing: with an **invalid** `CLERK_SECRET_KEY`
+the protected routes return **404** rather than redirecting to `/login`.
+`NEXT_PUBLIC_CLERK_SIGN_IN_URL` was set, so that is not the cause; the likely
+explanation is that Clerk v6 cannot build its handshake redirect without a
+valid instance and falls back to `notFound()`. Worth a single check on the
+preview with real keys: sign out, open `/annual-salaries`, and confirm it
+lands on the login page and not on a 404.
+
+**The walkthrough, in order.** Upload `samples/payroll_june_2026.csv` and
+`samples/payroll_july_2026.csv`, then:
+
+1. **Payroll Periods** — both periods listed with a real `ready` badge and real
+   employee/gross figures. Reload: they survive. Delete one, confirm it goes;
+   re-upload it.
+2. **Annual Salaries** — 2026 selected. Two actual months, the rest projected,
+   a full-year figure, and prose saying the numbers are a forecast. No month
+   missing from the chart. Check the KPI cards, bridge, departments, statutory,
+   headcount, absences, mix, YoY, warnings, insights and export.
+3. **Year selector** — pick a cadence and forecast method, then change the
+   year: both survive in the URL, and only one navigation happens (step 5).
+   Pick 2025, which has no data: it should be selectable and render an empty
+   year rather than erroring (step 6).
+4. **Dashboard** — Compare the two periods. This now runs server-side, so it
+   must work after a reload, which it never did before (step 3.4).
+5. **Detailed** — same comparison, with the column picker.
+6. Watch the browser console and the server log throughout.
 
 ---
 

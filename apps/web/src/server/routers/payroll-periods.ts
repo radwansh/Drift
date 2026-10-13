@@ -1,14 +1,13 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { eq, and, desc, like, sql } from "drizzle-orm";
-import { payrollPeriods, employeeSnapshots, uploadSessions, users } from "@saas/db";
+import { payrollPeriods, uploadSessions, users } from "@saas/db";
 import { editorProcedure, protectedProcedure, router } from "../trpc";
 import { validateRows } from "../upload/validate";
 import { processUpload } from "../upload/processor";
 
 const PeriodType = z.enum(["monthly", "weekly", "bi_monthly", "bi_weekly"]);
 const PeriodStatus = z.enum(["processing", "ready", "error"]);
-const DataSource = z.enum(["upload", "integration"]);
 
 const IngestMapping = z.object({
   sourceColumn: z.string().min(1),
@@ -67,49 +66,14 @@ export const payrollPeriodsRouter = router({
       return period;
     }),
 
-  create: protectedProcedure
-    .input(z.object({
-      periodType: PeriodType,
-      periodStart: z.string(),
-      periodEnd: z.string(),
-      source: DataSource.default("upload"),
-      sourceFilename: z.string().optional(),
-      currencyCode: z.string().length(3).default("USD"),
-      totalEmployees: z.number().int().nonnegative(),
-      totalGross: z.number().nonnegative(),
-      totalNet: z.number().nonnegative(),
-      rawFileKey: z.string().optional(),
-      uploadSessionId: z.string().uuid().optional(),
-    }))
-    .mutation(async ({ ctx, input }) => {
-      const currentUser = await ctx.db.query.users.findFirst({
-        where: eq(users.clerkUserId, ctx.userId),
-      });
-      if (!currentUser) throw new TRPCError({ code: "NOT_FOUND" });
-
-      const [period] = await ctx.db.insert(payrollPeriods).values({
-        companyId: currentUser.companyId,
-        periodType: input.periodType,
-        periodStart: input.periodStart,
-        periodEnd: input.periodEnd,
-        source: input.source,
-        sourceFilename: input.sourceFilename ?? null,
-        currencyCode: input.currencyCode,
-        status: "ready",
-        totalEmployees: input.totalEmployees,
-        totalGross: String(input.totalGross),
-        totalNet: String(input.totalNet),
-        rawFileKey: input.rawFileKey ?? null,
-      }).returning();
-
-      if (input.uploadSessionId) {
-        await ctx.db.update(uploadSessions)
-          .set({ status: "ready" })
-          .where(eq(uploadSessions.id, input.uploadSessionId));
-      }
-
-      return period;
-    }),
+  // `create` was removed (finding 4b). It inserted a period with
+  // `status: "ready"` from totals alone — no `employee_snapshots`, no
+  // `period_component_totals` — so the period was visible to the annual
+  // queries, made its year appear in the year selector, and contributed
+  // nothing to any figure. Nothing called it. `ingest` below is the supported
+  // path: it writes the rows and the aggregates before marking the period
+  // ready, which is the ordering that makes a period never visible without
+  // its totals.
 
   /**
    * Ingests a parsed payroll file: validate, then write the period, the

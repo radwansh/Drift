@@ -84,7 +84,14 @@ export default async function AnnualSalariesPage({
   const currentYear = new Date().getFullYear();
   const dataYears = yearsWithData.map((r) => r.year).sort((a, b) => b - a);
 
-  const availableYears = Array.from(new Set([...dataYears, currentYear])).sort((a, b) => b - a);
+  // Step 6: a year with no uploads at all is still selectable. A partially
+  // filled year already appeared here — EXTRACT(YEAR) returns it as soon as one
+  // period exists — but an empty neighbouring year did not, which made the
+  // prior year unreachable for year-on-year comparison. Next year is included
+  // because `parseYear` already accepts it, so the two agree.
+  const availableYears = Array.from(
+    new Set([...dataYears, currentYear - 1, currentYear, currentYear + 1]),
+  ).sort((a, b) => b - a);
 
   const defaultYear = dataYears.includes(currentYear)
     ? currentYear

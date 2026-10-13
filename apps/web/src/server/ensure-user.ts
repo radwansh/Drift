@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import { companies, users, type DbClient } from "@saas/db";
 
 /**
@@ -30,7 +30,8 @@ export interface CurrentUserRow {
   email: string;
   name: string;
   role: string;
-  clerkUserId: string;
+  /** Nullable on the table, but always set on a row this function returns. */
+  clerkUserId: string | null;
 }
 
 export interface ClerkProfile {
@@ -92,8 +93,14 @@ export async function ensureUser(
   // An invitation created a row with this email and no Clerk id
   // (auth.inviteUser). Claim it so an invited user joins the company they were
   // invited to instead of silently getting a company of their own.
+  //
+  // Matches NULL as of migration 0008, and `""` as well so rows written before
+  // it are still claimable on a database that has not been migrated yet.
   const invited = await db.query.users.findFirst({
-    where: and(eq(users.email, email), eq(users.clerkUserId, "")),
+    where: and(
+      eq(users.email, email),
+      or(isNull(users.clerkUserId), eq(users.clerkUserId, "")),
+    ),
   });
   if (invited) {
     const [claimed] = await db

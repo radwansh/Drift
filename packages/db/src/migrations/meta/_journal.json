@@ -57,6 +57,13 @@
       "when": 1791759523845,
       "tag": "0007_period_component_totals",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791845923845,
+      "tag": "0008_nullable_clerk_user_id",
+      "breakpoints": true
     }
   ]
 }

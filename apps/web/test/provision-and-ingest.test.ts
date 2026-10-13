@@ -115,7 +115,7 @@ describe("step 1: provisioning a signed-in account", () => {
     const owner = await ensureUser(ctx.db, "clerk_inviter", { email: "owner@invited.test" });
     await ctx.db.execute(sql`
       INSERT INTO users (company_id, email, name, role, clerk_user_id)
-      VALUES (${owner.companyId}, 'colleague@invited.test', 'Colleague', 'manager', '')
+      VALUES (${owner.companyId}, 'colleague@invited.test', 'Colleague', 'manager', NULL)
     `);
 
     const joined = await ensureUser(ctx.db, "clerk_colleague", {
@@ -126,6 +126,59 @@ describe("step 1: provisioning a signed-in account", () => {
     expect(joined.companyId).toBe(owner.companyId);
     expect(joined.role).toBe("manager");
     expect(joined.clerkUserId).toBe("clerk_colleague");
+  });
+
+  it("claims a legacy invited row that still holds an empty string", async () => {
+    // Rows written before migration 0008 stored `''` rather than NULL. They
+    // must still be claimable on a database that has not been migrated.
+    const owner = await ensureUser(ctx.db, "clerk_legacy_inviter", {
+      email: "owner@legacy.test",
+    });
+    await ctx.db.execute(sql`
+      INSERT INTO users (company_id, email, name, role, clerk_user_id)
+      VALUES (${owner.companyId}, 'legacy@legacy.test', 'Legacy', 'viewer', '')
+    `);
+
+    const joined = await ensureUser(ctx.db, "clerk_legacy_joiner", {
+      email: "legacy@legacy.test",
+    });
+    expect(joined.companyId).toBe(owner.companyId);
+    expect(joined.role).toBe("viewer");
+  });
+});
+
+describe("finding 4c: more than one invitation per company", () => {
+  it("accepts several pending invitations, which the UNIQUE index used to block", async () => {
+    const owner = await ensureUser(ctx.db, "clerk_multi_inviter", {
+      email: "owner@multi.test",
+    });
+
+    // The second of these used to fail with 23505, because `clerk_user_id` was
+    // NOT NULL UNIQUE and every invitation wrote the same `''`.
+    for (const who of ["a", "b", "c"]) {
+      await ctx.db.execute(sql`
+        INSERT INTO users (company_id, email, name, role, clerk_user_id)
+        VALUES (${owner.companyId}, ${`${who}@multi.test`}, ${who}, 'viewer', NULL)
+      `);
+    }
+
+    const pending = await ctx.db.execute(sql`
+      SELECT count(*)::int AS n FROM users
+      WHERE company_id = ${owner.companyId} AND clerk_user_id IS NULL
+    `);
+    expect((pending.rows[0] as { n: number }).n).toBe(3);
+  });
+
+  it("still refuses two rows for the same Clerk id", async () => {
+    // Making the column nullable must not weaken what the constraint is for.
+    const owner = await ensureUser(ctx.db, "clerk_dupe_guard", { email: "dupe@guard.test" });
+
+    await expect(
+      ctx.db.execute(sql`
+        INSERT INTO users (company_id, email, name, role, clerk_user_id)
+        VALUES (${owner.companyId}, 'other@guard.test', 'Other', 'viewer', 'clerk_dupe_guard')
+      `),
+    ).rejects.toThrow();
   });
 });
 
