@@ -119,7 +119,7 @@ export function TrialRequestModal({ open, onClose }: TrialRequestModalProps) {
               </h2>
               <p style={{ color: "#64748b", fontSize: "15px", lineHeight: 1.6, margin: 0 }}>
                 We&apos;ve received your trial request. Our team will review it and send you
-                access to Drift within 24 hours. Check your inbox for updates.
+                access to Clarivo within 24 hours. Check your inbox for updates.
               </p>
               <button
                 onClick={close}
