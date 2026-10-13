@@ -472,6 +472,78 @@ describe("finding 4e: the comparison reads are scoped by company", () => {
   });
 });
 
+describe("an import against a database that is behind on migrations", () => {
+  // Reproduces a real preview failure: the deploy ran before `pnpm db:migrate`,
+  // so `period_component_totals` (migration 0007) did not exist. The dialog
+  // showed the raw driver text and every retry left another orphan behind.
+  it("explains itself without leaking SQL, and leaves nothing behind", async () => {
+    const user = await ensureUser(ctx.db, "clerk_unmigrated", {
+      email: "unmigrated@example.test",
+    });
+
+    await ctx.db.execute(sql`DROP TABLE IF EXISTS period_component_totals CASCADE`);
+    try {
+      await expect(
+        periodsCaller("clerk_unmigrated").ingest({
+          ...sheet(10_000),
+          periodType: "monthly",
+          periodStart: "2026-09-01",
+          periodEnd: "2026-09-30",
+          currencyCode: "USD",
+          filename: "sept.csv",
+        }),
+      ).rejects.toThrow(/missing tables.*apply the pending migrations/i);
+
+      // No half-imported period: not left as `processing`, and no snapshots.
+      const periods = await ctx.db.execute(sql`
+        SELECT count(*)::int AS n FROM payroll_periods WHERE company_id = ${user.companyId}
+      `);
+      expect((periods.rows[0] as { n: number }).n).toBe(0);
+
+      const snaps = await ctx.db.execute(sql`
+        SELECT count(*)::int AS n FROM employee_snapshots s
+        JOIN payroll_periods p ON p.id = s.payroll_period_id
+        WHERE p.company_id = ${user.companyId}
+      `);
+      expect((snaps.rows[0] as { n: number }).n).toBe(0);
+    } finally {
+      // Restore for the rest of the file.
+      await ctx.db.execute(sql`
+        CREATE TABLE IF NOT EXISTS period_component_totals (
+          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+          payroll_period_id uuid NOT NULL REFERENCES payroll_periods(id) ON DELETE CASCADE,
+          department varchar(200) NOT NULL,
+          component_key varchar(200) NOT NULL,
+          total numeric(20,2) NOT NULL,
+          neg_rows integer NOT NULL DEFAULT 0,
+          pos_rows integer NOT NULL DEFAULT 0,
+          CONSTRAINT period_component_totals_period_department_key_unique
+            UNIQUE (payroll_period_id, department, component_key)
+        )
+      `);
+    }
+  });
+
+  it("imports normally once the table is there", async () => {
+    await ensureUser(ctx.db, "clerk_remigrated", { email: "remigrated@example.test" });
+    const result = await periodsCaller("clerk_remigrated").ingest({
+      ...sheet(10_000),
+      periodType: "monthly",
+      periodStart: "2026-09-01",
+      periodEnd: "2026-09-30",
+      currencyCode: "USD",
+      filename: "sept.csv",
+    });
+    expect(result.employeeCount).toBe(2);
+
+    const totals = await ctx.db.execute(sql`
+      SELECT count(*)::int AS n FROM period_component_totals
+      WHERE payroll_period_id = ${result.periodId}
+    `);
+    expect((totals.rows[0] as { n: number }).n).toBeGreaterThan(0);
+  });
+});
+
 describe("step 4: tenant filing", () => {
   it("files the period against the caller's own company", async () => {
     const a = await ensureUser(ctx.db, "clerk_tenant_a", { email: "a@tenants.test" });

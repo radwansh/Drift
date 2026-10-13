@@ -21,6 +21,29 @@ const IngestMapping = z.object({
 
 const ISO_DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected a YYYY-MM-DD date");
 
+/**
+ * Turns an ingest failure into something a person can act on.
+ *
+ * tRPC sends an uncaught error's message to the client, so a raw driver error
+ * surfaced in the upload dialog verbatim — a real upload failed with
+ * `relation "period_component_totals" does not exist`, which says nothing to
+ * whoever is holding the spreadsheet. Finding U15 made the same point about the
+ * annual page's error boundary: the detail belongs in the server log, not on
+ * screen.
+ */
+function describeIngestFailure(cause: unknown): string {
+  const code = typeof cause === "object" && cause !== null ? (cause as { code?: unknown }).code : undefined;
+  const message = cause instanceof Error ? cause.message : String(cause);
+
+  // 42P01 undefined_table. The deploy is ahead of its database: the code
+  // expects a table that the pending migrations have not created yet.
+  if (code === "42P01" || /relation "[^"]+" does not exist/i.test(message)) {
+    return "This database is missing tables that the application needs. Apply the pending migrations, then import again. Nothing was saved.";
+  }
+
+  return "The import could not be completed, and nothing was saved. Please try again.";
+}
+
 export const payrollPeriodsRouter = router({
   list: protectedProcedure
     .input(z.object({
@@ -124,20 +147,29 @@ export const payrollPeriodsRouter = router({
         });
       }
 
-      const result = await processUpload({
-        db: ctx.db,
-        rows: input.rows,
-        mappings: input.mappings,
-        companyId: ctx.companyId,
-        periodType: input.periodType,
-        periodStart: input.periodStart,
-        periodEnd: input.periodEnd,
-        currencyCode: validation.detectedCurrency ?? input.currencyCode,
-        filename: input.filename,
-        uploadSessionId: input.uploadSessionId,
-      });
+      try {
+        const result = await processUpload({
+          db: ctx.db,
+          rows: input.rows,
+          mappings: input.mappings,
+          companyId: ctx.companyId,
+          periodType: input.periodType,
+          periodStart: input.periodStart,
+          periodEnd: input.periodEnd,
+          currencyCode: validation.detectedCurrency ?? input.currencyCode,
+          filename: input.filename,
+          uploadSessionId: input.uploadSessionId,
+        });
 
-      return { ...result, warnings: validation.warnings };
+        return { ...result, warnings: validation.warnings };
+      } catch (cause) {
+        console.error("payrollPeriods.ingest failed:", cause);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: describeIngestFailure(cause),
+          cause,
+        });
+      }
     }),
 
   /**
