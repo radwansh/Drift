@@ -1,4 +1,4 @@
-import { requireDb } from "@saas/db";
+import { requireDb, type DbClient } from "@saas/db";
 import { eq } from "drizzle-orm";
 import {
   payrollPeriods,
@@ -27,6 +27,12 @@ interface ProcessInput {
   currencyCode: string;
   filename: string;
   uploadSessionId?: string;
+  /**
+   * The client to write through. Defaults to the module client via
+   * `requireDb()`; a caller inside tRPC passes `ctx.db` so the write is
+   * testable against the PGlite harness without `DATABASE_URL` being set.
+   */
+  db?: DbClient;
 }
 
 interface ProcessResult {
@@ -37,7 +43,7 @@ interface ProcessResult {
 }
 
 export async function processUpload(input: ProcessInput): Promise<ProcessResult> {
-  const db = requireDb();
+  const db = input.db ?? requireDb();
   const empIdMapping = input.mappings.find((m) => m.isEmployeeId);
   const empNameMapping = input.mappings.find((m) => m.isEmployeeName);
   const deptMapping = input.mappings.find((m) => m.isDepartment);

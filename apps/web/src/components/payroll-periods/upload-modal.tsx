@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useCallback, useRef, useMemo, useEffect } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { usePayrollStore } from "@/lib/payroll-store";
+import { trpc } from "@/lib/trpc";
 import type { EmployeeRecord } from "@saas/payroll-core";
 import * as XLSX from "xlsx";
 import {
@@ -37,6 +38,7 @@ import {
   X,
   Brain,
   FileText,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PeriodType } from "@saas/types";
@@ -114,6 +116,22 @@ function parseCsvLine(line: string): string[] {
   return result;
 }
 
+/**
+ * The sheet as objects keyed by trimmed header, which is the shape the server's
+ * `validateRows`/`processUpload` expect and matches `mapping.sourceColumn`.
+ */
+function rowsFromData(data: string[][]): Record<string, unknown>[] {
+  const headers = data[0];
+  if (!headers) return [];
+  return data.slice(1).map((row) => {
+    const obj: Record<string, unknown> = {};
+    headers.forEach((header, i) => {
+      obj[header.trim()] = row[i] ?? "";
+    });
+    return obj;
+  });
+}
+
 function parseEmployeesFromData(
   data: string[][],
   mappings: ColumnMappingState[],
@@ -174,6 +192,15 @@ function parseEmployeesFromData(
 
 export function UploadModal({ open, onOpenChange }: UploadModalProps) {
   const { addPeriod } = usePayrollStore();
+  const utils = trpc.useUtils();
+  const ingest = trpc.payrollPeriods.ingest.useMutation();
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<{
+    employeeCount: number;
+    totalGross: number;
+    totalNet: number;
+    warnings: number;
+  } | null>(null);
   const [step, setStep] = useState(1);
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileData, setFileData] = useState<string[][] | null>(null);
@@ -198,7 +225,6 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
   const [createComponentColumn, setCreateComponentColumn] = useState<string | null>(null);
   const [newComponentName, setNewComponentName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const simulateAiSuggestions = useCallback((headers: string[]) => {
     const identifierHeaders: Record<string, Partial<ColumnMappingState>> = {
@@ -292,69 +318,110 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
 
   const handleDragLeave = () => setDropActive(false);
 
-  const handleNextStep = () => {
+  /**
+   * Step 3 of docs/ANNUAL_PAGE_FIX_PLAN.md.
+   *
+   * Both stages used to be `setTimeout` fakes — a 1s "Validating…" and a 2.5s
+   * "Processing your payroll data…" — after which the data was pushed into a
+   * React context and nothing was ever sent anywhere. "Upload complete!" was
+   * shown unconditionally. The validation summary is now computed immediately
+   * (it is a local calculation and had no reason to be delayed) and the import
+   * calls `payrollPeriods.ingest`, which writes the period, the employee
+   * snapshots and the per-period aggregates.
+   */
+  const handleNextStep = async () => {
     if (step === 2) {
       if (periodType === "monthly" && (!selectedMonth || !selectedYear)) return;
       if (periodType !== "monthly" && (!dateFrom || !dateTo)) return;
       setStep(3);
-    } else if (step === 3) {
+      return;
+    }
+
+    if (step === 3) {
       setValidating(true);
-      timeoutRef.current = setTimeout(() => {
-        const tempEmployees = fileData
-          ? parseEmployeesFromData(fileData, mappings)
-          : [];
-        const totalRowCount = fileData ? fileData.length - 1 : 0;
-        const totalGross = tempEmployees.reduce((s, e) => s + e.grossSalary, 0);
-        const totalNet = tempEmployees.reduce((s, e) => s + e.netSalary, 0);
-        setValidationResult({
-          totalRows: totalRowCount,
-          employeeCount: tempEmployees.length,
-          totalGross,
-          totalNet,
-          errors: 0,
-          warnings: 0,
-        });
-        setValidating(false);
-        setStep(4);
-      }, 1000);
-    } else if (step === 4) {
-      setProcessing(true);
-      timeoutRef.current = setTimeout(() => {
-        const effectiveFrom = periodType === "monthly" && selectedYear && selectedMonth
-          ? `${selectedYear}-${selectedMonth}-01`
-          : dateFrom;
-        const effectiveTo = periodType === "monthly" && selectedYear && selectedMonth
-          ? new Date(
-              parseInt(selectedYear),
-              parseInt(selectedMonth),
-              0,
-            )
-              .toISOString()
-              .split("T")[0] ?? ""
-          : dateTo;
-        const employees = fileData
-          ? parseEmployeesFromData(fileData, mappings)
-          : [];
-        const label =
-          periodType === "monthly" && selectedYear && selectedMonth
-            ? new Date(
-                parseInt(selectedYear),
-                parseInt(selectedMonth) - 1,
-              ).toLocaleString("en-US", { month: "long", year: "numeric" })
-            : `${dateFrom} – ${dateTo}`;
-        addPeriod({
-          id: `upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          label,
-          periodType,
-          dateFrom: effectiveFrom,
-          dateTo: effectiveTo,
-          employees,
-          fileName: fileName ?? "unknown",
-        });
-        setSaved(true);
-        setProcessing(false);
-        setStep(5);
-      }, 2500);
+      const tempEmployees = fileData ? parseEmployeesFromData(fileData, mappings) : [];
+      setValidationResult({
+        totalRows: fileData ? fileData.length - 1 : 0,
+        employeeCount: tempEmployees.length,
+        totalGross: tempEmployees.reduce((s, e) => s + e.grossSalary, 0),
+        totalNet: tempEmployees.reduce((s, e) => s + e.netSalary, 0),
+        errors: 0,
+        warnings: 0,
+      });
+      setValidating(false);
+      setStep(4);
+      return;
+    }
+
+    if (step === 4) await runImport();
+  };
+
+  /**
+   * The real import. Separate from `handleNextStep` because "Try again" on a
+   * failure runs it while `step` is already 5.
+   */
+  const runImport = async () => {
+    const effectiveFrom =
+      periodType === "monthly" && selectedYear && selectedMonth
+        ? `${selectedYear}-${selectedMonth}-01`
+        : dateFrom;
+    const effectiveTo =
+      periodType === "monthly" && selectedYear && selectedMonth
+        ? new Date(Date.UTC(parseInt(selectedYear), parseInt(selectedMonth), 0))
+            .toISOString()
+            .split("T")[0] ?? ""
+        : dateTo;
+    const label =
+      periodType === "monthly" && selectedYear && selectedMonth
+        ? new Date(parseInt(selectedYear), parseInt(selectedMonth) - 1).toLocaleString("en-US", {
+            month: "long",
+            year: "numeric",
+          })
+        : `${dateFrom} – ${dateTo}`;
+
+    setImportError(null);
+    setProcessing(true);
+    setStep(5);
+
+    try {
+      const result = await ingest.mutateAsync({
+        rows: fileData ? rowsFromData(fileData) : [],
+        mappings,
+        periodType,
+        periodStart: effectiveFrom,
+        periodEnd: effectiveTo,
+        currencyCode: "USD",
+        filename: fileName ?? "unknown",
+      });
+
+      setImportResult({
+        employeeCount: result.employeeCount,
+        totalGross: result.totalGross,
+        totalNet: result.totalNet,
+        warnings: result.warnings.length,
+      });
+
+      // The comparison dashboard still reads this context, so keep it in step
+      // with the server until that page moves to a server query (step 4 of
+      // the plan). It is a cache now, not the system of record.
+      addPeriod({
+        id: result.periodId,
+        label,
+        periodType,
+        dateFrom: effectiveFrom,
+        dateTo: effectiveTo,
+        employees: fileData ? parseEmployeesFromData(fileData, mappings) : [],
+        fileName: fileName ?? "unknown",
+      });
+
+      await utils.payrollPeriods.list.invalidate();
+      setSaved(true);
+    } catch (error) {
+      setImportError(
+        error instanceof Error ? error.message : "The import failed. Please try again.",
+      );
+    } finally {
+      setProcessing(false);
     }
   };
 
@@ -389,12 +456,6 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
     }
   };
 
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, []);
-
   const handlePrevStep = () => {
     if (step > 1) setStep(step - 1);
   };
@@ -413,6 +474,8 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
     setProcessing(false);
     setValidationResult(null);
     setSaved(false);
+    setImportError(null);
+    setImportResult(null);
   };
 
   const handleOpenChangeWrapper = (open: boolean) => {
@@ -703,7 +766,7 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
             {processing ? (
               <>
                 <Loader2 className="h-12 w-12 animate-spin text-primary" />
-                <p className="mt-4 text-sm font-medium">Processing your payroll data...</p>
+                <p className="mt-4 text-sm font-medium">Saving your payroll data...</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   This may take a few moments
                 </p>
@@ -711,13 +774,34 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
                   <div className="h-full w-2/3 animate-pulse rounded-full bg-primary" />
                 </div>
               </>
+            ) : importError ? (
+              <div className="w-full">
+                <Alert variant="destructive">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>Import failed</AlertTitle>
+                  <AlertDescription>{importError}</AlertDescription>
+                </Alert>
+                <p className="mt-3 text-center text-xs text-muted-foreground">
+                  Nothing was saved. Go back to adjust the mapping, or try again.
+                </p>
+              </div>
             ) : (
               <>
                 <CheckCircle2 className="h-12 w-12 text-green-500" />
-                <p className="mt-4 text-sm font-medium">Upload complete!</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Your payroll period has been processed successfully.
-                </p>
+                <p className="mt-4 text-sm font-medium">Upload complete</p>
+                {importResult ? (
+                  <p className="mt-1 text-center text-xs text-muted-foreground">
+                    Saved {importResult.employeeCount} employee
+                    {importResult.employeeCount === 1 ? "" : "s"} for this period.
+                    {importResult.warnings > 0
+                      ? ` ${importResult.warnings} warning${importResult.warnings === 1 ? "" : "s"} recorded.`
+                      : ""}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Your payroll period has been saved.
+                  </p>
+                )}
               </>
             )}
           </div>
@@ -755,21 +839,37 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
 
         <DialogFooter className="flex items-center justify-between">
           <div>
-            {step < 5 && (
-              <Button variant="outline" onClick={handlePrevStep} disabled={step <= 1}>
+            {(step < 5 || importError) && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (importError) {
+                    setImportError(null);
+                    setStep(4);
+                    return;
+                  }
+                  handlePrevStep();
+                }}
+                disabled={step <= 1 || processing}
+              >
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Back
               </Button>
             )}
           </div>
           <div className="flex gap-2">
-            {step === 5 ? (
-              <Button onClick={() => handleOpenChangeWrapper(false)}>
+            {step === 5 && importError ? (
+              <Button onClick={() => void runImport()} disabled={processing}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Try again
+              </Button>
+            ) : step === 5 ? (
+              <Button onClick={() => handleOpenChangeWrapper(false)} disabled={processing}>
                 Done
               </Button>
             ) : (
               <Button
-                onClick={handleNextStep}
+                onClick={() => void handleNextStep()}
                 disabled={
                   (step === 2 && (
                     periodType === "monthly" ? (!selectedMonth || !selectedYear) : (!dateFrom || !dateTo)

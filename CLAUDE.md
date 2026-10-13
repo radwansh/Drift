@@ -25,10 +25,10 @@ pnpm test                         # all three test projects
 pnpm format                       # prettier --write across the repo
 ```
 
-Turbo stops the whole run at the first failing task. To see every package's result, add `--continue`:
+Turbo stops the whole run at the first failing task. To see every package's result, add `--continue`. It has to go to turbo, not through the `pnpm run` script — `pnpm typecheck -- --continue` forwards the flag to `tsc`, which fails with `TS5023`:
 
 ```bash
-pnpm typecheck -- --continue
+pnpm exec turbo typecheck --continue
 ```
 
 ### Tests

@@ -1,7 +1,7 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import { auth } from "@clerk/nextjs/server";
-import { eq } from "drizzle-orm";
-import { db, requireDb, users } from "@saas/db";
+import { db, requireDb } from "@saas/db";
+import { ensureUser } from "./ensure-user";
 
 export async function createContext() {
   const authResult = await auth();
@@ -35,10 +35,20 @@ export const EDITOR_ROLES = ["admin", "manager"] as const;
  * middleware means one query shared by the whole call.
  */
 const withCurrentUser = isAuthenticated.unstable_pipe(async ({ ctx, next }) => {
-  const currentUser = await ctx.db.query.users.findFirst({
-    where: eq(users.clerkUserId, ctx.userId),
-  });
-  if (!currentUser) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
+  // Provisions the company and user on first use rather than 404ing (step 1 of
+  // docs/ANNUAL_PAGE_FIX_PLAN.md). Nothing else creates that row, so every
+  // member procedure used to fail for a freshly signed-up account. The lookup
+  // is unchanged for an account that already has one.
+  let currentUser;
+  try {
+    currentUser = await ensureUser(ctx.db, ctx.userId);
+  } catch (cause) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Could not resolve your account.",
+      cause,
+    });
+  }
   return next({ ctx: { ...ctx, currentUser, companyId: currentUser.companyId } });
 });
 
