@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useCallback, useMemo, useEffect } from "react";
-import { runComparison, type ComparisonOutput } from "@saas/payroll-core";
+import type { ComparisonOutput } from "@saas/payroll-core";
+import { trpc } from "@/lib/trpc";
+import { usePeriodOptions } from "@/hooks/use-period-options";
 import { PeriodSelector } from "@/components/dashboard/period-selector";
 import { ComparisonTable } from "@/components/detailed-view/comparison-table";
 import { ColumnPicker, type ColumnConfig } from "@/components/detailed-view/column-picker";
@@ -45,43 +47,46 @@ function buildColumnConfig(results: ComparisonOutput[], visibility: Record<strin
   ];
 }
 
+/**
+ * Step 3.4 of docs/ANNUAL_PAGE_FIX_PLAN.md: the comparison runs server-side
+ * through `comparisons.run` instead of over employee records held in an
+ * in-memory store, so this page works for any period the company has, not
+ * only ones uploaded in the current tab.
+ */
 export default function DetailedViewPage() {
-  const { periods, componentVisibility } = usePayrollStore();
+  const { componentVisibility } = usePayrollStore();
   const [periodType, setPeriodType] = useState<string>("monthly");
-  const [currentPeriodLabel, setCurrentPeriodLabel] = useState("");
-  const [previousPeriodLabel, setPreviousPeriodLabel] = useState("");
-  const [loading, setLoading] = useState(false);
+  const { periods } = usePeriodOptions();
+  const [currentPeriodId, setCurrentPeriodId] = useState("");
+  const [previousPeriodId, setPreviousPeriodId] = useState("");
   const [results, setResults] = useState<ComparisonOutput[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState<string>("all");
 
   const [columnConfig, setColumnConfig] = useState<ColumnConfig[]>([]);
 
+  const comparison = trpc.comparisons.run.useMutation({
+    onSuccess: (result) => {
+      setResults(result.results);
+      setColumnConfig(buildColumnConfig(result.results, componentVisibility));
+    },
+    onError: () => {
+      setResults([]);
+      setColumnConfig([]);
+    },
+  });
+  const loading = comparison.isPending;
+
   useEffect(() => {
-    if (periods.length >= 2) {
-      setCurrentPeriodLabel(periods[periods.length - 1].label);
-      setPreviousPeriodLabel(periods[periods.length - 2].label);
-    } else if (periods.length === 1) {
-      setCurrentPeriodLabel(periods[0].label);
-    }
+    if (periods.length === 0) return;
+    setCurrentPeriodId(periods[periods.length - 1]!.id);
+    if (periods.length >= 2) setPreviousPeriodId(periods[periods.length - 2]!.id);
   }, [periods]);
 
   const runComparisonHandler = useCallback(() => {
-    setLoading(true);
-    const currentPeriod = periods.find((p) => p.label === currentPeriodLabel);
-    const previousPeriod = periods.find((p) => p.label === previousPeriodLabel);
-    const current = currentPeriod?.employees ?? [];
-    const previous = previousPeriod?.employees ?? [];
-    if (current.length === 0 || previous.length === 0) {
-      setResults([]);
-      setColumnConfig([]);
-      return setLoading(false);
-    }
-    const { results: compResults } = runComparison(current, previous);
-    setResults(compResults);
-    setColumnConfig(buildColumnConfig(compResults, componentVisibility));
-    setLoading(false);
-  }, [currentPeriodLabel, previousPeriodLabel, periods, componentVisibility]);
+    if (!currentPeriodId || !previousPeriodId || currentPeriodId === previousPeriodId) return;
+    comparison.mutate({ currentPeriodId, previousPeriodId });
+  }, [comparison, currentPeriodId, previousPeriodId]);
 
   const filteredResults = useMemo(() => {
     let filtered = results;
@@ -124,10 +129,11 @@ export default function DetailedViewPage() {
       <PeriodSelector
         periodType={periodType}
         onPeriodTypeChange={setPeriodType}
-        currentPeriodLabel={currentPeriodLabel}
-        previousPeriodLabel={previousPeriodLabel}
-        onCurrentPeriodChange={setCurrentPeriodLabel}
-        onPreviousPeriodChange={setPreviousPeriodLabel}
+        periods={periods}
+        currentPeriodId={currentPeriodId}
+        previousPeriodId={previousPeriodId}
+        onCurrentPeriodChange={setCurrentPeriodId}
+        onPreviousPeriodChange={setPreviousPeriodId}
         onCompare={runComparisonHandler}
         loading={loading}
       />

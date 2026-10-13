@@ -44,7 +44,6 @@ const PAGE_SIZE = 20;
  */
 export default function PayrollPeriodsPage() {
   const router = useRouter();
-  const { removePeriod, clearPeriods } = usePayrollStore();
   const utils = trpc.useUtils();
   const [searchQuery, setSearchQuery] = useState("");
   const [periodTypeFilter, setPeriodTypeFilter] = useState<string>("all");
@@ -75,18 +74,12 @@ export default function PayrollPeriodsPage() {
   };
 
   const deleteMutation = trpc.payrollPeriods.delete.useMutation({
-    onSuccess: async (deleted) => {
-      // Keep the comparison dashboard's cache in step until it moves to a
-      // server query too (step 3.4 of the plan).
-      removePeriod(deleted.id);
-      await refresh();
-    },
+    onSuccess: refresh,
     onError: (error) => setActionError(error.message),
   });
 
   const deleteAllMutation = trpc.payrollPeriods.deleteAll.useMutation({
     onSuccess: async () => {
-      clearPeriods();
       setPage(1);
       await refresh();
     },

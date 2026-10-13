@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback, useRef, useMemo } from "react";
-import { usePayrollStore } from "@/lib/payroll-store";
 import { trpc } from "@/lib/trpc";
 import type { EmployeeRecord } from "@saas/payroll-core";
 import * as XLSX from "xlsx";
@@ -191,7 +190,6 @@ function parseEmployeesFromData(
 }
 
 export function UploadModal({ open, onOpenChange }: UploadModalProps) {
-  const { addPeriod } = usePayrollStore();
   const utils = trpc.useUtils();
   const ingest = trpc.payrollPeriods.ingest.useMutation();
   const [importError, setImportError] = useState<string | null>(null);
@@ -371,14 +369,6 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
             .toISOString()
             .split("T")[0] ?? ""
         : dateTo;
-    const label =
-      periodType === "monthly" && selectedYear && selectedMonth
-        ? new Date(parseInt(selectedYear), parseInt(selectedMonth) - 1).toLocaleString("en-US", {
-            month: "long",
-            year: "numeric",
-          })
-        : `${dateFrom} – ${dateTo}`;
-
     setImportError(null);
     setProcessing(true);
     setStep(5);
@@ -399,19 +389,6 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
         totalGross: result.totalGross,
         totalNet: result.totalNet,
         warnings: result.warnings.length,
-      });
-
-      // The comparison dashboard still reads this context, so keep it in step
-      // with the server until that page moves to a server query (step 4 of
-      // the plan). It is a cache now, not the system of record.
-      addPeriod({
-        id: result.periodId,
-        label,
-        periodType,
-        dateFrom: effectiveFrom,
-        dateTo: effectiveTo,
-        employees: fileData ? parseEmployeesFromData(fileData, mappings) : [],
-        fileName: fileName ?? "unknown",
       });
 
       await utils.payrollPeriods.list.invalidate();

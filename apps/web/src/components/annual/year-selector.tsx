@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import {
   Select,
   SelectContent,
@@ -12,6 +11,18 @@ import {
 
 const YEAR_COOKIE = "drift_annual_year";
 
+/**
+ * Year picker for the annual dashboard (finding 4d).
+ *
+ * The parent owns the URL. This used to also call
+ * `router.replace('/annual-salaries?year=N')` itself, which discarded the
+ * `cadence`, `currency` and `method` params and raced the parent's own
+ * `router.replace` — two navigations per change, with the hardcoded one
+ * clobbering the one that preserved the rest of the query string.
+ *
+ * `onYearChange` is required so a new caller cannot quietly end up with a
+ * selector that changes nothing.
+ */
 export function YearSelector({
   initialYear,
   availableYears,
@@ -19,9 +30,8 @@ export function YearSelector({
 }: {
   initialYear: number;
   availableYears: number[];
-  onYearChange?: (year: number) => void;
+  onYearChange: (year: number) => void;
 }) {
-  const router = useRouter();
   const [value, setValue] = useState(String(initialYear));
 
   useEffect(() => {
@@ -31,8 +41,7 @@ export function YearSelector({
   function handleChange(next: string) {
     setValue(next);
     document.cookie = `${YEAR_COOKIE}=${next}; path=/; max-age=31536000; samesite=lax`;
-    onYearChange?.(Number(next));
-    router.replace(`/annual-salaries?year=${next}`);
+    onYearChange(Number(next));
   }
 
   return (

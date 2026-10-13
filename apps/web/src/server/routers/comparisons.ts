@@ -11,23 +11,39 @@ import {
 } from "@saas/db";
 import { runComparison } from "@saas/payroll-core";
 import type { EmployeeRecord } from "@saas/payroll-core";
-import { protectedProcedure, router } from "../trpc";
+import { memberProcedure, router } from "../trpc";
 
+/**
+ * Every read here resolves its row by id *and* company (finding 4e).
+ *
+ * `run`, `getById` and `getSummary` previously matched on id alone on a
+ * `protectedProcedure`, so any signed-in user who could name a period or
+ * comparison UUID got its contents back — for `run` that is every
+ * `employee_snapshots` row for two periods, names and pay included. Only
+ * `list` was scoped. These are reads, so they leaked rather than destroyed,
+ * which makes them the more serious half of the scoping problem described in
+ * CLAUDE.md.
+ */
 export const comparisonsRouter = router({
-  run: protectedProcedure
+  run: memberProcedure
     .input(z.object({
       currentPeriodId: z.string().uuid(),
       previousPeriodId: z.string().uuid(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const currentUser = await ctx.db.query.users.findFirst({
-        where: eq(users.clerkUserId, ctx.userId),
-      });
-      if (!currentUser) throw new TRPCError({ code: "NOT_FOUND" });
-
       const [currentPeriod, previousPeriod] = await Promise.all([
-        ctx.db.query.payrollPeriods.findFirst({ where: eq(payrollPeriods.id, input.currentPeriodId) }),
-        ctx.db.query.payrollPeriods.findFirst({ where: eq(payrollPeriods.id, input.previousPeriodId) }),
+        ctx.db.query.payrollPeriods.findFirst({
+          where: and(
+            eq(payrollPeriods.id, input.currentPeriodId),
+            eq(payrollPeriods.companyId, ctx.companyId),
+          ),
+        }),
+        ctx.db.query.payrollPeriods.findFirst({
+          where: and(
+            eq(payrollPeriods.id, input.previousPeriodId),
+            eq(payrollPeriods.companyId, ctx.companyId),
+          ),
+        }),
       ]);
       if (!currentPeriod || !previousPeriod) {
         throw new TRPCError({ code: "NOT_FOUND", message: "One or both periods not found" });
@@ -51,11 +67,11 @@ export const comparisonsRouter = router({
         }));
 
       const [run] = await ctx.db.insert(comparisonRuns).values({
-        companyId: currentUser.companyId,
+        companyId: ctx.companyId,
         currentPeriodId: input.currentPeriodId,
         previousPeriodId: input.previousPeriodId,
         status: "running",
-        createdById: currentUser.id,
+        createdById: ctx.currentUser.id,
       }).returning();
 
       try {
@@ -98,11 +114,11 @@ export const comparisonsRouter = router({
       }
     }),
 
-  getById: protectedProcedure
+  getById: memberProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const run = await ctx.db.query.comparisonRuns.findFirst({
-        where: eq(comparisonRuns.id, input.id),
+        where: and(eq(comparisonRuns.id, input.id), eq(comparisonRuns.companyId, ctx.companyId)),
       });
       if (!run) throw new TRPCError({ code: "NOT_FOUND", message: "Comparison run not found" });
 
@@ -113,39 +129,34 @@ export const comparisonsRouter = router({
       return { ...run, results };
     }),
 
-  list: protectedProcedure
+  list: memberProcedure
     .input(z.object({
       page: z.number().int().positive().default(1),
       pageSize: z.number().int().min(1).max(100).default(20),
     }))
     .query(async ({ ctx, input }) => {
-      const currentUser = await ctx.db.query.users.findFirst({
-        where: eq(users.clerkUserId, ctx.userId),
-      });
-      if (!currentUser) throw new TRPCError({ code: "NOT_FOUND" });
-
       const offset = (input.page - 1) * input.pageSize;
 
       const [data, total] = await Promise.all([
         ctx.db.select().from(comparisonRuns)
-          .where(eq(comparisonRuns.companyId, currentUser.companyId))
+          .where(eq(comparisonRuns.companyId, ctx.companyId))
           .orderBy(desc(comparisonRuns.createdAt))
           .limit(input.pageSize)
           .offset(offset),
         ctx.db.select({ count: sql<number>`count(*)` }).from(comparisonRuns)
-          .where(eq(comparisonRuns.companyId, currentUser.companyId)),
+          .where(eq(comparisonRuns.companyId, ctx.companyId)),
       ]);
 
       return { data, total: Number(total[0].count), page: input.page, pageSize: input.pageSize };
     }),
 
-  getSummary: protectedProcedure
+  getSummary: memberProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       const run = await ctx.db.query.comparisonRuns.findFirst({
-        where: eq(comparisonRuns.id, input.id),
+        where: and(eq(comparisonRuns.id, input.id), eq(comparisonRuns.companyId, ctx.companyId)),
       });
-      if (!run) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!run) throw new TRPCError({ code: "NOT_FOUND", message: "Comparison run not found" });
 
       const company = await ctx.db.query.companies.findFirst({
         where: eq(companies.id, run.companyId),

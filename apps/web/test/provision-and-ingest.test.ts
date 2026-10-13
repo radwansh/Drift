@@ -4,6 +4,7 @@ import { createTestDb, type TestDb } from "./pglite-neon";
 import { ensureUser } from "@/server/ensure-user";
 import { payrollPeriodsRouter } from "@/server/routers/payroll-periods";
 import { annualRouter } from "@/server/routers/annual";
+import { comparisonsRouter } from "@/server/routers/comparisons";
 
 /**
  * Steps 1-3 of docs/ANNUAL_PAGE_FIX_PLAN.md, against a real Postgres.
@@ -32,6 +33,10 @@ function periodsCaller(clerkUserId: string) {
 
 function annualCaller(clerkUserId: string) {
   return annualRouter.createCaller({ userId: clerkUserId, db: ctx.db } as never);
+}
+
+function comparisonsCaller(clerkUserId: string) {
+  return comparisonsRouter.createCaller({ userId: clerkUserId, db: ctx.db } as never);
 }
 
 /** A two-employee monthly sheet in the shape the client sends. */
@@ -305,6 +310,116 @@ describe("step 3: an upload reaches the database", () => {
     expect((keeperRows.rows[0] as { n: number }).n).toBe(1);
   });
 
+  it("runs a comparison server-side from stored snapshots", async () => {
+    await ensureUser(ctx.db, "clerk_compare", { email: "compare@example.test" });
+    const caller = periodsCaller("clerk_compare");
+
+    const jan = await caller.ingest({
+      ...sheet(10_000),
+      periodType: "monthly",
+      periodStart: "2026-01-01",
+      periodEnd: "2026-01-31",
+      currencyCode: "USD",
+      filename: "jan.csv",
+    });
+    const feb = await caller.ingest({
+      ...sheet(12_000),
+      periodType: "monthly",
+      periodStart: "2026-02-01",
+      periodEnd: "2026-02-28",
+      currencyCode: "USD",
+      filename: "feb.csv",
+    });
+
+    const result = await comparisonsCaller("clerk_compare").run({
+      currentPeriodId: feb.periodId,
+      previousPeriodId: jan.periodId,
+    });
+
+    // The dashboard reads these; previously they were computed in the browser
+    // from an in-memory store (step 3.4).
+    expect(result.results).toHaveLength(2);
+    expect(result.comparisonRun.status).toBe("completed");
+
+    // `totalPayrollVariance` sums the mapped components, not the gross column:
+    // per employee Basic Salary + Income Tax is 5000-600=4400 in January and
+    // 6000-720=5280 in February, so 2*(5280-4400) = 1760 across the company.
+    expect(result.summary.totalPayrollVariance.absolute).toBeCloseTo(1_760, 2);
+    expect(result.summary.employeesAffected.increased).toBe(2);
+  });
+});
+
+describe("finding 4e: the comparison reads are scoped by company", () => {
+  it("will not compare another tenant's periods", async () => {
+    await ensureUser(ctx.db, "clerk_4e_owner", { email: "owner@4e.test" });
+    await ensureUser(ctx.db, "clerk_4e_outsider", { email: "outsider@4e.test" });
+    const owner = periodsCaller("clerk_4e_owner");
+
+    const jan = await owner.ingest({
+      ...sheet(10_000),
+      periodType: "monthly",
+      periodStart: "2026-01-01",
+      periodEnd: "2026-01-31",
+      currencyCode: "USD",
+      filename: "jan.csv",
+    });
+    const feb = await owner.ingest({
+      ...sheet(12_000),
+      periodType: "monthly",
+      periodStart: "2026-02-01",
+      periodEnd: "2026-02-28",
+      currencyCode: "USD",
+      filename: "feb.csv",
+    });
+
+    // This used to return both periods' full employee snapshots — names,
+    // departments and pay — to anyone who could name two UUIDs.
+    await expect(
+      comparisonsCaller("clerk_4e_outsider").run({
+        currentPeriodId: feb.periodId,
+        previousPeriodId: jan.periodId,
+      }),
+    ).rejects.toThrow(/not found/i);
+  });
+
+  it("will not read another tenant's comparison run", async () => {
+    await ensureUser(ctx.db, "clerk_4e_run_owner", { email: "runowner@4e.test" });
+    await ensureUser(ctx.db, "clerk_4e_run_spy", { email: "runspy@4e.test" });
+    const owner = periodsCaller("clerk_4e_run_owner");
+
+    const jan = await owner.ingest({
+      ...sheet(10_000),
+      periodType: "monthly",
+      periodStart: "2026-03-01",
+      periodEnd: "2026-03-31",
+      currencyCode: "USD",
+      filename: "mar.csv",
+    });
+    const feb = await owner.ingest({
+      ...sheet(12_000),
+      periodType: "monthly",
+      periodStart: "2026-04-01",
+      periodEnd: "2026-04-30",
+      currencyCode: "USD",
+      filename: "apr.csv",
+    });
+    const run = await comparisonsCaller("clerk_4e_run_owner").run({
+      currentPeriodId: feb.periodId,
+      previousPeriodId: jan.periodId,
+    });
+    const runId = run.comparisonRun.id;
+
+    const spy = comparisonsCaller("clerk_4e_run_spy");
+    await expect(spy.getById({ id: runId })).rejects.toThrow(/not found/i);
+    await expect(spy.getSummary({ id: runId })).rejects.toThrow(/not found/i);
+
+    // The owner still can.
+    const own = await comparisonsCaller("clerk_4e_run_owner").getById({ id: runId });
+    expect(own.results).toHaveLength(2);
+  });
+});
+
+describe("step 4: tenant filing", () => {
   it("files the period against the caller's own company", async () => {
     const a = await ensureUser(ctx.db, "clerk_tenant_a", { email: "a@tenants.test" });
     const b = await ensureUser(ctx.db, "clerk_tenant_b", { email: "b@tenants.test" });

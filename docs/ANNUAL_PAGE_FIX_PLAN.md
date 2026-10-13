@@ -2,26 +2,30 @@
 
 Review date: 2026-10-13. Branch `fix/annual-steps` @ `bbe1bfd`.
 
-> **Status: steps 1–4 implemented**, covered by
-> `apps/web/test/provision-and-ingest.test.ts` (12 tests). Provisioning
-> (`apps/web/src/server/ensure-user.ts`), the explicit failure state on the
-> annual page, the `payrollPeriods.ingest` path, and the periods page reading
-> from the server are all in. An upload now survives a reload and appears in
-> the annual summary.
+> **Status: steps 1–4 done, including 3.4, plus findings 4a, 4d and 4e.**
+> Covered by `apps/web/test/provision-and-ingest.test.ts` (15 tests).
 >
-> Step 4 required two things from step 7 to be pulled forward, because pointing
-> the page at the server makes them reachable: `payrollPeriods.delete` is now
-> scoped by company (finding 4a) and moved to `editorProcedure`, and a scoped
-> `deleteAll` backs "Clear All", which previously promised to delete everything
-> but only emptied a React context.
+> - **1** Provisioning via `apps/web/src/server/ensure-user.ts`, wired into
+>   `memberProcedure` and the annual page.
+> - **2** The annual page renders an explicit failure state instead of
+>   redirecting.
+> - **3** `payrollPeriods.ingest` writes the period, snapshots and aggregates;
+>   the modal's `setTimeout` fakes are gone.
+> - **3.4** The in-memory `periods` store is **gone**. The dashboard and the
+>   detailed view run the comparison through `comparisons.run` and pick periods
+>   by id via the shared `usePeriodOptions` hook. `payroll-store.tsx` now holds
+>   only `componentVisibility`, a genuine UI preference. The dead
+>   `use-comparison.ts` hook was deleted.
+> - **4** The periods page reads `payrollPeriods.list`, with SQL-side filters,
+>   search and pagination.
+> - **4a** `payrollPeriods.delete` is scoped by company and editor-only; a
+>   scoped `deleteAll` backs "Clear All".
+> - **4d** The year selector no longer navigates; the parent owns the URL.
+> - **4e** `comparisons.run`, `getById` and `getSummary` are all scoped by
+>   company — three unscoped reads, not the one originally recorded.
 >
-> **Still outstanding, and one is a live data leak:** see finding 4e below —
-> `comparisons.run` reads two periods and all their employee snapshots by id
-> with no company check. Steps 5–8 remain, and the comparison Dashboard still
-> reads the in-memory store, so **Compare only works for periods uploaded in
-> the current browser session**; for a period loaded from the server it lands
-> on an empty dashboard. That is the last piece of the store's removal
-> (step 3.4).
+> Outstanding: **steps 5–8**, i.e. selectable empty years (6), findings 4b/4c
+> (7), and looking at the page in a browser (8).
 
 Reported symptoms:
 
@@ -207,16 +211,19 @@ year appear in the year selector while contributing nothing to any total. Use
 violates the constraint. Use `NULL` — which requires making the column
 nullable — or a per-invite placeholder.
 
-**4e. `comparisons.run` leaks another tenant's employee data.** Found while
-doing step 4. `apps/web/src/server/routers/comparisons.ts:29` fetches both
-periods by id with no company filter, then selects every
-`employee_snapshots` row for them and returns the full comparison —
-per-employee names, departments, and pay. Unlike 4a this needs no UI: it is an
-exposed `protectedProcedure`, so any signed-in user who can name two period
-UUIDs gets their contents. It is also the more serious of the two, because a
-read leaks data where the delete only destroyed it. The fix is the same shape:
-resolve `ctx.companyId` (move to `memberProcedure`) and add it to both period
-lookups.
+**4e. `comparisons.run` leaks another tenant's employee data.** *Fixed.* Found
+while doing step 4. `comparisons.run` fetched both periods by id with no
+company filter, then selected every `employee_snapshots` row for them and
+returned the full comparison — per-employee names, departments and pay. Unlike
+4a this needed no UI: it was an exposed `protectedProcedure`, so any signed-in
+user who could name two period UUIDs got their contents. A read leaks data
+where the delete only destroyed it.
+
+On fixing it, **two more unscoped reads in the same file** turned up, both
+also matching on id alone: `getById`, which returns every `comparison_results`
+row for a run (per-employee deltas and anomaly flags), and `getSummary`, which
+returns the stored summary and the company name. Only `list` was scoped. All
+four procedures are now `memberProcedure` and filter on `ctx.companyId`.
 
 **4d. The year selector double-navigates and drops params.**
 `apps/web/src/components/annual/year-selector.tsx:35` does
