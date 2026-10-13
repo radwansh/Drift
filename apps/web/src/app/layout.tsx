@@ -7,8 +7,12 @@ import { Providers } from "./providers";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Drift - Payroll Variance Analysis",
+  title: "Clarivo - Payroll Variance Analysis",
   description: "Compare employee salaries between payroll periods. Spot variances, anomalies, and trends.",
+  // The favicon had no reference at all: a bare public/favicon.svg is served
+  // but never linked, and browsers only probe for /favicon.ico. Declaring it
+  // here is what actually points the tab icon at the brand directory.
+  icons: { icon: "/brand/favicon.svg" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

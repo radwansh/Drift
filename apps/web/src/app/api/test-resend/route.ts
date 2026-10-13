@@ -17,7 +17,7 @@ export async function GET() {
       body: JSON.stringify({
         from: "onboarding@resend.dev",
         to: "delivered@resend.dev",
-        subject: "Drift - Test Email",
+        subject: "Clarivo - Test Email",
         text: "If you receive this, Resend is configured correctly.",
       }),
     });

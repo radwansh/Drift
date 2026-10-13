@@ -211,7 +211,7 @@ export function LandingPage() {
         <div className="particles" id="landing-particles"></div>
 
         <div style={{ position: "fixed", top: "24px", left: "32px", zIndex: 100 }}>
-          <img src="/logo.svg" alt="Drift" style={{ height: 32 }} />
+          <img src="/brand/clarivo-logo.svg" alt="Clarivo" style={{ height: 32 }} />
         </div>
 
         <div style={{ position: "relative", width: "100vw", height: "100vh", overflow: "hidden" }}>
@@ -224,7 +224,7 @@ export function LandingPage() {
               <span style={{ color: "#3b82f6" }}>Every Period.</span>
             </h1>
             <p style={{ textAlign: "center", marginTop: 16, fontSize: "clamp(0.95rem,1.4vw,1.15rem)", lineHeight: 1.7, color: "#64748b", maxWidth: 640 }}>
-              Drift gives business owners, payroll administrators, and finance managers
+              Clarivo gives business owners, payroll administrators, and finance managers
               real-time visibility into payroll variances, headcount changes, and
               salary expenses — powered by AI.
             </p>
@@ -274,7 +274,7 @@ export function LandingPage() {
               Get an <span style={{ color: "#3b82f6" }}>AI Summary</span> of Your Payroll Changes
             </h2>
             <p style={{ textAlign: "center", maxWidth: 640, fontSize: "clamp(0.95rem,1.4vw,1.15rem)", lineHeight: 1.7, color: "#64748b" }}>
-              Drift&apos;s AI engine automatically analyzes every comparison, highlights
+              Clarivo&apos;s AI engine automatically analyzes every comparison, highlights
               anomalies, flags unusual patterns, and generates a plain-English summary
               of what changed — so you don&apos;t have to hunt for insights.
             </p>
@@ -286,17 +286,20 @@ export function LandingPage() {
             <div className="landing-badge">&#128640; Get Started</div>
             <h2 style={{ textAlign: "center", maxWidth: 700, fontSize: "clamp(1.5rem,3vw,2.5rem)", fontWeight: 700, lineHeight: 1.2, letterSpacing: "-0.02em" }}>
               Stop Guessing.<br />
+              {/* "Start Drifting." was wordplay on the old name and cannot be
+                  renamed mechanically. This keeps the Stop X / Start Y parallel
+                  and echoes the hero's "Know Every Dollar." Copy to confirm. */}
               <span style={{
                 display: "inline-block",
                 background: "linear-gradient(135deg, #3b82f6, #8b5cf6)",
                 WebkitBackgroundClip: "text",
                 WebkitTextFillColor:"transparent",
                 backgroundClip: "text",
-              }}>Start Drifting.</span>
+              }}>Start Knowing.</span>
             </h2>
             <p style={{ textAlign: "center", marginTop: 8, maxWidth: 640, fontSize: "clamp(0.95rem,1.4vw,1.15rem)", lineHeight: 1.7, color: "#64748b" }}>
               Upload your payroll data, compare any two periods, and let AI surface
-              the insights that matter. Weekly, bi-weekly, or monthly — Drift works
+              the insights that matter. Weekly, bi-weekly, or monthly — Clarivo works
               with your payroll cycle.
             </p>
             <div className="landing-buttons">
