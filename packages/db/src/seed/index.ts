@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { db } from "../client";
+import { requireDb } from "../client";
 import { companies } from "../schema/companies";
 import { users } from "../schema/users";
 import { payrollPeriods } from "../schema/payrollPeriods";
@@ -7,6 +7,7 @@ import { employeeSnapshots } from "../schema/employeeSnapshots";
 import { companies as demoCompanies, generateComponentValue, type DemoCompany, type EmployeeSnapshot } from "./demo-data";
 
 async function seed() {
+  const db = requireDb();
   console.log("Seeding database...");
 
   for (const demo of demoCompanies) {
@@ -19,6 +20,7 @@ async function seed() {
         settings: { employeeCount: demo.employeeNames.length },
       })
       .returning();
+    if (!company) throw new Error(`Failed to create company ${demo.slug}`);
     console.log(`Created company: ${company.name} (${company.id})`);
 
     const [admin] = await db
@@ -31,6 +33,7 @@ async function seed() {
         clerkUserId: `clerk_${demo.slug}_admin`,
       })
       .returning();
+    if (!admin) throw new Error(`Failed to create admin for ${demo.slug}`);
     console.log(`  Admin: ${admin.email}`);
 
     for (let month = 0; month < 4; month++) {
@@ -50,6 +53,7 @@ async function seed() {
           status: "completed",
         })
         .returning();
+      if (!period) throw new Error(`Failed to create period ${periodStart} for ${demo.slug}`);
       console.log(`  Period: ${periodStart} - ${periodEnd}`);
 
       const snapshots: EmployeeSnapshot[] = generateSnapshotsForPeriod(demo, month);
@@ -95,7 +99,7 @@ function generateSnapshotsForPeriod(demo: DemoCompany, monthIndex: number): Empl
 
   return pool.map((name, idx) => {
     const employeeExternalId = `EMP-${String(idx + 1).padStart(4, "0")}`;
-    const department = departments[idx % departments.length];
+    const department = departments[idx % departments.length] ?? "Unassigned";
 
     const componentsRecord: Record<string, string> = {};
     let grossSalary = 0;
@@ -103,6 +107,7 @@ function generateSnapshotsForPeriod(demo: DemoCompany, monthIndex: number): Empl
 
     for (const comp of earningComponents) {
       const range = componentRange[comp.name];
+      if (!range) continue;
       const val = generateComponentValue(comp.name, range);
       componentsRecord[comp.name] = val;
       grossSalary += parseFloat(val);
@@ -110,6 +115,7 @@ function generateSnapshotsForPeriod(demo: DemoCompany, monthIndex: number): Empl
 
     for (const comp of deductionComponents) {
       const range = componentRange[comp.name];
+      if (!range) continue;
       const val = generateComponentValue(comp.name, range);
       componentsRecord[comp.name] = val;
       totalDeductions += parseFloat(val);

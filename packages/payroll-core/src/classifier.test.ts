@@ -59,6 +59,6 @@ describe("classifyMatchedPairs", () => {
     };
 
     const result = classifyMatchedPairs([pair]);
-    expect(result[0].status).toBe("increased");
+    expect(result[0]!.status).toBe("increased");
   });
 });

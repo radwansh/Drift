@@ -102,7 +102,7 @@ export async function generateNarrative(
     summary,
   });
 
-  const claudeRaw = await callClaude(NARRATIVE_SYSTEM_PROMPT, userMessage);
+  const { text: claudeRaw } = await callClaude(NARRATIVE_SYSTEM_PROMPT, userMessage);
 
   if (!claudeRaw) {
     return ruleBasedNarrative(summary, companyName, currentPeriod, previousPeriod);

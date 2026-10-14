@@ -103,8 +103,8 @@ describe("collectAnomalies", () => {
 
     const collected = collectAnomalies(results);
     expect(collected).toHaveLength(2);
-    expect(collected[0].employeeId).toBe("1");
-    expect(collected[1].employeeId).toBe("2");
+    expect(collected[0]!.employeeId).toBe("1");
+    expect(collected[1]!.employeeId).toBe("2");
   });
 
   it("skips results with null anomalyFlags", () => {

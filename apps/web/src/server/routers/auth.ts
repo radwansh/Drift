@@ -41,7 +41,11 @@ export const authRouter = router({
 
       const [user] = await db.insert(users).values({
         companyId: company.id,
-        email: "",
+        // `users.email` is UNIQUE NOT NULL, so the literal `""` this used to
+        // write could only ever succeed once per database (finding 4c, same
+        // class as the invite collision). Nothing calls this procedure — the
+        // supported path is `ensureUser` — but it should not be a trap.
+        email: `${ctx.userId.toLowerCase()}@no-reply.invalid`,
         name: input.name,
         role: "admin",
         clerkUserId: ctx.userId,
@@ -68,7 +72,10 @@ export const authRouter = router({
         email: input.email,
         name: input.name,
         role: input.role,
-        clerkUserId: "",
+        // Finding 4c: `""` collided on the UNIQUE index, so only the first
+        // invitation in a company ever succeeded. `ensureUser` claims this row
+        // by email when the person first signs in.
+        clerkUserId: null,
       }).returning();
 
       return invited;

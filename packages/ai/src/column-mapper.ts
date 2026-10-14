@@ -85,13 +85,16 @@ const RULE_MAP: Record<string, string> = {
   pf: "pension_deduction",
 };
 
-const ROLE_KEYS: Record<string, (keyof typeof RULE_MAP)[]> = {
+// `satisfies` rather than a `Record<string, …>` annotation: the annotation adds an
+// index signature, which under noUncheckedIndexedAccess makes every ROLE_KEYS.x
+// possibly undefined. This keeps the literal keys and still checks the values.
+const ROLE_KEYS = {
   employee_id: ["id", "emp_id", "employee_id", "employeeid", "empid", "code", "personnel_no", "personnelno"],
   employee_name: ["name", "employee_name", "employeename", "full_name", "fullname"],
   department: ["dept", "department", "dept_name", "departmentname", "cost_center", "costcenter"],
   gross_salary: ["gross", "gross_salary", "grosssalary", "gross_pay", "grosspay"],
   net_salary: ["net", "net_salary", "netsalary", "net_pay", "netpay", "paid"],
-};
+} satisfies Record<string, (keyof typeof RULE_MAP)[]>;
 
 function normalizeHeader(h: string): string {
   return h.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_").replace(/_+/g, "_").replace(/^_|_$/g, "");
@@ -137,7 +140,7 @@ export async function suggestColumnMappings(
   }
 
   const userMessage = JSON.stringify({ headers });
-  const claudeRaw = await callClaude(COLUMN_MAPPER_SYSTEM_PROMPT, userMessage);
+  const { text: claudeRaw } = await callClaude(COLUMN_MAPPER_SYSTEM_PROMPT, userMessage);
 
   if (!claudeRaw) {
     return ruleBased;

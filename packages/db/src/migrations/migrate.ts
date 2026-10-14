@@ -1,6 +1,7 @@
-import { db } from "../client";
+import { requireDb } from "../client";
 
 async function main() {
+  const db = requireDb();
   console.log("Running migrations...");
   await db.execute(
     `CREATE TABLE IF NOT EXISTS __drizzle_migrations (
@@ -9,7 +10,6 @@ async function main() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     )`,
   );
-  const { sql } = await import("drizzle-orm");
   const { migrate } = await import("drizzle-orm/neon-http/migrator");
   await migrate(db, { migrationsFolder: "./src/migrations" });
   console.log("Migrations complete.");

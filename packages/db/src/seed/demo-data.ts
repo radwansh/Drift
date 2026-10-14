@@ -1,4 +1,4 @@
-export const companies = [
+export const companies: DemoCompany[] = [
   {
     name: "Acme Corp",
     slug: "acme-corp",

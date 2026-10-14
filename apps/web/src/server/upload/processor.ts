@@ -1,6 +1,11 @@
-import { requireDb } from "@saas/db";
+import { requireDb, type DbClient } from "@saas/db";
 import { eq } from "drizzle-orm";
-import { payrollPeriods, employeeSnapshots, uploadSessions } from "@saas/db";
+import {
+  payrollPeriods,
+  employeeSnapshots,
+  uploadSessions,
+  rebuildPeriodComponentTotals,
+} from "@saas/db";
 
 interface Mapping {
   sourceColumn: string;
@@ -22,6 +27,12 @@ interface ProcessInput {
   currencyCode: string;
   filename: string;
   uploadSessionId?: string;
+  /**
+   * The client to write through. Defaults to the module client via
+   * `requireDb()`; a caller inside tRPC passes `ctx.db` so the write is
+   * testable against the PGlite harness without `DATABASE_URL` being set.
+   */
+  db?: DbClient;
 }
 
 interface ProcessResult {
@@ -32,7 +43,7 @@ interface ProcessResult {
 }
 
 export async function processUpload(input: ProcessInput): Promise<ProcessResult> {
-  const db = requireDb();
+  const db = input.db ?? requireDb();
   const empIdMapping = input.mappings.find((m) => m.isEmployeeId);
   const empNameMapping = input.mappings.find((m) => m.isEmployeeName);
   const deptMapping = input.mappings.find((m) => m.isDepartment);
@@ -87,18 +98,46 @@ export async function processUpload(input: ProcessInput): Promise<ProcessResult>
     source: "upload",
   }).returning();
 
-  await db.insert(employeeSnapshots).values(
-    snapshots.map((s) => ({
-      ...s,
-      payrollPeriodId: period.id,
-      grossSalary: String(s.grossSalary),
-      netSalary: String(s.netSalary),
-    })),
-  );
+  // Everything after the period row is wrapped, because neon-http has no
+  // interactive transaction to roll back for us. Without this, a failure in any
+  // later step left the period behind as `processing` with a full set of
+  // snapshots attached — invisible to the annual queries, permanently
+  // "Processing" on the periods page, and one more orphan for every retry.
+  // Observed for real when a deploy ran ahead of its migrations and
+  // `period_component_totals` did not exist yet.
+  try {
+    await db.insert(employeeSnapshots).values(
+      snapshots.map((s) => ({
+        ...s,
+        payrollPeriodId: period.id,
+        grossSalary: String(s.grossSalary),
+        netSalary: String(s.netSalary),
+      })),
+    );
 
-  await db.update(payrollPeriods)
-    .set({ status: "ready" })
-    .where(eq(payrollPeriods.id, period.id));
+    // Step 31: build the per-period aggregates now, while the data is hot, so
+    // the annual dashboard never has to unnest the components JSON at read
+    // time. Deliberately before the period is marked ready: the annual queries
+    // only consider ready periods, so this ordering means a period is never
+    // visible without its aggregates.
+    await rebuildPeriodComponentTotals(db, period.id);
+
+    await db.update(payrollPeriods)
+      .set({ status: "ready" })
+      .where(eq(payrollPeriods.id, period.id));
+  } catch (cause) {
+    // `employee_snapshots` and `period_component_totals` both cascade from the
+    // period, so one delete undoes the whole partial import.
+    try {
+      await db.delete(payrollPeriods).where(eq(payrollPeriods.id, period.id));
+    } catch (cleanupFailure) {
+      console.error(
+        `processUpload: could not roll back period ${period.id} after a failed import:`,
+        cleanupFailure,
+      );
+    }
+    throw cause;
+  }
 
   if (input.uploadSessionId) {
     await db.update(uploadSessions)

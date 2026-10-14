@@ -8,6 +8,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx src/seed/index.ts",
+    "db:backfill-period-totals": "tsx src/backfill/periodComponentTotals.ts",
+    "fixtures:annual-2025": "tsx src/fixtures/annual2025.ts",
     "typecheck": "tsc --noEmit",
     "lint": "echo 'lint ok'"
   },

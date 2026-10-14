@@ -136,8 +136,8 @@ describe("aggregateResults", () => {
 
     const result = aggregateResults(results);
     expect(result.topMovers).toHaveLength(2);
-    expect(result.topMovers[0].employeeName).toBe("Alice");
-    expect(result.topMovers[0].changeAmount).toBe(5000);
+    expect(result.topMovers[0]!.employeeName).toBe("Alice");
+    expect(result.topMovers[0]!.changeAmount).toBe(5000);
   });
 
   it("computes department breakdown", () => {
@@ -177,6 +177,6 @@ describe("aggregateResults", () => {
 
     const result = aggregateResults(results);
     expect(result.anomalies).toHaveLength(1);
-    expect(result.anomalies[0].type).toBe("test");
+    expect(result.anomalies[0]!.type).toBe("test");
   });
 });

@@ -6,3 +6,6 @@ allowBuilds:
   esbuild: true
   msgpackr-extract: true
   sharp: true
+  # Native resolver behind eslint-config-next's import plugin; without its build
+  # script the binding is missing and eslint fails at startup.
+  unrs-resolver: true

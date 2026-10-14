@@ -1,23 +1,22 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
-import type { EmployeeRecord } from "@saas/payroll-core";
 
-export interface StoredPeriod {
-  id: string;
-  label: string;
-  periodType: string;
-  dateFrom: string;
-  dateTo: string;
-  employees: EmployeeRecord[];
-  fileName: string;
-}
-
+/**
+ * Which salary components the detailed view shows.
+ *
+ * This context used to also hold `periods` — the parsed employee records of
+ * every upload — and was the application's only record of them: the upload
+ * modal never sent anything to the server, so payroll data lived in one tab's
+ * memory and vanished on reload. Everything that read it now queries the
+ * server (step 3.4 of docs/ANNUAL_PAGE_FIX_PLAN.md), and what remains is a
+ * genuine client-side UI preference.
+ *
+ * It is still per-session: picking columns is not persisted anywhere. If that
+ * should survive a reload it belongs in company settings, next to the column
+ * mappings it mirrors, rather than back in here.
+ */
 interface PayrollStoreContextValue {
-  periods: StoredPeriod[];
-  addPeriod: (period: StoredPeriod) => void;
-  removePeriod: (id: string) => void;
-  clearPeriods: () => void;
   componentVisibility: Record<string, boolean>;
   setComponentVisibility: (component: string, visible: boolean) => void;
 }
@@ -25,27 +24,14 @@ interface PayrollStoreContextValue {
 const PayrollStoreContext = createContext<PayrollStoreContextValue | null>(null);
 
 export function PayrollStoreProvider({ children }: { children: ReactNode }) {
-  const [periods, setPeriods] = useState<StoredPeriod[]>([]);
   const [componentVisibility, setComponentVisibilityState] = useState<Record<string, boolean>>({});
-
-  const addPeriod = useCallback((period: StoredPeriod) => {
-    setPeriods((prev) => [...prev, period]);
-  }, []);
-
-  const removePeriod = useCallback((id: string) => {
-    setPeriods((prev) => prev.filter((p) => p.id !== id));
-  }, []);
-
-  const clearPeriods = useCallback(() => {
-    setPeriods([]);
-  }, []);
 
   const setComponentVisibility = useCallback((component: string, visible: boolean) => {
     setComponentVisibilityState((prev) => ({ ...prev, [component]: visible }));
   }, []);
 
   return (
-    <PayrollStoreContext.Provider value={{ periods, addPeriod, removePeriod, clearPeriods, componentVisibility, setComponentVisibility }}>
+    <PayrollStoreContext.Provider value={{ componentVisibility, setComponentVisibility }}>
       {children}
     </PayrollStoreContext.Provider>
   );

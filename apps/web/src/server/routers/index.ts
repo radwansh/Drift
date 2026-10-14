@@ -9,6 +9,7 @@ import { integrationsRouter } from "./integrations";
 import { settingsRouter } from "./settings";
 import { aiRouter } from "./ai";
 import { trialRouter } from "./trial";
+import { annualRouter } from "./annual";
 
 export const appRouter = router({
   auth: authRouter,
@@ -21,6 +22,7 @@ export const appRouter = router({
   settings: settingsRouter,
   ai: aiRouter,
   trial: trialRouter,
+  annual: annualRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -4,3 +4,4 @@ export * from "./narrative";
 export * from "./anomaly";
 export * from "./qa";
 export * from "./audit-summary";
+export * from "./insights";

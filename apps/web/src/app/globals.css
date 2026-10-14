@@ -66,3 +66,67 @@
   .anomaly-warning { @apply bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-300; }
   .anomaly-info { @apply bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-950 dark:border-blue-800 dark:text-blue-300; }
 }
+
+/*
+ * Board pack print styles (step 42).
+ *
+ * The PDF export is the browser's own print-to-PDF against this stylesheet
+ * rather than a second server-rendered layout, which would be a duplicate of the
+ * dashboard to keep in sync. Chrome, Safari and Firefox all honour these.
+ */
+@media print {
+  /* Chrome drops background colours by default, which erases every chart fill. */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Navigation and controls are not part of a board pack. */
+  aside,
+  nav,
+  [data-print-hide],
+  button,
+  [role="combobox"],
+  input,
+  select {
+    display: none !important;
+  }
+
+  /* Drop the app chrome's offsets so content uses the full page width. */
+  main {
+    padding: 0 !important;
+  }
+  .lg\:pl-64 {
+    padding-left: 0 !important;
+  }
+
+  body {
+    background: #fff !important;
+    color: #000 !important;
+    font-size: 10pt;
+  }
+
+  /* Keep a card and its heading together rather than splitting mid-table. */
+  [data-slot="card"],
+  table,
+  figure {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  h2,
+  h3 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  /* The hidden data tables behind each chart are for screen readers only; a
+     printed page already shows the chart. */
+  .sr-only {
+    display: none !important;
+  }
+
+  @page {
+    margin: 14mm;
+  }
+}

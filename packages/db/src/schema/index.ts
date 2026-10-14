@@ -9,3 +9,8 @@ export { exportHistory } from "./exportHistory";
 export { savedViews } from "./savedViews";
 export { uploadSessions } from "./uploadSessions";
 export { trialRequests } from "./trialRequests";
+export { componentCategories } from "./componentCategories";
+export { annualBudgets, annualBudgetPhasing } from "./annualBudgets";
+export { annualInsightCaches } from "./annualInsightCaches";
+export { annualAuditLog } from "./annualAuditLog";
+export { periodComponentTotals } from "./periodComponentTotals";

@@ -52,9 +52,9 @@ describe("diffComponents", () => {
 
     const result = diffComponents(current, previous);
     expect(result).toHaveLength(1);
-    expect(result[0].currentValue).toBeNull();
-    expect(result[0].previousValue).toBe(5000);
-    expect(result[0].absoluteDiff).toBe(-5000);
+    expect(result[0]!.currentValue).toBeNull();
+    expect(result[0]!.previousValue).toBe(5000);
+    expect(result[0]!.absoluteDiff).toBe(-5000);
   });
 
   it("handles empty maps", () => {
@@ -67,8 +67,8 @@ describe("diffComponents", () => {
     const previous = { salary: 0 };
 
     const result = diffComponents(current, previous);
-    expect(result[0].absoluteDiff).toBe(5000);
-    expect(result[0].percentageDiff).toBeNull();
+    expect(result[0]!.absoluteDiff).toBe(5000);
+    expect(result[0]!.percentageDiff).toBeNull();
   });
 
   it("sorts components alphabetically", () => {

@@ -11,3 +11,5 @@ turbo/
 .DS_Store
 coverage/
 .vite/
+.vercel
+.env*
