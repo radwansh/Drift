@@ -211,7 +211,7 @@ export function LandingPage() {
         <div className="particles" id="landing-particles"></div>
 
         <div style={{ position: "fixed", top: "24px", left: "32px", zIndex: 100 }}>
-          <img src="/brand/clarivo-logo.svg" alt="Clarivo" style={{ height: 32 }} />
+          <img src="/brand/clarivo-lockup.svg" alt="Clarivo" style={{ height: 32 }} />
         </div>
 
         <div style={{ position: "relative", width: "100vw", height: "100vh", overflow: "hidden" }}>

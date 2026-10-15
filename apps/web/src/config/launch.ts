@@ -1,0 +1,54 @@
+/**
+ * Launch switches for the public marketing pages.
+ *
+ * One typed file so turning something on is a one-line, reviewable change.
+ * Deliberately not environment variables: these are editorial decisions about
+ * what the page may claim, and they belong in the diff where a reviewer sees
+ * them (docs/landing/README.md, "Launch switches").
+ *
+ * The signed-in state is NOT here. It is decided per visitor by Clerk's
+ * client-side components so the pages stay static.
+ */
+
+export interface LaunchSwitches {
+  /**
+   * The six Annual Salaries KPI tiles, the Data check alert card, and the
+   * "Annual Salaries Dashboard" line under "Every plan includes".
+   *
+   * Off. The annual work is merged to main (PR #1, commit c63a707), but
+   * docs/ANNUAL_PAGE_FIX_PLAN.md does not show every step done: step 8, the
+   * browser walkthrough, is still outstanding — the signed-in annual pages
+   * have never been looked at in a browser. Turn on once that is confirmed.
+   */
+  annualSalariesLive: boolean;
+
+  /**
+   * Four of the seven security points, one flag each. Each stays off until
+   * its check is genuinely true; the other three (Encrypted, Kept separate,
+   * No AI training) are unconditional and are not switched.
+   */
+  securityPoints: {
+    /** Vercel functions run in Frankfurt (fra1) AND the Neon database is in an EU region. */
+    hostedInTheEu: boolean;
+    /** The Registration Form at /sign-up (Step 7) is live. */
+    verifiedSignIn: boolean;
+    /** The role checks from the annual-dashboard review have shipped. */
+    accessByRole: boolean;
+    /** Who handles deletion requests, and how fast, has been decided. */
+    deletedOnRequest: boolean;
+  };
+
+  /** "Built by Radwan Sheb, …" above the final buttons. Approved. */
+  founderLine: boolean;
+}
+
+export const launch: LaunchSwitches = {
+  annualSalariesLive: false,
+  securityPoints: {
+    hostedInTheEu: false,
+    verifiedSignIn: false,
+    accessByRole: false,
+    deletedOnRequest: false,
+  },
+  founderLine: true,
+};

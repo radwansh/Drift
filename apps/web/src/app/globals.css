@@ -1,3 +1,9 @@
+/* Clarivo design-system tokens, from docs/landing/design-system/tokens.css.
+   Imported before Tailwind so the --cv-* custom properties exist for the
+   theme.extend mapping in tailwind.config.ts. Every name is cv-prefixed, so
+   this sits alongside the shadcn/ui variables below rather than over them. */
+@import "./clarivo-tokens.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

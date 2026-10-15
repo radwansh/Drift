@@ -9,10 +9,18 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "Clarivo - Payroll Variance Analysis",
   description: "Compare employee salaries between payroll periods. Spot variances, anomalies, and trends.",
-  // The favicon had no reference at all: a bare public/favicon.svg is served
-  // but never linked, and browsers only probe for /favicon.ico. Declaring it
-  // here is what actually points the tab icon at the brand directory.
-  icons: { icon: "/brand/favicon.svg" },
+  // The favicon had no reference at all: a bare public/favicon.svg was served
+  // but never linked, and browsers only probe for /favicon.ico. Declaring the
+  // icons here is what actually points the tab and home-screen icons at the
+  // brand directory. Order matters — a browser takes the first format it
+  // understands, so the SVG leads and favicon.ico is the fallback.
+  icons: {
+    icon: [
+      { url: "/brand/clarivo-favicon.svg", type: "image/svg+xml" },
+      { url: "/brand/favicon.ico", sizes: "any" },
+    ],
+    apple: "/brand/apple-touch-icon.png",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
