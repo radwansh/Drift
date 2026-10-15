@@ -1,0 +1,19 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-10-14T13:21:55Z" },
+  "title": "Clarivo Landing Page",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 1440, "h": 8000, "title": "Landing page · desktop", "expand": "fill", "is_interactive": true },
+    "PhoneTop.dc.html": { "x": 1520, "y": 0, "w": 390, "h": 8000, "title": "Phone 390 · top", "is_interactive": true },
+    "PhoneBottom.dc.html": { "x": 1990, "y": 0, "w": 390, "h": 8000, "title": "Phone 390 · continued", "is_interactive": true }
+  },
+  "order": ["Main.dc.html", "PhoneTop.dc.html", "PhoneBottom.dc.html"],
+  "notes": {
+    "t-lp": { "x": 0, "y": -300, "text": "Clarivo landing page", "kind": "title1", "maxW": 2380 }
+  },
+  "designSystems": [
+    { "title": "Clarivo", "namespace": "clarivo", "artifact": "https://claude.ai/artifact/AaTTLP2YXrSUe2ieCxJteH", "version": "1791983806-7026", "copiedAt": "2026-10-14T13:21:55Z" }
+  ]
+}

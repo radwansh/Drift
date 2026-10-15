@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Clarivo landing page at 390 px, top</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/clarivo/components/bundle.css">
+<script src="ds/clarivo/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400..600&amp;family=Instrument+Sans:wght@400..700&amp;display=swap">
+<style>
+body{margin:0;background:#F7F8F9}
+a{color:#2F5BD3}a:hover{color:#244AB4}
+a:not(.cv-btn):focus-visible,summary:focus-visible{outline:2px solid #2F5BD3;outline-offset:2px;border-radius:4px}
+summary{list-style:none;cursor:pointer}summary::-webkit-details-marker{display:none}
+details[open]>summary .lp-chev{transform:rotate(180deg)}
+@media (max-width:860px){.lp-hide-sm{display:none !important}}
+@media (min-width:861px){.lp-hide-lg{display:none !important}}
+</style>
+</helmet>
+<div style="width: 390px; height: 8000px; overflow: hidden; background: #F7F8F9; color: #121A22; font-family: 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;">
+<dc-import name="Main" hint-size="390px,8000px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":8000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

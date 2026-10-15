@@ -1,12 +1,1 @@
-<!-- Placeholder mark (icon only, no wordmark). Replace with the final artwork; keep the filename. -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none" role="img" aria-label="Clarivo">
-  <defs>
-    <linearGradient id="clarivo-mark-g" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#3b82f6"/>
-      <stop offset="100%" stop-color="#1d4ed8"/>
-    </linearGradient>
-  </defs>
-  <rect width="40" height="40" rx="10" fill="url(#clarivo-mark-g)"/>
-  <path d="M10 26h5v-8h-5zM17 26h5v-14h-5zM24 26h5v-10h-5z" fill="white"/>
-  <path d="M9 30l22-5" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
-</svg>
+<svg width="40" height="40" xmlns="http://www.w3.org/2000/svg" viewBox="12.00 12.00 96.00 96.00" role="img" aria-label="Clarivo"><title>Clarivo</title><path fill="#121A22" d="M74.833 14.349A48.0 48.0 0 1 0 93.941 93.941L79.799 79.799A28.0 28.0 0 1 1 68.652 33.370Z"/><path fill="#E0592A" d="M107.417 32.603A48.0 48.0 0 0 0 89.035 13.568L79.035 30.889A28.0 28.0 0 0 1 89.758 41.992Z"/></svg>

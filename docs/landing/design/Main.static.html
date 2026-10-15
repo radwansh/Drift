@@ -1,0 +1,803 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Payroll Dashboard with Anomaly Alerts | Clarivo (static design export)</title>
+<!--
+  Clarivo landing page: static export of the Claude Design canvas "Clarivo Landing Page"
+  (https://claude.ai/artifact/Bu6uX2aYKCDTDpvMk4bQF1, board Main.dc.html), generated 2026-10-14.
+  Reference for the rebuild, not production code: rebuild it as React components and do not ship this file.
+  Fonts load from fonts/ (Instrument Sans and Geist Mono, SIL Open Font License).
+  The first <style> block is the Clarivo design-system component CSS (design-system/components/bundle.css).
+  Elements with data-switch="..." belong to a launch switch (see ../README.md). This export shows the canvas defaults:
+  signed out, Annual Salaries features hidden, all seven security points shown, founder line shown, monthly billing.
+-->
+<style>
+@font-face{font-family:'Instrument Sans';font-style:normal;font-weight:400;font-display:swap;src:url('fonts/instrument-sans-latin-400-normal.woff2') format('woff2')}
+@font-face{font-family:'Instrument Sans';font-style:normal;font-weight:500;font-display:swap;src:url('fonts/instrument-sans-latin-500-normal.woff2') format('woff2')}
+@font-face{font-family:'Instrument Sans';font-style:normal;font-weight:600;font-display:swap;src:url('fonts/instrument-sans-latin-600-normal.woff2') format('woff2')}
+@font-face{font-family:'Instrument Sans';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/instrument-sans-latin-700-normal.woff2') format('woff2')}
+@font-face{font-family:'Geist Mono';font-style:normal;font-weight:400;font-display:swap;src:url('fonts/geist-mono-latin-400-normal.woff2') format('woff2')}
+@font-face{font-family:'Geist Mono';font-style:normal;font-weight:500;font-display:swap;src:url('fonts/geist-mono-latin-500-normal.woff2') format('woff2')}
+@font-face{font-family:'Geist Mono';font-style:normal;font-weight:600;font-display:swap;src:url('fonts/geist-mono-latin-600-normal.woff2') format('woff2')}
+</style>
+<style>
+/* Clarivo components. Every value reads a token from tokens.css; each var() carries the Light value as its fallback. */
+
+.cv-sr { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.cv-icon { display: inline-block; flex: none; vertical-align: middle; }
+.cv-logo { display: inline-block; flex: none; vertical-align: middle; }
+
+/* Button */
+.cv-btn { appearance: none; -webkit-appearance: none; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2, 8px); height: var(--control-md, 40px); padding: 0 var(--space-4, 16px); border: 1px solid transparent; border-radius: var(--radius-md, 6px); font-family: var(--font-sans, "Instrument Sans", ui-sans-serif, system-ui, sans-serif); font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0; white-space: nowrap; text-decoration: none; cursor: pointer; user-select: none; transition: background-color .12s ease-out, border-color .12s ease-out, color .12s ease-out, box-shadow .12s ease-out; }
+.cv-btn:focus-visible { outline: 2px solid transparent; outline-offset: 2px; box-shadow: var(--focus-ring, 0 0 0 2px #ffffff, 0 0 0 4px #2f5bd3); }
+.cv-btn .cv-icon { width: var(--icon-sm, 16px); height: var(--icon-sm, 16px); }
+/* Variants use doubled classes so a page's own a / a:hover colours never win over them. */
+.cv-btn.cv-btn--primary, .cv-btn.cv-btn--primary:hover { color: var(--on-primary, #ffffff); }
+.cv-btn.cv-btn--primary { background: var(--primary, #121a22); }
+.cv-btn.cv-btn--primary:hover { background: var(--primary-hover, #2b343d); }
+.cv-btn.cv-btn--accent, .cv-btn.cv-btn--accent:hover { color: var(--on-accent, #ffffff); }
+.cv-btn.cv-btn--accent { background: var(--accent, #2f5bd3); }
+.cv-btn.cv-btn--accent:hover { background: var(--accent-hover, #244ab4); }
+.cv-btn.cv-btn--secondary, .cv-btn.cv-btn--secondary:hover { color: var(--ink, #121a22); border-color: var(--border, #7f8790); }
+.cv-btn.cv-btn--secondary { background: var(--surface, #ffffff); }
+.cv-btn.cv-btn--secondary:hover { background: var(--surface-sunken, #f0f3f5); }
+.cv-btn.cv-btn--ghost, .cv-btn.cv-btn--ghost:hover { color: var(--ink, #121a22); }
+.cv-btn.cv-btn--ghost { background: transparent; }
+.cv-btn.cv-btn--ghost:hover { background: var(--surface-sunken, #f0f3f5); }
+.cv-btn.cv-btn--danger, .cv-btn.cv-btn--danger:hover { color: var(--on-danger, #ffffff); }
+.cv-btn.cv-btn--danger { background: var(--danger, #d02c61); }
+.cv-btn.cv-btn--danger:hover { background: var(--danger-hover, #b01f4f); }
+.cv-btn--sm { height: var(--control-sm, 32px); padding: 0 var(--space-3, 12px); gap: 6px; font-size: 13px; line-height: 18px; }
+.cv-btn--lg { height: var(--control-lg, 48px); padding: 0 var(--space-5, 20px); font-size: 15px; }
+.cv-btn--icon-only { padding: 0; width: var(--control-md, 40px); }
+.cv-btn--icon-only.cv-btn--sm { width: var(--control-sm, 32px); }
+.cv-btn--icon-only.cv-btn--lg { width: var(--control-lg, 48px); }
+.cv-btn.cv-btn:disabled, .cv-btn.cv-btn[aria-disabled="true"] { cursor: not-allowed; background: var(--surface-sunken, #f0f3f5); border-color: var(--line, #e6eaed); color: var(--ink-disabled, #979fa8); }
+.cv-btn.cv-btn--ghost:disabled { background: transparent; border-color: transparent; }
+.cv-btn[aria-busy="true"] { cursor: progress; }
+
+/* TextField */
+.cv-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-family: var(--font-sans, "Instrument Sans", ui-sans-serif, system-ui, sans-serif); }
+.cv-field__label { font-size: 13px; line-height: 18px; font-weight: 500; letter-spacing: .005em; color: var(--ink, #121a22); }
+.cv-field__control { box-sizing: border-box; display: flex; align-items: center; gap: var(--space-2, 8px); height: var(--control-md, 40px); padding: 0 var(--space-3, 12px); background: var(--surface, #ffffff); border: 1px solid var(--border, #7f8790); border-radius: var(--radius-md, 6px); transition: border-color .12s ease-out, box-shadow .12s ease-out; }
+.cv-field__control:hover { border-color: var(--ink-muted, #4e5862); }
+.cv-field__control:focus-within { border-color: var(--accent, #2f5bd3); box-shadow: var(--focus-ring, 0 0 0 2px #ffffff, 0 0 0 4px #2f5bd3); }
+.cv-field__input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: transparent; color: var(--ink, #121a22); font: inherit; font-size: 15px; line-height: 24px; }
+.cv-field__input--mono { font-family: var(--font-mono, "Geist Mono", ui-monospace, monospace); font-size: 14px; font-variant-numeric: tabular-nums; }
+.cv-field__input::placeholder { color: var(--ink-subtle, #677079); opacity: 1; }
+.cv-field__affix { flex: none; color: var(--ink-subtle, #677079); font-family: var(--font-mono, "Geist Mono", ui-monospace, monospace); font-size: 13px; }
+.cv-field__msg { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; line-height: 18px; color: var(--ink-subtle, #677079); }
+.cv-field__msg .cv-icon { width: 16px; height: 16px; }
+.cv-field--invalid .cv-field__control { border-color: var(--danger, #d02c61); }
+.cv-field__msg--error { color: var(--danger-ink, #b01f4f); }
+
+/* SegmentedControl */
+.cv-seg { box-sizing: border-box; display: inline-flex; align-items: center; gap: 2px; padding: 3px; background: var(--surface-sunken, #f0f3f5); border: 1px solid var(--line, #e6eaed); border-radius: var(--radius-md, 6px); font-family: var(--font-sans, "Instrument Sans", ui-sans-serif, system-ui, sans-serif); }
+.cv-seg__btn { appearance: none; -webkit-appearance: none; height: 32px; padding: 0 var(--space-3, 12px); border: 0; border-radius: var(--radius-sm, 4px); background: transparent; color: var(--ink-muted, #4e5862); font: inherit; font-size: 13px; line-height: 18px; font-weight: 600; white-space: nowrap; cursor: pointer; transition: background-color .12s ease-out, color .12s ease-out; }
+.cv-seg__btn:hover { color: var(--ink, #121a22); }
+.cv-seg__btn[aria-pressed="true"] { background: var(--surface, #ffffff); color: var(--ink, #121a22); box-shadow: var(--shadow-sm, 0 1px 2px #121a220f, 0 1px 3px #121a2214), inset 0 0 0 1px var(--line, #e6eaed); }
+.cv-seg__btn:focus-visible { outline: 2px solid transparent; box-shadow: var(--focus-ring, 0 0 0 2px #ffffff, 0 0 0 4px #2f5bd3); }
+.cv-seg--sm .cv-seg__btn { height: 26px; padding: 0 10px; font-size: 12px; }
+
+/* Badge */
+.cv-badge { box-sizing: border-box; display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: var(--radius-sm, 4px); background: var(--surface-sunken, #f0f3f5); color: var(--ink-muted, #4e5862); font-family: var(--font-sans, "Instrument Sans", ui-sans-serif, system-ui, sans-serif); font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: .01em; white-space: nowrap; }
+.cv-badge__dot { width: 6px; height: 6px; flex: none; background: currentColor; }
+.cv-badge .cv-icon { width: 12px; height: 12px; }
+.cv-badge--signal { background: var(--signal-soft, #fef2ee); color: var(--signal-ink, #bd481f); }
+.cv-badge--signal .cv-badge__dot { background: var(--signal, #e0592a); }
+.cv-badge--accent { background: var(--accent-soft, #f1f5fe); color: var(--accent, #2f5bd3); }
+.cv-badge--success { background: var(--success-soft, #e7f9ec); color: var(--success-ink, #187c49); }
+.cv-badge--warning { background: var(--warning-soft, #fff3e4); color: var(--warning-ink, #8d5e00); }
+.cv-badge--danger { background: var(--danger-soft, #feeff1); color: var(--danger-ink, #b01f4f); }
+
+/* Variance */
+.cv-var { box-sizing: border-box; display: inline-flex; align-items: center; gap: var(--space-1, 4px); font-family: var(--font-mono, "Geist Mono", ui-monospace, monospace); font-size: 13px; line-height: 20px; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cv-var .cv-icon { width: 14px; height: 14px; }
+.cv-var--up { color: var(--delta-up-ink, #bd481f); }
+.cv-var--down { color: var(--delta-down-ink, #2f5bd3); }
+.cv-var--flat { color: var(--delta-flat-ink, #677079); }
+.cv-var__pct { margin-left: 4px; font-weight: 400; }
+.cv-var--flagged { padding: 1px 8px 1px 6px; border-radius: var(--radius-sm, 4px); background: var(--signal-soft, #fef2ee); }
+.cv-var__flag { width: 6px; height: 6px; flex: none; margin-right: 2px; background: var(--signal, #e0592a); }
+.cv-var--lg { font-size: 15px; line-height: 22px; }
+.cv-var--lg .cv-icon { width: 16px; height: 16px; }
+
+/* Stat */
+.cv-stat { box-sizing: border-box; display: flex; flex-direction: column; gap: var(--space-2, 8px); min-width: 0; padding: var(--space-5, 20px); background: var(--surface, #ffffff); border: 1px solid var(--line, #e6eaed); border-radius: var(--radius-lg, 10px); font-family: var(--font-sans, "Instrument Sans", ui-sans-serif, system-ui, sans-serif); }
+.cv-stat__label { font-size: 13px; line-height: 18px; font-weight: 500; letter-spacing: .005em; color: var(--ink-muted, #4e5862); }
+.cv-stat__value { font-size: 36px; line-height: 40px; font-weight: 600; letter-spacing: -.02em; color: var(--ink, #121a22); font-variant-numeric: tabular-nums; }
+.cv-stat__foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2, 8px); font-size: 13px; line-height: 18px; color: var(--ink-subtle, #677079); }
+
+/* Notice */
+.cv-notice { box-sizing: border-box; display: flex; align-items: flex-start; gap: var(--space-3, 12px); padding: var(--space-3, 12px) var(--space-4, 16px); border-radius: var(--radius-md, 6px); background: var(--accent-soft, #f1f5fe); color: var(--ink, #121a22); font-family: var(--font-sans, "Instrument Sans", ui-sans-serif, system-ui, sans-serif); font-size: 14px; line-height: 20px; }
+.cv-notice__icon { width: 20px; height: 20px; color: var(--accent, #2f5bd3); }
+.cv-notice__body { flex: 1; min-width: 0; }
+.cv-notice__title { margin: 0; font-weight: 600; }
+.cv-notice__text { margin: 2px 0 0; }
+.cv-notice--success { background: var(--success-soft, #e7f9ec); }
+.cv-notice--success .cv-notice__icon { color: var(--success-ink, #187c49); }
+.cv-notice--warning { background: var(--warning-soft, #fff3e4); }
+.cv-notice--warning .cv-notice__icon { color: var(--warning-ink, #8d5e00); }
+.cv-notice--danger { background: var(--danger-soft, #feeff1); }
+.cv-notice--danger .cv-notice__icon { color: var(--danger-ink, #b01f4f); }
+
+/* DriftStrip: the signature baseline of ticks with one drifted tick */
+.cv-drift { --cv-w: 3px; --cv-gap: 4px; --cv-tick: 16px; --cv-lift: 8px; box-sizing: border-box; display: inline-flex; align-items: flex-end; gap: var(--cv-gap); height: calc(var(--cv-tick) + var(--cv-lift)); }
+.cv-drift__tick { display: block; flex: none; width: var(--cv-w); height: var(--cv-tick); border-radius: 1px; background: var(--delta-flat, #979fa8); }
+.cv-drift__tick--drift { background: var(--signal, #e0592a); transform: translateY(calc(-1 * var(--cv-lift))); }
+.cv-drift--xs { --cv-w: 2px; --cv-gap: 2px; --cv-tick: 8px; --cv-lift: 4px; }
+.cv-drift--sm { --cv-w: 2px; --cv-gap: 3px; --cv-tick: 10px; --cv-lift: 5px; }
+.cv-drift--lg { --cv-w: 4px; --cv-gap: 6px; --cv-tick: 28px; --cv-lift: 14px; }
+.cv-btn .cv-drift__tick { background: currentColor; opacity: .45; }
+.cv-btn .cv-drift__tick--drift { background: var(--signal, #e0592a); opacity: 1; }
+.cv-drift--lift .cv-drift__tick--drift { animation: cv-drift-lift .9s cubic-bezier(.2, .8, .2, 1) .2s both; }
+.cv-drift--scan .cv-drift__tick { animation: cv-drift-scan 1.2s ease-in-out infinite; }
+@keyframes cv-drift-lift { from { transform: translateY(0); background: var(--delta-flat, #979fa8); } to { transform: translateY(calc(-1 * var(--cv-lift))); background: var(--signal, #e0592a); } }
+@keyframes cv-drift-scan { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(calc(-1 * var(--cv-lift))); } }
+@media (prefers-reduced-motion: reduce) { .cv-drift__tick { animation: none !important; } }
+
+/* Preview helpers (component cards only) */
+.cv-demo { margin: 0; background: var(--bg, #f7f8f9); color: var(--ink, #121a22); font-family: var(--font-sans, "Instrument Sans", ui-sans-serif, system-ui, sans-serif); }
+.cv-demo-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3, 12px); padding: var(--space-4, 16px); }
+.cv-demo-col { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-3, 12px); padding: var(--space-4, 16px); }
+.cv-demo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-4, 16px); padding: var(--space-4, 16px); }
+</style>
+<style>
+body{margin:0;background:#F7F8F9}
+a{color:#2F5BD3}a:hover{color:#244AB4}
+a:not(.cv-btn):focus-visible,summary:focus-visible{outline:2px solid #2F5BD3;outline-offset:2px;border-radius:4px}
+summary{list-style:none;cursor:pointer}summary::-webkit-details-marker{display:none}
+details[open]>summary .lp-chev{transform:rotate(180deg)}
+@media (max-width:860px){.lp-hide-sm{display:none !important}}
+@media (min-width:861px){.lp-hide-lg{display:none !important}}
+</style>
+</head>
+<body>
+<div id="top" style="min-width: 0; background: #F7F8F9; color: #121A22; font-family: 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;">
+
+  <header style="position: sticky; top: 0; z-index: 30; background: #FFFFFF; border-bottom: 1px solid #E6EAED;">
+    <div style="max-width: 1200px; margin: 0 auto; box-sizing: border-box; padding: 0 clamp(16px, 4vw, 40px); height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+      <a href="#top" aria-label="Clarivo home" style="display: flex; align-items: center; flex: none; text-decoration: none;">
+        <svg class="cv-logo" viewBox="0 -755 3987 790" height="24" width="121.1" role="img" aria-label="Clarivo" focusable="false"><path d="M517.062 -735.667A395 395 0 1 0 674.307 -80.693L557.929 -197.071A230.417 230.417 0 1 1 466.203 -579.139Z" style="fill:var(--ink, #121a22)"></path><path d="M785.201 -585.456A395 395 0 0 0 633.937 -742.095L551.645 -599.562A230.417 230.417 0 0 1 639.883 -508.189Z" style="fill:var(--signal, #e0592a)"></path><g transform="translate(896.4 0)"><path d="M291.0 10.0Q211.0 10.0 150.0 -24.0Q89.0 -58.0 54.5 -118.0Q20.0 -178.0 20.0 -255.0Q20.0 -332.0 54.5 -392.0Q89.0 -452.0 150.0 -486.0Q211.0 -520.0 291.0 -520.0Q358.0 -520.0 411.5 -495.5Q465.0 -471.0 499.5 -428.0Q534.0 -385.0 544.0 -327.0H399.0Q388.0 -364.0 359.5 -383.0Q331.0 -402.0 293.0 -402.0Q257.0 -402.0 230.5 -384.0Q204.0 -366.0 190.0 -333.0Q176.0 -300.0 176.0 -255.0Q176.0 -210.0 190.0 -177.0Q204.0 -144.0 230.5 -126.0Q257.0 -108.0 293.0 -108.0Q331.0 -108.0 359.5 -127.0Q388.0 -146.0 399.0 -183.0H544.0Q534.0 -125.0 499.5 -82.0Q465.0 -39.0 411.5 -14.5Q358.0 10.0 291.0 10.0ZM610.0 0.0V-720.0H760.0V0.0ZM1189.0 0.0Q1183.0 -22.0 1180.5 -47.0Q1178.0 -72.0 1178.0 -105.0H1174.0V-346.0Q1174.0 -377.0 1153.5 -394.5Q1133.0 -412.0 1093.0 -412.0Q1055.0 -412.0 1032.5 -399.0Q1010.0 -386.0 1003.0 -361.0H860.0Q870.0 -430.0 931.0 -475.0Q992.0 -520.0 1098.0 -520.0Q1208.0 -520.0 1266.0 -471.0Q1324.0 -422.0 1324.0 -330.0V-105.0Q1324.0 -80.0 1327.5 -54.5Q1331.0 -29.0 1339.0 0.0ZM1011.0 10.0Q935.0 10.0 890.0 -28.5Q845.0 -67.0 845.0 -131.0Q845.0 -202.0 898.5 -245.5Q952.0 -289.0 1048.0 -302.0L1197.0 -323.0V-236.0L1073.0 -217.0Q1033.0 -211.0 1014.0 -195.0Q995.0 -179.0 995.0 -151.0Q995.0 -126.0 1013.0 -113.0Q1031.0 -100.0 1061.0 -100.0Q1108.0 -100.0 1141.0 -125.5Q1174.0 -151.0 1174.0 -185.0L1188.0 -105.0Q1166.0 -48.0 1121.0 -19.0Q1076.0 10.0 1011.0 10.0ZM1427.0 0.0V-510.0H1574.0V-390.0H1577.0V0.0ZM1577.0 -266.0 1564.0 -387.0Q1582.0 -452.0 1623.0 -486.0Q1664.0 -520.0 1725.0 -520.0Q1744.0 -520.0 1753.0 -516.0V-376.0Q1748.0 -378.0 1739.0 -378.5Q1730.0 -379.0 1717.0 -379.0Q1645.0 -379.0 1611.0 -353.5Q1577.0 -328.0 1577.0 -266.0ZM1804.0 0.0V-510.0H1954.0V0.0ZM2191.0 0.0 1990.0 -510.0H2151.0L2308.0 -34.0H2224.0L2380.0 -510.0H2537.0L2336.0 0.0ZM2809.0 10.0Q2725.0 10.0 2661.5 -23.5Q2598.0 -57.0 2562.5 -117.5Q2527.0 -178.0 2527.0 -257.0Q2527.0 -336.0 2562.5 -395.0Q2598.0 -454.0 2661.5 -487.0Q2725.0 -520.0 2809.0 -520.0Q2894.0 -520.0 2957.5 -487.0Q3021.0 -454.0 3056.0 -395.0Q3091.0 -336.0 3091.0 -257.0Q3091.0 -178.0 3055.5 -117.5Q3020.0 -57.0 2956.5 -23.5Q2893.0 10.0 2809.0 10.0ZM2809.0 -108.0Q2844.0 -108.0 2872.5 -126.0Q2901.0 -144.0 2918.0 -177.5Q2935.0 -211.0 2935.0 -258.0Q2935.0 -327.0 2898.5 -364.5Q2862.0 -402.0 2809.0 -402.0Q2756.0 -402.0 2719.5 -364.0Q2683.0 -326.0 2683.0 -258.0Q2683.0 -211.0 2700.0 -177.5Q2717.0 -144.0 2745.5 -126.0Q2774.0 -108.0 2809.0 -108.0Z" style="fill:var(--ink, #121a22)"></path><rect x="1804" y="-740" width="150" height="150" style="fill:var(--ink, #121a22)"></rect></g></svg>
+      </a>
+      <nav aria-label="Main" class="lp-hide-sm" style="display: flex; align-items: center; gap: 32px;">
+        <a href="#features" style="font-size: 14px; line-height: 20px; font-weight: 600; color: #4E5862; text-decoration: none;">Features</a>
+        <a href="#pricing" style="font-size: 14px; line-height: 20px; font-weight: 600; color: #4E5862; text-decoration: none;">Pricing</a>
+        <a href="#security" style="font-size: 14px; line-height: 20px; font-weight: 600; color: #4E5862; text-decoration: none;">Security</a>
+        <a href="#faq" style="font-size: 14px; line-height: 20px; font-weight: 600; color: #4E5862; text-decoration: none;">FAQ</a>
+      </nav>
+      <div style="display: flex; align-items: center; gap: 8px; flex: none;">
+        <div style="display: flex; align-items: center; gap: 8px;" data-switch="signedOut">
+          <div class="lp-hide-sm" style="display: flex;">
+            <a href="https://clarivo-app.com/sign-in" class="cv-btn cv-btn--ghost cv-btn--md"><span>Sign in</span></a>
+          </div>
+          <a href="https://clarivo-app.com/sign-up" class="cv-btn cv-btn--accent cv-btn--md"><span>Get early access</span></a>
+        </div>
+        <div style="display: none; align-items: center;" data-switch="signedIn">
+          <a href="https://clarivo-app.com/dashboard" class="cv-btn cv-btn--accent cv-btn--md"><span>Open Clarivo</span></a>
+        </div>
+        <details class="lp-hide-lg" style="position: relative;">
+          <summary aria-label="Menu" style="display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; box-sizing: border-box; border: 1px solid #7F8790; border-radius: 6px; color: #121A22; background: #FFFFFF;">
+            <svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M3 6h14"></path><path d="M3 10h14"></path><path d="M3 14h14"></path></svg>
+          </summary>
+          <nav aria-label="Main" style="position: absolute; right: 0; top: 52px; width: 220px; box-sizing: border-box; display: flex; flex-direction: column; padding: 8px; background: #FFFFFF; border: 1px solid #E6EAED; border-radius: 10px; box-shadow: 0 2px 4px #121A2210, 0 8px 20px -4px #121A2224;">
+            <a href="#features" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; font-size: 15px; font-weight: 600; color: #121A22; text-decoration: none;">Features</a>
+            <a href="#pricing" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; font-size: 15px; font-weight: 600; color: #121A22; text-decoration: none;">Pricing</a>
+            <a href="#security" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; font-size: 15px; font-weight: 600; color: #121A22; text-decoration: none;">Security</a>
+            <a href="#faq" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; font-size: 15px; font-weight: 600; color: #121A22; text-decoration: none;">FAQ</a>
+            <a href="https://clarivo-app.com/sign-in" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; margin-top: 4px; border-top: 1px solid #E6EAED; font-size: 15px; font-weight: 600; color: #121A22; text-decoration: none;" data-switch="signedOut">Sign in</a>
+          </nav>
+        </details>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section style="padding: clamp(40px, 6vw, 88px) 0 clamp(36px, 4vw, 56px);">
+      <div style="max-width: 1200px; margin: 0 auto; box-sizing: border-box; padding: 0 clamp(16px, 4vw, 40px); display: grid; grid-template-columns: repeat(auto-fit, minmax(min(460px, 100%), 1fr)); gap: clamp(40px, 5vw, 72px); align-items: center;">
+        <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 24px; min-width: 0;">
+          <p style="margin: 0; display: inline-flex; align-items: center; gap: 10px; padding: 6px 12px; background: #FFFFFF; border: 1px solid #E6EAED; border-radius: 4px; font-size: 13px; line-height: 18px; font-weight: 600; color: #4E5862;"><span aria-hidden="true" style="width: 6px; height: 6px; flex: none; background: #2F5BD3;"></span>Payroll dashboard · Now in beta</p>
+          <h1 style="margin: 0; font-size: clamp(38px, 4vw + 8px, 64px); line-height: 1.06; font-weight: 600; letter-spacing: -0.035em; text-wrap: balance;">The payroll dashboard that catches mistakes before payday</h1>
+          <p style="margin: 0; max-width: 580px; font-size: clamp(17px, 0.3vw + 15px, 19px); line-height: 1.6; color: #4E5862;">Drop in your payroll file and Clarivo shows every salary KPI in one click: total payroll cost, headcount, employer cost and every change since last period. Anything unusual is flagged before you approve, so mistakes never reach a payslip.</p>
+          <div style="display: flex; flex-wrap: wrap; gap: 12px;">
+            <a href="https://clarivo-app.com/sign-up" class="cv-btn cv-btn--accent cv-btn--lg"><span>Get early access</span></a>
+            <a href="#how-it-works" class="cv-btn cv-btn--secondary cv-btn--lg"><span>See how it works</span></a>
+          </div>
+          <p style="margin: 0; font-size: 13px; line-height: 20px; color: #677079;">Free during the beta · No credit card · Works with Excel or CSV from any payroll system</p>
+        </div>
+        <figure role="img" aria-label="Clarivo payroll dashboard showing salary KPIs and a flagged payroll anomaly (sample data)" style="margin: 0; min-width: 0; overflow: hidden; background: #FFFFFF; border: 1px solid #E6EAED; border-radius: 16px; box-shadow: 0 4px 8px #121A2214, 0 24px 48px -12px #121A2238;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid #E6EAED;">
+            <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+              <svg class="cv-logo" viewBox="12 12 96 96" height="22" width="22" role="img" aria-label="Clarivo" focusable="false"><path d="M74.833 14.349A48 48 0 1 0 93.941 93.941L79.799 79.799A28 28 0 1 1 68.652 33.370Z" style="fill:var(--ink, #121a22)"></path><path d="M107.417 32.603A48 48 0 0 0 89.035 13.568L79.035 30.889A28 28 0 0 1 89.758 41.992Z" style="fill:var(--signal, #e0592a)"></path></svg>
+              <div style="display: flex; flex-direction: column; min-width: 0;">
+                <span style="font-size: 13px; line-height: 18px; font-weight: 600;">Dashboard · Halden Logistics</span>
+                <span style="font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; line-height: 16px; color: #677079;">September 2026 vs August 2026</span>
+              </div>
+            </div>
+            <span class="cv-badge cv-badge--neutral">Sample data</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 12px; padding: 16px; background: #F7F8F9;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 12px;">
+              <div class="cv-stat"><div class="cv-stat__label">Total variance</div><div class="cv-stat__value">+€18,420</div><div class="cv-stat__foot"><span>+2.6% vs August</span></div></div>
+              <div class="cv-stat"><div class="cv-stat__label">Employees affected</div><div class="cv-stat__value">37</div><div class="cv-stat__foot"><span>of 248 employees</span></div></div>
+              <div class="lp-hide-sm" style="display: grid; min-width: 0;">
+                <div class="cv-stat"><div class="cv-stat__label">New employees</div><div class="cv-stat__value">4</div><div class="cv-stat__foot"><span>joined in September</span></div></div>
+              </div>
+              <div class="lp-hide-sm" style="display: grid; min-width: 0;">
+                <div class="cv-stat"><div class="cv-stat__label">Departed employees</div><div class="cv-stat__value">2</div><div class="cv-stat__foot"><span>left in September</span></div></div>
+              </div>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 14px; background: #FFFFFF; border: 1px solid #FFC5B2; border-radius: 10px;">
+              <span class="cv-badge cv-badge--signal"><svg class="cv-icon" width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M10 2.75 1.75 17.25h16.5z"></path><path d="M10 8v4.25"></path><path d="M10 14.75v.01"></path></svg>Warning</span>
+              <p style="margin: 0; flex: 1 1 220px; min-width: 0; font-size: 13px; line-height: 18px; color: #121A22;"><strong style="font-weight: 600;">Sara K., Sales.</strong> Net pay +32% with no change in any pay component. Check before you approve.</p>
+            </div>
+          </div>
+        </figure>
+      </div>
+    </section>
+
+    <div aria-hidden="true" style="display: flex; justify-content: center; overflow: hidden; padding-top: 8px;">
+      <span class="cv-drift cv-drift--lg" aria-hidden="true"><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick cv-drift__tick--drift"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span></span>
+    </div>
+
+    <section aria-labelledby="problem-title" style="padding: clamp(48px, 5vw, 72px) 0; background: #FFFFFF; border-top: 1px solid #E6EAED; border-bottom: 1px solid #E6EAED;">
+      <div style="max-width: 1200px; margin: 0 auto; box-sizing: border-box; padding: 0 clamp(16px, 4vw, 40px); display: flex; flex-direction: column; gap: 40px;">
+        <div style="display: flex; flex-direction: column; gap: 20px; max-width: 760px;">
+          <h2 id="problem-title" style="margin: 0; font-size: clamp(28px, 2.2vw + 14px, 44px); line-height: 1.1; font-weight: 600; letter-spacing: -0.03em; text-wrap: balance;">Still tracking salaries in payroll Excel files?</h2>
+          <p style="margin: 0; font-size: 17px; line-height: 28px; color: #4E5862;">Every payroll period, someone exports the register, opens last period's spreadsheet beside it and compares them line by line. It takes hours, the salary totals live in a dozen files, and nobody can say at a glance what payroll really costs this year. A missed allowance, a doubled bonus or a leaver still being paid is found only when an employee complains, or when the auditor does.</p>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 24px;">
+            <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 20px; border-top: 2px solid #121A22;">
+              <p style="margin: 0; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size: clamp(44px, 2.4vw + 22px, 60px); line-height: 1; font-weight: 500; letter-spacing: -0.04em;">1 in 5</p>
+              <p style="margin: 0; font-size: 16px; line-height: 24px; color: #4E5862;">payrolls contains errors</p>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 20px; border-top: 2px solid #121A22;">
+              <p style="margin: 0; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size: clamp(44px, 2.4vw + 22px, 60px); line-height: 1; font-weight: 500; letter-spacing: -0.04em;">$291</p>
+              <p style="margin: 0; font-size: 16px; line-height: 24px; color: #4E5862;">the average cost of each payroll error</p>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 20px; border-top: 2px solid #121A22;">
+              <p style="margin: 0; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size: clamp(44px, 2.4vw + 22px, 60px); line-height: 1; font-weight: 500; letter-spacing: -0.04em;">15</p>
+              <p style="margin: 0; font-size: 16px; line-height: 24px; color: #4E5862;">corrections per payroll period, on average</p>
+            </div>
+          </div>
+          <p style="margin: 0; font-size: 12px; line-height: 16px; color: #677079;">Source: <a href="https://www.businesswire.com/news/home/20221222005093/en/EY-survey-Payroll-errors-average-$291-each-impacting-the-economy" style="color: #4E5862;">EY survey of 508 payroll professionals at US companies with 250 to 10,000 employees, 2022.</a></p>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 16px;">
+          <div style="display: flex; flex-direction: column; gap: 6px; padding: 20px 24px; background: #F7F8F9; border-radius: 10px;">
+            <p style="margin: 0; font-size: 13px; line-height: 18px; font-weight: 600; color: #4E5862;">Business owners</p>
+            <p style="margin: 0; font-size: 17px; line-height: 26px; font-weight: 500;">You sign off a salary total you can't fully explain.</p>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px; padding: 20px 24px; background: #F7F8F9; border-radius: 10px;">
+            <p style="margin: 0; font-size: 13px; line-height: 18px; font-weight: 600; color: #4E5862;">Managers</p>
+            <p style="margin: 0; font-size: 17px; line-height: 26px; font-weight: 500;">Salary cost surprises show up after the month is closed.</p>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px; padding: 20px 24px; background: #F7F8F9; border-radius: 10px;">
+            <p style="margin: 0; font-size: 13px; line-height: 18px; font-weight: 600; color: #4E5862;">Payroll admins</p>
+            <p style="margin: 0; font-size: 17px; line-height: 26px; font-weight: 500;">Hours of copy, paste and VLOOKUP, every single period.</p>
+          </div>
+        </div>
+        <p style="margin: 0; max-width: 760px; font-size: clamp(19px, 0.5vw + 15px, 22px); line-height: 1.45; font-weight: 600; letter-spacing: -0.01em;">Clarivo replaces those spreadsheets with one payroll dashboard, and does the checking for you.</p>
+      </div>
+    </section>
+
+    <section id="how-it-works" aria-labelledby="how-title" style="scroll-margin-top: 80px; padding: clamp(48px, 5vw, 72px) 0;">
+      <div style="max-width: 1200px; margin: 0 auto; box-sizing: border-box; padding: 0 clamp(16px, 4vw, 40px); display: flex; flex-direction: column; gap: 40px;">
+        <div style="display: flex; flex-direction: column; gap: 12px; max-width: 760px;">
+          <p style="margin: 0; font-size: 13px; line-height: 18px; font-weight: 600; color: #4E5862;">How it works</p>
+          <h2 id="how-title" style="margin: 0; font-size: clamp(28px, 2.2vw + 14px, 44px); line-height: 1.1; font-weight: 600; letter-spacing: -0.03em; text-wrap: balance;">From payroll spreadsheet to dashboard in three steps</h2>
+        </div>
+        <ol style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 32px;">
+          <li style="display: flex; flex-direction: column; gap: 16px;">
+            <div style="display: flex; align-items: center; gap: 16px;">
+              <span style="flex: none; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; box-sizing: border-box; border: 1.5px solid #121A22; border-radius: 6px; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size: 15px; font-weight: 600;">01</span>
+              <span aria-hidden="true" style="flex: 1; height: 1px; background: #BEC5CC;"></span>
+              <span aria-hidden="true" style="display: flex; color: #4E5862;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M10 13V3.5"></path><path d="M6 7.5l4-4 4 4"></path><path d="M3.5 13v2.75c0 .69.56 1.25 1.25 1.25h10.5c.69 0 1.25-.56 1.25-1.25V13"></path></svg></span>
+            </div>
+            <h3 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.01em;">Upload your payroll file</h3>
+            <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">Export the payroll register from the system you already use, as Excel or CSV, and drop it in. Monthly, bi-monthly, bi-weekly or weekly.</p>
+          </li>
+          <li style="display: flex; flex-direction: column; gap: 16px;">
+            <div style="display: flex; align-items: center; gap: 16px;">
+              <span style="flex: none; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; box-sizing: border-box; border: 1.5px solid #121A22; border-radius: 6px; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size: 15px; font-weight: 600;">02</span>
+              <span aria-hidden="true" style="flex: 1; height: 1px; background: #BEC5CC;"></span>
+              <span aria-hidden="true" style="display: flex; color: #4E5862;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M3.25 3.25h13.5v13.5H3.25z"></path><path d="M8 3.25v13.5"></path><path d="M12.75 3.25v13.5"></path></svg></span>
+            </div>
+            <h3 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.01em;">Clarivo maps your columns</h3>
+            <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">Clarivo recognises your columns, such as basic salary, housing, overtime and tax, the first time. Confirm once and it remembers them for every period.</p>
+          </li>
+          <li style="display: flex; flex-direction: column; gap: 16px;">
+            <div style="display: flex; align-items: center; gap: 16px;">
+              <span style="flex: none; display: flex; align-items: center; justify-content: center; width: 44px; height: 44px; box-sizing: border-box; border: 1.5px solid #121A22; border-radius: 6px; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size: 15px; font-weight: 600;">03</span>
+              <span aria-hidden="true" style="flex: 1; height: 1px; background: #BEC5CC;"></span>
+              <span aria-hidden="true" style="display: flex; color: #4E5862;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M3.25 16.75h13.5"></path><path d="M6 13.5V9.5"></path><path d="M10 13.5V5.5"></path><path d="M14 13.5v-6"></path></svg></span>
+            </div>
+            <h3 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.01em;">See every KPI and every change</h3>
+            <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">Your payroll dashboard, the anomaly alerts and a plain-language summary are ready in moments. Compare any two periods, open any employee, or export the variance report for sign-off.</p>
+          </li>
+        </ol>
+        <p style="margin: 0; font-size: 15px; line-height: 24px; font-weight: 600;">No integration project, no IT ticket, no new payroll system.</p>
+      </div>
+    </section>
+
+    <section id="features" aria-labelledby="features-title" style="scroll-margin-top: 80px; padding: clamp(48px, 5vw, 72px) 0; background: #FFFFFF; border-top: 1px solid #E6EAED; border-bottom: 1px solid #E6EAED;">
+      <div style="max-width: 1200px; margin: 0 auto; box-sizing: border-box; padding: 0 clamp(16px, 4vw, 40px); display: flex; flex-direction: column; gap: 32px;">
+        <div style="display: flex; flex-direction: column; gap: 12px; max-width: 760px;">
+          <p style="margin: 0; font-size: 13px; line-height: 18px; font-weight: 600; color: #4E5862;">Payroll dashboard</p>
+          <h2 id="features-title" style="margin: 0; font-size: clamp(28px, 2.2vw + 14px, 44px); line-height: 1.1; font-weight: 600; letter-spacing: -0.03em; text-wrap: balance;">Every salary KPI in one click</h2>
+          <p style="margin: 8px 0 0; font-size: 17px; line-height: 28px; color: #4E5862;">Upload this period's payroll and Clarivo builds your payroll dashboard for you. No formulas, no pivot tables, no waiting for month end: see where your salary expenses stand today.</p>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px;">
+            <p style="margin: 0; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; line-height: 16px; color: #677079;">Halden Logistics · September 2026 vs August 2026</p>
+            <span class="cv-badge cv-badge--neutral">Sample data</span>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 16px;">
+            <div style="display: flex; flex-direction: column; gap: 10px; padding: 22px 24px; background: #F7F8F9; border: 1px solid #E6EAED; border-radius: 10px;">
+              <h3 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600;">Total variance</h3>
+              <p style="margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;"><span style="font-size: 30px; line-height: 36px; font-weight: 500; letter-spacing: -0.02em; color: #BD481F;">+€18,420</span><span style="font-size: 13px; line-height: 20px; color: #677079;">+2.6%</span></p>
+              <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">How much this payroll differs from the last one, and what drove it.</p>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px; padding: 22px 24px; background: #F7F8F9; border: 1px solid #E6EAED; border-radius: 10px;">
+              <h3 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600;">Employees affected</h3>
+              <p style="margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;"><span style="font-size: 30px; line-height: 36px; font-weight: 500; letter-spacing: -0.02em;">37</span><span style="font-size: 13px; line-height: 20px; color: #677079;">of 248</span></p>
+              <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">Everyone whose pay changed, at a glance.</p>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px; padding: 22px 24px; background: #F7F8F9; border: 1px solid #E6EAED; border-radius: 10px;">
+              <h3 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600;">New employees</h3>
+              <p style="margin: 0; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size: 30px; line-height: 36px; font-weight: 500; letter-spacing: -0.02em;">4</p>
+              <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">Who joined the payroll this period.</p>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px; padding: 22px 24px; background: #F7F8F9; border: 1px solid #E6EAED; border-radius: 10px;">
+              <h3 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600;">Departed employees</h3>
+              <p style="margin: 0; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size: 30px; line-height: 36px; font-weight: 500; letter-spacing: -0.02em;">2</p>
+              <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">Who left, so nobody is paid after they go.</p>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px; padding: 22px 24px; background: #F7F8F9; border: 1px solid #E6EAED; border-radius: 10px;">
+              <h3 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600;">Largest increase</h3>
+              <p style="margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;"><span style="font-size: 30px; line-height: 36px; font-weight: 500; letter-spacing: -0.02em; color: #BD481F;">+€1,240</span><span style="font-size: 13px; line-height: 20px; color: #677079;">Sara K., Sales</span></p>
+              <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">The biggest pay rise this period, ready to check first.</p>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px; padding: 22px 24px; background: #F7F8F9; border: 1px solid #E6EAED; border-radius: 10px;">
+              <h3 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600;">Largest decrease</h3>
+              <p style="margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;"><span style="font-size: 30px; line-height: 36px; font-weight: 500; letter-spacing: -0.02em; color: #2F5BD3;">−€860</span><span style="font-size: 13px; line-height: 20px; color: #677079;">Tom R., Operations</span></p>
+              <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">The biggest drop, before anyone calls payroll about it.</p>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px; padding: 22px 24px; background: #F7F8F9; border: 1px solid #E6EAED; border-radius: 10px;">
+              <h3 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600;">Pay components</h3>
+              <p style="margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;"><span style="font-size: 30px; line-height: 36px; font-weight: 500; letter-spacing: -0.02em; color: #BD481F;">+€9,310</span><span style="font-size: 13px; line-height: 20px; color: #677079;">Overtime</span></p>
+              <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">Base, allowances, overtime, bonuses and deductions: see what moved.</p>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px; padding: 22px 24px; background: #F7F8F9; border: 1px solid #E6EAED; border-radius: 10px;">
+              <h3 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600;">Departments</h3>
+              <p style="margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;"><span style="font-size: 30px; line-height: 36px; font-weight: 500; letter-spacing: -0.02em; color: #BD481F;">+€7,840</span><span style="font-size: 13px; line-height: 20px; color: #677079;">Sales</span></p>
+              <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">Which teams drive the change in salary cost.</p>
+            </div>
+          </div>
+          <div style="display: none; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 16px;" data-switch="annualSalariesLive">
+            <div style="display: flex; flex-direction: column; gap: 10px; padding: 22px 24px; background: #F7F8F9; border: 1px solid #E6EAED; border-radius: 10px;">
+              <h3 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600;">Paid so far this year</h3>
+              <p style="margin: 0; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size: 30px; line-height: 36px; font-weight: 500; letter-spacing: -0.02em;">€6.47M</p>
+              <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">Net and gross salaries paid to date.</p>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px; padding: 22px 24px; background: #F7F8F9; border: 1px solid #E6EAED; border-radius: 10px;">
+              <h3 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600;">Full-year forecast</h3>
+              <p style="margin: 0; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size: 30px; line-height: 36px; font-weight: 500; letter-spacing: -0.02em;">€8.69M</p>
+              <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">Where this year's payroll will land, period by period.</p>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px; padding: 22px 24px; background: #F7F8F9; border: 1px solid #E6EAED; border-radius: 10px;">
+              <h3 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600;">Total employer cost</h3>
+              <p style="margin: 0; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size: 30px; line-height: 36px; font-weight: 500; letter-spacing: -0.02em;">€11.27M</p>
+              <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">Salaries plus employer contributions: the true cost of your team.</p>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px; padding: 22px 24px; background: #F7F8F9; border: 1px solid #E6EAED; border-radius: 10px;">
+              <h3 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600;">Taxes and social security</h3>
+              <p style="margin: 0; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size: 30px; line-height: 36px; font-weight: 500; letter-spacing: -0.02em;">€4.75M</p>
+              <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">What you withhold and owe the authorities, to date.</p>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px; padding: 22px 24px; background: #F7F8F9; border: 1px solid #E6EAED; border-radius: 10px;">
+              <h3 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600;">Cost per employee and headcount</h3>
+              <p style="margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;"><span style="font-size: 30px; line-height: 36px; font-weight: 500; letter-spacing: -0.02em;">€5,063</span><span style="font-size: 13px; line-height: 20px; color: #677079;">248 employees</span></p>
+              <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">Average cost per head, and how your team is changing.</p>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 10px; padding: 22px 24px; background: #F7F8F9; border: 1px solid #E6EAED; border-radius: 10px;">
+              <h3 style="margin: 0; font-size: 14px; line-height: 20px; font-weight: 600;">Budget vs forecast</h3>
+              <p style="margin: 0; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size: 30px; line-height: 36px; font-weight: 500; letter-spacing: -0.02em; color: #2F5BD3;">−1.8%</p>
+              <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">Whether the year will land on budget, and by how much.</p>
+            </div>
+          </div>
+        </div>
+        <p style="margin: 0; font-size: 15px; line-height: 24px; font-weight: 600;">Need the detail? Open any employee in the Detailed View, or export the comparison to Excel, CSV or PDF.</p>
+      </div>
+    </section>
+
+    <section aria-labelledby="alerts-title" style="padding: clamp(48px, 5vw, 72px) 0; background: #121A22; color: #ECEFF2;">
+      <div style="max-width: 1200px; margin: 0 auto; box-sizing: border-box; padding: 0 clamp(16px, 4vw, 40px); display: flex; flex-direction: column; gap: 40px;">
+        <div style="display: flex; flex-direction: column; gap: 12px; max-width: 760px;">
+          <p style="margin: 0; font-size: 13px; line-height: 18px; font-weight: 600; color: #B7BFC7;">Anomaly alerts</p>
+          <h2 id="alerts-title" style="margin: 0; font-size: clamp(28px, 2.2vw + 14px, 44px); line-height: 1.1; font-weight: 600; letter-spacing: -0.03em; text-wrap: balance; color: #FFFFFF;">Payroll anomaly alerts that stop costly mistakes</h2>
+          <p style="margin: 8px 0 0; font-size: 17px; line-height: 28px; color: #B7BFC7;">Clarivo checks every employee's pay against the previous period. Anything unusual is flagged, ranked by severity and explained in plain language, so you fix it before payroll goes out, not after payday.</p>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(440px, 100%), 1fr)); gap: 24px; align-items: start;">
+          <figure role="img" aria-label="Payroll anomaly alert: net pay up 32% with no change in any pay component (sample data)" style="margin: 0; min-width: 0; overflow: hidden; background: #FFFFFF; color: #121A22; border-radius: 16px; box-shadow: 0 24px 48px -12px #000000CC;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid #E6EAED;">
+              <span class="cv-badge cv-badge--signal"><svg class="cv-icon" width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M10 2.75 1.75 17.25h16.5z"></path><path d="M10 8v4.25"></path><path d="M10 14.75v.01"></path></svg>Warning</span>
+              <span class="cv-badge cv-badge--neutral">Sample data</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 16px; padding: 20px 24px 24px;">
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <p style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.01em;">Sara K., Sales</p>
+                <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">Net pay +32% with no change in any pay component. Check before you approve.</p>
+              </div>
+              <div style="overflow-x: auto; border: 1px solid #E6EAED; border-radius: 10px;">
+                <table style="width: 100%; min-width: 420px; border-collapse: collapse; font-size: 13px; line-height: 20px;">
+                  <thead>
+                    <tr style="background: #F0F3F5;">
+                      <th scope="col" style="padding: 8px 12px; text-align: left; font-size: 12px; font-weight: 600; color: #4E5862;">Component</th>
+                      <th scope="col" style="padding: 8px 12px; text-align: right; font-size: 12px; font-weight: 600; color: #4E5862;">August</th>
+                      <th scope="col" style="padding: 8px 12px; text-align: right; font-size: 12px; font-weight: 600; color: #4E5862;">September</th>
+                      <th scope="col" style="padding: 8px 12px; text-align: right; font-size: 12px; font-weight: 600; color: #4E5862;">Change</th>
+                    </tr>
+                  </thead>
+                  <tbody style="font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;">
+                    <tr style="border-top: 1px solid #E6EAED;">
+                      <th scope="row" style="padding: 10px 12px; text-align: left; font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif; font-weight: 500;">Base salary</th>
+                      <td style="padding: 10px 12px; text-align: right;">€4,200.00</td>
+                      <td style="padding: 10px 12px; text-align: right;">€4,200.00</td>
+                      <td style="padding: 10px 12px; text-align: right;"><span class="cv-var cv-var--flat"><svg class="cv-icon" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M4.5 10h11"></path></svg><span>No change</span></span></td>
+                    </tr>
+                    <tr style="border-top: 1px solid #E6EAED;">
+                      <th scope="row" style="padding: 10px 12px; text-align: left; font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif; font-weight: 500;">Housing allowance</th>
+                      <td style="padding: 10px 12px; text-align: right;">€850.00</td>
+                      <td style="padding: 10px 12px; text-align: right;">€850.00</td>
+                      <td style="padding: 10px 12px; text-align: right;"><span class="cv-var cv-var--flat"><svg class="cv-icon" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M4.5 10h11"></path></svg><span>No change</span></span></td>
+                    </tr>
+                    <tr style="border-top: 1px solid #E6EAED;">
+                      <th scope="row" style="padding: 10px 12px; text-align: left; font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif; font-weight: 500;">Transport allowance</th>
+                      <td style="padding: 10px 12px; text-align: right;">€150.00</td>
+                      <td style="padding: 10px 12px; text-align: right;">€150.00</td>
+                      <td style="padding: 10px 12px; text-align: right;"><span class="cv-var cv-var--flat"><svg class="cv-icon" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M4.5 10h11"></path></svg><span>No change</span></span></td>
+                    </tr>
+                    <tr style="border-top: 1px solid #E6EAED; background: #FEF2EE;">
+                      <th scope="row" style="padding: 10px 12px; text-align: left; font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif; font-weight: 600;">Net pay</th>
+                      <td style="padding: 10px 12px; text-align: right;">€3,875.00</td>
+                      <td style="padding: 10px 12px; text-align: right; font-weight: 600;">€5,115.00</td>
+                      <td style="padding: 10px 12px; text-align: right;"><span class="cv-var cv-var--up"><svg class="cv-icon" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M10 16V4"></path><path d="M5 9l5-5 5 5"></path></svg><span class="cv-sr">Increase </span><span>+€1,240.00</span><span class="cv-var__pct">+32.0%</span></span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </figure>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: 12px; min-width: 0;">
+            <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 20px; background: #1C2229; border: 1px solid #282F36; border-radius: 10px;">
+              <span class="cv-badge cv-badge--signal"><svg class="cv-icon" width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M10 2.75 1.75 17.25h16.5z"></path><path d="M10 8v4.25"></path><path d="M10 14.75v.01"></path></svg>Warning</span>
+              <h3 style="margin: 0; font-size: 17px; line-height: 24px; font-weight: 600; color: #FFFFFF;">Net pay jumped, nothing explains it</h3>
+              <p style="margin: 0; font-size: 15px; line-height: 22px; color: #B7BFC7;">Net pay changed by 20% or more, but no pay component changed.</p>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 20px; background: #1C2229; border: 1px solid #282F36; border-radius: 10px;">
+              <span class="cv-badge cv-badge--signal"><svg class="cv-icon" width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M10 2.75 1.75 17.25h16.5z"></path><path d="M10 8v4.25"></path><path d="M10 14.75v.01"></path></svg>Warning</span>
+              <h3 style="margin: 0; font-size: 17px; line-height: 24px; font-weight: 600; color: #FFFFFF;">A pay component dropped to zero</h3>
+              <p style="margin: 0; font-size: 15px; line-height: 22px; color: #B7BFC7;">A component shows 0 this period, such as a housing allowance left blank.</p>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 20px; background: #1C2229; border: 1px solid #282F36; border-radius: 10px;">
+              <span class="cv-badge cv-badge--accent"><svg class="cv-icon" width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M10 1.75a8.25 8.25 0 1 1 0 16.5a8.25 8.25 0 1 1 0-16.5z"></path><path d="M10 9v5"></path><path d="M10 6.25v.01"></path></svg>Info</span>
+              <h3 style="margin: 0; font-size: 17px; line-height: 24px; font-weight: 600; color: #FFFFFF;">A pay component appeared or disappeared</h3>
+              <p style="margin: 0; font-size: 15px; line-height: 22px; color: #B7BFC7;">A new bonus line this period, or a regular allowance that is suddenly missing.</p>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 20px; background: #1C2229; border: 1px solid #282F36; border-radius: 10px;">
+              <span class="cv-badge cv-badge--accent"><svg class="cv-icon" width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M10 1.75a8.25 8.25 0 1 1 0 16.5a8.25 8.25 0 1 1 0-16.5z"></path><path d="M10 9v5"></path><path d="M10 6.25v.01"></path></svg>Info</span>
+              <h3 style="margin: 0; font-size: 17px; line-height: 24px; font-weight: 600; color: #FFFFFF;">Joiners and leavers</h3>
+              <p style="margin: 0; font-size: 15px; line-height: 22px; color: #B7BFC7;">Who joined and who left since the last payroll, so no one is paid by mistake.</p>
+            </div>
+            <div style="display: none; flex-direction: column; align-items: flex-start; gap: 10px; padding: 20px; background: #1C2229; border: 1px solid #282F36; border-radius: 10px;" data-switch="annualSalariesLive">
+              <span class="cv-badge cv-badge--neutral"><svg class="cv-icon" width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M8.75 2.5a6.25 6.25 0 1 1 0 12.5a6.25 6.25 0 1 1 0-12.5z"></path><path d="M13.25 13.25 17.5 17.5"></path></svg>Data check</span>
+              <h3 style="margin: 0; font-size: 17px; line-height: 24px; font-weight: 600; color: #FFFFFF;">Something doesn't add up</h3>
+              <p style="margin: 0; font-size: 15px; line-height: 22px; color: #B7BFC7;">A missing pay period, a column Clarivo can't place, or totals that don't reconcile.</p>
+            </div>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr)); gap: 16px 32px; padding-top: 24px; border-top: 1px solid #282F36;">
+          <p style="margin: 0; display: flex; align-items: flex-start; gap: 12px; font-size: 16px; line-height: 24px; color: #ECEFF2;"><span aria-hidden="true" style="display: flex; flex: none; padding-top: 2px; color: #79A1FC;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M3.25 16.75h13.5"></path><path d="M6 13.5V9.5"></path><path d="M10 13.5V5.5"></path><path d="M14 13.5v-6"></path></svg></span>Plus a plain-language summary of each payroll: what changed, why, and what to check first.</p>
+          <p style="margin: 0; display: flex; align-items: flex-start; gap: 12px; font-size: 16px; line-height: 24px; color: #ECEFF2;"><span aria-hidden="true" style="display: flex; flex: none; padding-top: 2px; color: #79A1FC;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M10 2.25 3.75 4.75v4.6c0 4.1 2.65 7 6.25 8.4 3.6-1.4 6.25-4.3 6.25-8.4v-4.6z"></path><path d="M7.25 10.25l1.9 1.9 3.6-4"></path></svg></span>Clarivo never changes your payroll. It shows you exactly where to look.</p>
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="roles-title" style="padding: clamp(48px, 5vw, 72px) 0;">
+      <div style="max-width: 1200px; margin: 0 auto; box-sizing: border-box; padding: 0 clamp(16px, 4vw, 40px); display: flex; flex-direction: column; gap: 40px;">
+        <div style="display: flex; flex-direction: column; gap: 12px; max-width: 760px;">
+          <p style="margin: 0; font-size: 13px; line-height: 18px; font-weight: 600; color: #4E5862;">Who it's for</p>
+          <h2 id="roles-title" style="margin: 0; font-size: clamp(28px, 2.2vw + 14px, 44px); line-height: 1.1; font-weight: 600; letter-spacing: -0.03em; text-wrap: balance;">Built for business owners, managers and payroll admins</h2>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr)); gap: 16px;">
+          <div style="display: flex; flex-direction: column; gap: 12px; padding: 24px; background: #FFFFFF; border: 1px solid #E6EAED; border-radius: 10px;">
+            <p style="margin: 0; font-size: 13px; line-height: 18px; font-weight: 600; color: #4E5862;">Business owners</p>
+            <h3 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.01em;">Know what you're signing.</h3>
+            <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">See your total salary cost, the employer cost and the reason for every change before you approve payroll, without opening a spreadsheet.</p>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 12px; padding: 24px; background: #FFFFFF; border: 1px solid #E6EAED; border-radius: 10px;">
+            <p style="margin: 0; font-size: 13px; line-height: 18px; font-weight: 600; color: #4E5862;">HR and finance managers</p>
+            <h3 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.01em;">Keep salary expenses on track.</h3>
+            <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">Follow salary costs by department, headcount, joiners and leavers, and the year against budget, all on one payroll dashboard.</p>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 12px; padding: 24px; background: #FFFFFF; border: 1px solid #E6EAED; border-radius: 10px;">
+            <p style="margin: 0; font-size: 13px; line-height: 18px; font-weight: 600; color: #4E5862;">Payroll administrators</p>
+            <h3 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.01em;">Stop checking line by line in Excel.</h3>
+            <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">Clarivo compares every employee with the last period and points you to the lines that need a second look. Export the variance report for sign-off.</p>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 12px; padding: 24px; background: #FFFFFF; border: 1px solid #E6EAED; border-radius: 10px;">
+            <p style="margin: 0; font-size: 13px; line-height: 18px; font-weight: 600; color: #4E5862;">Payroll bureaus and accountants</p>
+            <h3 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.01em;">A second pair of eyes on every client payroll.</h3>
+            <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">Check each client's payroll before it goes out, with one Clarivo workspace per client.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="security" aria-labelledby="security-title" style="scroll-margin-top: 80px; padding: clamp(48px, 5vw, 72px) 0; background: #FFFFFF; border-top: 1px solid #E6EAED; border-bottom: 1px solid #E6EAED;">
+      <div style="max-width: 1200px; margin: 0 auto; box-sizing: border-box; padding: 0 clamp(16px, 4vw, 40px); display: flex; flex-direction: column; gap: 32px;">
+        <div style="display: flex; flex-direction: column; gap: 12px; max-width: 760px;">
+          <p style="margin: 0; font-size: 13px; line-height: 18px; font-weight: 600; color: #4E5862;">Security</p>
+          <h2 id="security-title" style="margin: 0; font-size: clamp(28px, 2.2vw + 14px, 44px); line-height: 1.1; font-weight: 600; letter-spacing: -0.03em; text-wrap: balance;">Your payroll data stays yours</h2>
+          <p style="margin: 8px 0 0; font-size: 17px; line-height: 28px; color: #4E5862;">Salaries are the most sensitive numbers a company has. Clarivo treats them that way.</p>
+        </div>
+        <ul style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(440px, 100%), 1fr)); gap: 0 48px;">
+          <li style="display: flex; gap: 16px; padding: 18px 0; border-top: 1px solid #E6EAED;" data-switch="unconfirmedSecurityPoints">
+            <span aria-hidden="true" style="flex: none; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; box-sizing: border-box; border: 1px solid #D6DBE1; border-radius: 6px; color: #121A22;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M10 1.75a8.25 8.25 0 1 1 0 16.5a8.25 8.25 0 1 1 0-16.5z"></path><path d="M1.75 10h16.5"></path><path d="M10 1.75c2.4 2.3 3.6 5.05 3.6 8.25s-1.2 5.95-3.6 8.25c-2.4-2.3-3.6-5.05-3.6-8.25s1.2-5.95 3.6-8.25z"></path></svg></span>
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <h3 style="margin: 0; font-size: 16px; line-height: 24px; font-weight: 600;">Hosted in the EU</h3>
+              <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">Your payroll data is stored and processed in the European Union.</p>
+            </div>
+          </li>
+          <li style="display: flex; gap: 16px; padding: 18px 0; border-top: 1px solid #E6EAED;">
+            <span aria-hidden="true" style="flex: none; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; box-sizing: border-box; border: 1px solid #D6DBE1; border-radius: 6px; color: #121A22;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M5 9h10a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1z"></path><path d="M6.75 9V6.5a3.25 3.25 0 0 1 6.5 0V9"></path></svg></span>
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <h3 style="margin: 0; font-size: 16px; line-height: 24px; font-weight: 600;">Encrypted</h3>
+              <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">Encrypted in transit and at rest.</p>
+            </div>
+          </li>
+          <li style="display: flex; gap: 16px; padding: 18px 0; border-top: 1px solid #E6EAED;">
+            <span aria-hidden="true" style="flex: none; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; box-sizing: border-box; border: 1px solid #D6DBE1; border-radius: 6px; color: #121A22;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M10 2.5 2.5 6.25 10 10l7.5-3.75z"></path><path d="M2.5 10 10 13.75 17.5 10"></path><path d="M2.5 13.75 10 17.5l7.5-3.75"></path></svg></span>
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <h3 style="margin: 0; font-size: 16px; line-height: 24px; font-weight: 600;">Kept separate</h3>
+              <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">Each company's data is kept apart. No other customer can see it.</p>
+            </div>
+          </li>
+          <li style="display: flex; gap: 16px; padding: 18px 0; border-top: 1px solid #E6EAED;" data-switch="unconfirmedSecurityPoints">
+            <span aria-hidden="true" style="flex: none; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; box-sizing: border-box; border: 1px solid #D6DBE1; border-radius: 6px; color: #121A22;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M10 2.25 3.75 4.75v4.6c0 4.1 2.65 7 6.25 8.4 3.6-1.4 6.25-4.3 6.25-8.4v-4.6z"></path><path d="M7.25 10.25l1.9 1.9 3.6-4"></path></svg></span>
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <h3 style="margin: 0; font-size: 16px; line-height: 24px; font-weight: 600;">Verified sign-in</h3>
+              <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">Every account is confirmed by an email code, with bot protection at sign-up.</p>
+            </div>
+          </li>
+          <li style="display: flex; gap: 16px; padding: 18px 0; border-top: 1px solid #E6EAED;" data-switch="unconfirmedSecurityPoints">
+            <span aria-hidden="true" style="flex: none; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; box-sizing: border-box; border: 1px solid #D6DBE1; border-radius: 6px; color: #121A22;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M7.5 9.25a3 3 0 1 0 0-6a3 3 0 1 0 0 6z"></path><path d="M2.25 17c.4-2.9 2.55-4.75 5.25-4.75s4.85 1.85 5.25 4.75"></path><path d="M13 3.4a3 3 0 0 1 0 5.7"></path><path d="M14.5 12.4c1.8.5 3 2.1 3.25 4.6"></path></svg></span>
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <h3 style="margin: 0; font-size: 16px; line-height: 24px; font-weight: 600;">Access by role</h3>
+              <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">Admins, managers and viewers each see and change only what their role allows.</p>
+            </div>
+          </li>
+          <li style="display: flex; gap: 16px; padding: 18px 0; border-top: 1px solid #E6EAED;">
+            <span aria-hidden="true" style="flex: none; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; box-sizing: border-box; border: 1px solid #D6DBE1; border-radius: 6px; color: #121A22;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M10 1.75a8.25 8.25 0 1 1 0 16.5a8.25 8.25 0 1 1 0-16.5z"></path><path d="M4.2 4.2l11.6 11.6"></path></svg></span>
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <h3 style="margin: 0; font-size: 16px; line-height: 24px; font-weight: 600;">No AI training</h3>
+              <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">Your payroll data is never used to train AI models.</p>
+            </div>
+          </li>
+          <li style="display: flex; gap: 16px; padding: 18px 0; border-top: 1px solid #E6EAED;" data-switch="unconfirmedSecurityPoints">
+            <span aria-hidden="true" style="flex: none; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; box-sizing: border-box; border: 1px solid #D6DBE1; border-radius: 6px; color: #121A22;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M3.5 5.5h13"></path><path d="M8 5.5V3.75h4V5.5"></path><path d="M5 5.5l.75 11h8.5L15 5.5"></path><path d="M8.5 8.75v5"></path><path d="M11.5 8.75v5"></path></svg></span>
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <h3 style="margin: 0; font-size: 16px; line-height: 24px; font-weight: 600;">Deleted on request</h3>
+              <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">Ask, and we delete your company's data.</p>
+            </div>
+          </li>
+        </ul>
+        <a href="https://clarivo-app.com/security" style="align-self: flex-start; font-size: 15px; line-height: 24px; font-weight: 600; color: #2F5BD3;">Read how we protect your payroll data →</a>
+      </div>
+    </section>
+
+    <section id="pricing" aria-labelledby="pricing-title" style="scroll-margin-top: 80px; padding: clamp(48px, 5vw, 72px) 0;">
+      <div style="max-width: 1200px; margin: 0 auto; box-sizing: border-box; padding: 0 clamp(16px, 4vw, 40px); display: flex; flex-direction: column; gap: 32px;">
+        <div style="display: flex; flex-direction: column; gap: 12px; max-width: 760px;">
+          <p style="margin: 0; font-size: 13px; line-height: 18px; font-weight: 600; color: #4E5862;">Pricing</p>
+          <h2 id="pricing-title" style="margin: 0; font-size: clamp(28px, 2.2vw + 14px, 44px); line-height: 1.1; font-weight: 600; letter-spacing: -0.03em; text-wrap: balance;">Simple payroll dashboard pricing, 50% off for beta founders</h2>
+          <p style="margin: 8px 0 0; font-size: 17px; line-height: 28px; color: #4E5862;">Clarivo is free while it's in beta. When billing starts, every company that joined during the beta pays the founder price for 24 months. Every plan includes every feature.</p>
+        </div>
+        <div style="display: flex;">
+          <div class="cv-seg" role="group" aria-label="Billing period"><button type="button" class="cv-seg__btn" aria-pressed="true">Monthly</button><button type="button" class="cv-seg__btn" aria-pressed="false">Yearly (2 months free)</button></div>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr)); gap: 16px; align-items: stretch;">
+          <div style="display: flex; flex-direction: column; gap: 16px; padding: 24px; background: #FFFFFF; border: 1px solid #E6EAED; border-radius: 12px;">
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <h3 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.01em;">Starter</h3>
+              <p style="margin: 0; font-size: 14px; line-height: 20px; color: #4E5862;">Up to 100 employees</p>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 2px;" data-switch="billing-monthly">
+              <p style="margin: 0; display: flex; align-items: baseline; gap: 10px; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;"><s style="font-size: 16px; line-height: 24px; color: #677079;"><span class="cv-sr">List price </span>€59</s><span style="font-size: 40px; line-height: 44px; font-weight: 500; letter-spacing: -0.03em;"><span class="cv-sr">Founder price </span>€29</span></p>
+              <p style="margin: 0; font-size: 13px; line-height: 18px; color: #677079;">per month</p>
+            </div>
+            <div style="display: none; flex-direction: column; gap: 2px;" data-switch="billing-yearly">
+              <p style="margin: 0; display: flex; align-items: baseline; gap: 10px; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;"><s style="font-size: 16px; line-height: 24px; color: #677079;"><span class="cv-sr">List price </span>€590</s><span style="font-size: 40px; line-height: 44px; font-weight: 500; letter-spacing: -0.03em;"><span class="cv-sr">Founder price </span>€290</span></p>
+              <p style="margin: 0; font-size: 13px; line-height: 18px; color: #677079;">per year</p>
+            </div>
+            <div style="display: flex;"><span class="cv-badge cv-badge--accent">Beta founder: −50% for 24 months</span></div>
+            <div style="display: flex; margin-top: auto;"><a href="https://clarivo-app.com/sign-up" class="cv-btn cv-btn--secondary cv-btn--md"><span>Get early access</span></a></div>
+          </div>
+          <div style="position: relative; display: flex; flex-direction: column; gap: 16px; padding: 24px; background: #FFFFFF; border: 2px solid #2F5BD3; border-radius: 12px;">
+            <p style="margin: 0; align-self: flex-start; padding: 3px 8px; background: #121A22; color: #FFFFFF; border-radius: 4px; font-size: 12px; line-height: 16px; font-weight: 600;">Best for growing teams</p>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <h3 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.01em;">Growth</h3>
+              <p style="margin: 0; font-size: 14px; line-height: 20px; color: #4E5862;">Up to 500 employees</p>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 2px;" data-switch="billing-monthly">
+              <p style="margin: 0; display: flex; align-items: baseline; gap: 10px; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;"><s style="font-size: 16px; line-height: 24px; color: #677079;"><span class="cv-sr">List price </span>€139</s><span style="font-size: 40px; line-height: 44px; font-weight: 500; letter-spacing: -0.03em;"><span class="cv-sr">Founder price </span>€69</span></p>
+              <p style="margin: 0; font-size: 13px; line-height: 18px; color: #677079;">per month</p>
+            </div>
+            <div style="display: none; flex-direction: column; gap: 2px;" data-switch="billing-yearly">
+              <p style="margin: 0; display: flex; align-items: baseline; gap: 10px; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;"><s style="font-size: 16px; line-height: 24px; color: #677079;"><span class="cv-sr">List price </span>€1,390</s><span style="font-size: 40px; line-height: 44px; font-weight: 500; letter-spacing: -0.03em;"><span class="cv-sr">Founder price </span>€690</span></p>
+              <p style="margin: 0; font-size: 13px; line-height: 18px; color: #677079;">per year</p>
+            </div>
+            <div style="display: flex;"><span class="cv-badge cv-badge--accent">Beta founder: −50% for 24 months</span></div>
+            <div style="display: flex; margin-top: auto;"><a href="https://clarivo-app.com/sign-up" class="cv-btn cv-btn--accent cv-btn--md"><span>Get early access</span></a></div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 16px; padding: 24px; background: #FFFFFF; border: 1px solid #E6EAED; border-radius: 12px;">
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <h3 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.01em;">Business</h3>
+              <p style="margin: 0; font-size: 14px; line-height: 20px; color: #4E5862;">Up to 2,000 employees</p>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 2px;" data-switch="billing-monthly">
+              <p style="margin: 0; display: flex; align-items: baseline; gap: 10px; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;"><s style="font-size: 16px; line-height: 24px; color: #677079;"><span class="cv-sr">List price </span>€299</s><span style="font-size: 40px; line-height: 44px; font-weight: 500; letter-spacing: -0.03em;"><span class="cv-sr">Founder price </span>€149</span></p>
+              <p style="margin: 0; font-size: 13px; line-height: 18px; color: #677079;">per month</p>
+            </div>
+            <div style="display: none; flex-direction: column; gap: 2px;" data-switch="billing-yearly">
+              <p style="margin: 0; display: flex; align-items: baseline; gap: 10px; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;"><s style="font-size: 16px; line-height: 24px; color: #677079;"><span class="cv-sr">List price </span>€2,990</s><span style="font-size: 40px; line-height: 44px; font-weight: 500; letter-spacing: -0.03em;"><span class="cv-sr">Founder price </span>€1,490</span></p>
+              <p style="margin: 0; font-size: 13px; line-height: 18px; color: #677079;">per year</p>
+            </div>
+            <div style="display: flex;"><span class="cv-badge cv-badge--accent">Beta founder: −50% for 24 months</span></div>
+            <div style="display: flex; margin-top: auto;"><a href="https://clarivo-app.com/sign-up" class="cv-btn cv-btn--secondary cv-btn--md"><span>Get early access</span></a></div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 16px; padding: 24px; background: #FFFFFF; border: 1px solid #E6EAED; border-radius: 12px;">
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <h3 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.01em;">Bureau</h3>
+              <p style="margin: 0; font-size: 14px; line-height: 20px; color: #4E5862;">Payroll bureaus and accountants</p>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 2px;" data-switch="billing-monthly">
+              <p style="margin: 0; display: flex; align-items: baseline; gap: 10px; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;"><s style="font-size: 16px; line-height: 24px; color: #677079;"><span class="cv-sr">List price </span>€15</s><span style="font-size: 40px; line-height: 44px; font-weight: 500; letter-spacing: -0.03em;"><span class="cv-sr">Founder price </span>€7</span></p>
+              <p style="margin: 0; font-size: 13px; line-height: 18px; color: #677079;">per client company per month</p>
+            </div>
+            <div style="display: none; flex-direction: column; gap: 2px;" data-switch="billing-yearly">
+              <p style="margin: 0; display: flex; align-items: baseline; gap: 10px; font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;"><s style="font-size: 16px; line-height: 24px; color: #677079;"><span class="cv-sr">List price </span>€150</s><span style="font-size: 40px; line-height: 44px; font-weight: 500; letter-spacing: -0.03em;"><span class="cv-sr">Founder price </span>€70</span></p>
+              <p style="margin: 0; font-size: 13px; line-height: 18px; color: #677079;">per client company per year</p>
+            </div>
+            <div style="display: flex;"><span class="cv-badge cv-badge--accent">Beta founder: −50% for 24 months</span></div>
+            <div style="display: flex; margin-top: auto;"><a href="https://clarivo-app.com/sign-up" class="cv-btn cv-btn--secondary cv-btn--md"><span>Get early access</span></a></div>
+          </div>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 32px; padding: 24px; background: #FFFFFF; border: 1px solid #E6EAED; border-radius: 12px;">
+          <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0;">
+            <h3 style="margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.01em;">Enterprise</h3>
+            <p style="margin: 0; font-size: 14px; line-height: 20px; color: #4E5862;">Over 2,000 employees or several countries</p>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px;">
+            <p style="margin: 0; display: flex; flex-direction: column; gap: 2px;"><span style="font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-size: 20px; line-height: 28px; font-weight: 500;">On request</span><span style="font-size: 13px; line-height: 18px; color: #677079;">Founder discount applies</span></p>
+            <a href="mailto:hello@clarivo-app.com" class="cv-btn cv-btn--secondary cv-btn--md"><span>Talk to us</span></a>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+          <p style="margin: 0; font-size: 16px; line-height: 24px; font-weight: 600;">Every plan includes:</p>
+          <ul style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: 10px 32px;">
+            <li style="display: flex; align-items: flex-start; gap: 10px; font-size: 15px; line-height: 24px;"><span aria-hidden="true" style="display: flex; flex: none; padding-top: 2px; color: #2F5BD3;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M4.5 10.5l3.5 3.5 7.5-8"></path></svg></span>The payroll dashboard with every salary KPI</li>
+            <li style="display: flex; align-items: flex-start; gap: 10px; font-size: 15px; line-height: 24px;"><span aria-hidden="true" style="display: flex; flex: none; padding-top: 2px; color: #2F5BD3;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M4.5 10.5l3.5 3.5 7.5-8"></path></svg></span>Anomaly alerts and AI payroll summaries</li>
+            <li style="display: flex; align-items: flex-start; gap: 10px; font-size: 15px; line-height: 24px;"><span aria-hidden="true" style="display: flex; flex: none; padding-top: 2px; color: #2F5BD3;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M4.5 10.5l3.5 3.5 7.5-8"></path></svg></span>Comparison of any two payroll periods, with the Detailed View for every employee</li>
+            <li style="display: none; align-items: flex-start; gap: 10px; font-size: 15px; line-height: 24px;" data-switch="annualSalariesLive"><span aria-hidden="true" style="display: flex; flex: none; padding-top: 2px; color: #2F5BD3;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M4.5 10.5l3.5 3.5 7.5-8"></path></svg></span>The Annual Salaries Dashboard: paid to date, full-year forecast, employer cost and budget</li>
+            <li style="display: flex; align-items: flex-start; gap: 10px; font-size: 15px; line-height: 24px;"><span aria-hidden="true" style="display: flex; flex: none; padding-top: 2px; color: #2F5BD3;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M4.5 10.5l3.5 3.5 7.5-8"></path></svg></span>Excel, CSV and PDF exports</li>
+            <li style="display: flex; align-items: flex-start; gap: 10px; font-size: 15px; line-height: 24px;"><span aria-hidden="true" style="display: flex; flex: none; padding-top: 2px; color: #2F5BD3;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M4.5 10.5l3.5 3.5 7.5-8"></path></svg></span>Unlimited users</li>
+            <li style="display: flex; align-items: flex-start; gap: 10px; font-size: 15px; line-height: 24px;"><span aria-hidden="true" style="display: flex; flex: none; padding-top: 2px; color: #2F5BD3;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M4.5 10.5l3.5 3.5 7.5-8"></path></svg></span>Monthly, bi-monthly, bi-weekly and weekly payrolls</li>
+          </ul>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 10px; max-width: 860px;">
+          <p style="margin: 0; font-size: 15px; line-height: 24px; color: #4E5862;">Clarivo counts the employees in each payroll file you upload. If a file goes over your plan's limit, we invite you to move up a plan; your comparison still runs.</p>
+          <p style="margin: 0; font-size: 13px; line-height: 20px; color: #677079;">Prices exclude VAT. Monthly billing, cancel anytime; yearly billing gets two months free. The founder price applies to companies that sign up during the beta and lasts 24 months from the first invoice. Fair use applies to AI summaries.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="faq" aria-labelledby="faq-title" style="scroll-margin-top: 80px; padding: clamp(48px, 5vw, 72px) 0; background: #FFFFFF; border-top: 1px solid #E6EAED; border-bottom: 1px solid #E6EAED;">
+      <div style="max-width: 1200px; margin: 0 auto; box-sizing: border-box; padding: 0 clamp(16px, 4vw, 40px); display: flex; flex-direction: column; gap: 32px;">
+        <h2 id="faq-title" style="margin: 0; font-size: clamp(28px, 2.2vw + 14px, 44px); line-height: 1.1; font-weight: 600; letter-spacing: -0.03em; text-wrap: balance;">Payroll dashboard questions, answered</h2>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(460px, 100%), 1fr)); gap: 0 48px; align-items: start;">
+          <div style="display: flex; flex-direction: column; border-top: 1px solid #E6EAED;">
+            <details style="border-bottom: 1px solid #E6EAED;">
+              <summary style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 2px;"><h3 style="margin: 0; font-size: 16px; line-height: 24px; font-weight: 600;">What is a payroll dashboard?</h3><span class="lp-chev" aria-hidden="true" style="display: flex; flex: none; color: #4E5862; transition: transform .2s ease-out;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M5 7.5l5 5 5-5"></path></svg></span></summary>
+              <p style="margin: 0; padding: 0 2px 20px; font-size: 15px; line-height: 24px; color: #4E5862;">A payroll dashboard shows your payroll's key numbers on one screen: total salary cost, headcount, employer cost and what changed since the last period. Clarivo builds yours from the payroll file you already export, so you never build one in Excel again.</p>
+            </details>
+            <details style="border-bottom: 1px solid #E6EAED;">
+              <summary style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 2px;"><h3 style="margin: 0; font-size: 16px; line-height: 24px; font-weight: 600;">How is Clarivo different from tracking payroll in Excel?</h3><span class="lp-chev" aria-hidden="true" style="display: flex; flex: none; color: #4E5862; transition: transform .2s ease-out;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M5 7.5l5 5 5-5"></path></svg></span></summary>
+              <p style="margin: 0; padding: 0 2px 20px; font-size: 15px; line-height: 24px; color: #4E5862;">In Excel, someone rebuilds the comparison every period, and the checks depend on who builds it. Clarivo compares every employee and every pay component automatically, keeps your payroll history in one place and flags what looks wrong, in one click.</p>
+            </details>
+            <details style="border-bottom: 1px solid #E6EAED;">
+              <summary style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 2px;"><h3 style="margin: 0; font-size: 16px; line-height: 24px; font-weight: 600;">Which payroll systems does Clarivo work with?</h3><span class="lp-chev" aria-hidden="true" style="display: flex; flex: none; color: #4E5862; transition: transform .2s ease-out;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M5 7.5l5 5 5-5"></path></svg></span></summary>
+              <p style="margin: 0; padding: 0 2px 20px; font-size: 15px; line-height: 24px; color: #4E5862;">Any system that exports to Excel or CSV: SAP, ADP, Sage, local payroll software or your own spreadsheets. Direct connections to SAP, ADP and Sage are on our roadmap.</p>
+            </details>
+            <details style="border-bottom: 1px solid #E6EAED;">
+              <summary style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 2px;"><h3 style="margin: 0; font-size: 16px; line-height: 24px; font-weight: 600;">What payroll anomalies does Clarivo detect?</h3><span class="lp-chev" aria-hidden="true" style="display: flex; flex: none; color: #4E5862; transition: transform .2s ease-out;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M5 7.5l5 5 5-5"></path></svg></span></summary>
+              <p style="margin: 0; padding: 0 2px 20px; font-size: 15px; line-height: 24px; color: #4E5862;">Net pay that changed by 20% or more with no change in any pay component, pay components that drop to zero, new or missing components, joiners and leavers, and data issues such as a missing pay period. Each alert says who, what and why.</p>
+            </details>
+            <details style="border-bottom: 1px solid #E6EAED;">
+              <summary style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 2px;"><h3 style="margin: 0; font-size: 16px; line-height: 24px; font-weight: 600;">Do I need IT help to set it up?</h3><span class="lp-chev" aria-hidden="true" style="display: flex; flex: none; color: #4E5862; transition: transform .2s ease-out;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M5 7.5l5 5 5-5"></path></svg></span></summary>
+              <p style="margin: 0; padding: 0 2px 20px; font-size: 15px; line-height: 24px; color: #4E5862;">No. Upload a file and Clarivo maps your columns the first time; confirm once and it remembers. There is nothing to install and nothing to connect.</p>
+            </details>
+          </div>
+          <div style="display: flex; flex-direction: column; border-top: 1px solid #E6EAED;">
+            <details style="border-bottom: 1px solid #E6EAED;">
+              <summary style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 2px;"><h3 style="margin: 0; font-size: 16px; line-height: 24px; font-weight: 600;">Does Clarivo replace my payroll software?</h3><span class="lp-chev" aria-hidden="true" style="display: flex; flex: none; color: #4E5862; transition: transform .2s ease-out;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M5 7.5l5 5 5-5"></path></svg></span></summary>
+              <p style="margin: 0; padding: 0 2px 20px; font-size: 15px; line-height: 24px; color: #4E5862;">No. Your payroll system still calculates and pays salaries. Clarivo checks what it produced and shows you what changed before you approve. It never changes your data.</p>
+            </details>
+            <details style="border-bottom: 1px solid #E6EAED;">
+              <summary style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 2px;"><h3 style="margin: 0; font-size: 16px; line-height: 24px; font-weight: 600;">What happens to my payroll data?</h3><span class="lp-chev" aria-hidden="true" style="display: flex; flex: none; color: #4E5862; transition: transform .2s ease-out;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M5 7.5l5 5 5-5"></path></svg></span></summary>
+              <p style="margin: 0; padding: 0 2px 20px; font-size: 15px; line-height: 24px; color: #4E5862;">Each company's data is kept separate and encrypted, and it is never used to train AI models. The AI only recognises your columns, writes a plain-language summary and ranks alerts; it never changes a number.</p>
+            </details>
+            <details style="border-bottom: 1px solid #E6EAED;">
+              <summary style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 2px;"><h3 style="margin: 0; font-size: 16px; line-height: 24px; font-weight: 600;">Which pay frequencies and currencies does it handle?</h3><span class="lp-chev" aria-hidden="true" style="display: flex; flex: none; color: #4E5862; transition: transform .2s ease-out;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M5 7.5l5 5 5-5"></path></svg></span></summary>
+              <p style="margin: 0; padding: 0 2px 20px; font-size: 15px; line-height: 24px; color: #4E5862;">Monthly, bi-monthly, bi-weekly and weekly payrolls, in any currency. Clarivo never adds amounts in different currencies together; each currency is reported on its own.</p>
+            </details>
+            <details style="border-bottom: 1px solid #E6EAED;">
+              <summary style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 2px;"><h3 style="margin: 0; font-size: 16px; line-height: 24px; font-weight: 600;">How much does Clarivo cost?</h3><span class="lp-chev" aria-hidden="true" style="display: flex; flex: none; color: #4E5862; transition: transform .2s ease-out;"><svg class="cv-icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true"><path d="M5 7.5l5 5 5-5"></path></svg></span></summary>
+              <p style="margin: 0; padding: 0 2px 20px; font-size: 15px; line-height: 24px; color: #4E5862;">Clarivo is free during the beta, with no credit card. When billing starts, plans run from €59 to €299 a month by company size, and beta founders pay half: €29 to €149 a month for 24 months.</p>
+            </details>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="cta-title" style="padding: 0 0 clamp(56px, 6vw, 88px);">
+      <div aria-hidden="true" style="display: flex; justify-content: center; overflow: hidden; padding: clamp(48px, 5vw, 72px) 0 40px;">
+        <span class="cv-drift cv-drift--lg" aria-hidden="true"><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick cv-drift__tick--drift"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span><span class="cv-drift__tick"></span></span>
+      </div>
+      <div style="max-width: 820px; margin: 0 auto; box-sizing: border-box; padding: 0 clamp(16px, 4vw, 40px); display: flex; flex-direction: column; align-items: center; gap: 20px; text-align: center;">
+        <h2 id="cta-title" style="margin: 0; font-size: clamp(32px, 2.8vw + 14px, 52px); line-height: 1.08; font-weight: 600; letter-spacing: -0.035em; text-wrap: balance;">Approve your next payroll with confidence</h2>
+        <p style="margin: 0; font-size: 18px; line-height: 28px; color: #4E5862;">Upload two payroll periods and see every salary KPI, and every alert, in minutes.</p>
+        <p style="display: block; margin: 4px 0 0; max-width: 620px; font-size: 15px; line-height: 24px; color: #4E5862;" data-switch="founderLine">Built by Radwan Sheb, an SAP payroll lead who has delivered payroll projects across Europe and the Gulf, including a 12-country rollout.</p>
+        <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 8px;">
+          <a href="https://clarivo-app.com/sign-up" class="cv-btn cv-btn--accent cv-btn--lg"><span>Get early access</span></a>
+          <a href="https://clarivo-app.com/sign-in" class="cv-btn cv-btn--secondary cv-btn--lg"><span>Sign in</span></a>
+        </div>
+        <p style="margin: 0; font-size: 13px; line-height: 20px; color: #677079;">Free during the beta · No credit card · Founder price for 24 months</p>
+      </div>
+    </section>
+  </main>
+
+  <footer style="background: #121A22; color: #ECEFF2;">
+    <div style="max-width: 1200px; margin: 0 auto; box-sizing: border-box; padding: 56px clamp(16px, 4vw, 40px) 32px; display: flex; flex-direction: column; gap: 40px;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 32px;">
+        <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 14px;">
+          <svg class="cv-logo" viewBox="0 -755 3987 790" height="26" width="131.2" role="img" aria-label="Clarivo" focusable="false"><path d="M517.062 -735.667A395 395 0 1 0 674.307 -80.693L557.929 -197.071A230.417 230.417 0 1 1 466.203 -579.139Z" style="fill:#ffffff"></path><path d="M785.201 -585.456A395 395 0 0 0 633.937 -742.095L551.645 -599.562A230.417 230.417 0 0 1 639.883 -508.189Z" style="fill:#e0592a"></path><g transform="translate(896.4 0)"><path d="M291.0 10.0Q211.0 10.0 150.0 -24.0Q89.0 -58.0 54.5 -118.0Q20.0 -178.0 20.0 -255.0Q20.0 -332.0 54.5 -392.0Q89.0 -452.0 150.0 -486.0Q211.0 -520.0 291.0 -520.0Q358.0 -520.0 411.5 -495.5Q465.0 -471.0 499.5 -428.0Q534.0 -385.0 544.0 -327.0H399.0Q388.0 -364.0 359.5 -383.0Q331.0 -402.0 293.0 -402.0Q257.0 -402.0 230.5 -384.0Q204.0 -366.0 190.0 -333.0Q176.0 -300.0 176.0 -255.0Q176.0 -210.0 190.0 -177.0Q204.0 -144.0 230.5 -126.0Q257.0 -108.0 293.0 -108.0Q331.0 -108.0 359.5 -127.0Q388.0 -146.0 399.0 -183.0H544.0Q534.0 -125.0 499.5 -82.0Q465.0 -39.0 411.5 -14.5Q358.0 10.0 291.0 10.0ZM610.0 0.0V-720.0H760.0V0.0ZM1189.0 0.0Q1183.0 -22.0 1180.5 -47.0Q1178.0 -72.0 1178.0 -105.0H1174.0V-346.0Q1174.0 -377.0 1153.5 -394.5Q1133.0 -412.0 1093.0 -412.0Q1055.0 -412.0 1032.5 -399.0Q1010.0 -386.0 1003.0 -361.0H860.0Q870.0 -430.0 931.0 -475.0Q992.0 -520.0 1098.0 -520.0Q1208.0 -520.0 1266.0 -471.0Q1324.0 -422.0 1324.0 -330.0V-105.0Q1324.0 -80.0 1327.5 -54.5Q1331.0 -29.0 1339.0 0.0ZM1011.0 10.0Q935.0 10.0 890.0 -28.5Q845.0 -67.0 845.0 -131.0Q845.0 -202.0 898.5 -245.5Q952.0 -289.0 1048.0 -302.0L1197.0 -323.0V-236.0L1073.0 -217.0Q1033.0 -211.0 1014.0 -195.0Q995.0 -179.0 995.0 -151.0Q995.0 -126.0 1013.0 -113.0Q1031.0 -100.0 1061.0 -100.0Q1108.0 -100.0 1141.0 -125.5Q1174.0 -151.0 1174.0 -185.0L1188.0 -105.0Q1166.0 -48.0 1121.0 -19.0Q1076.0 10.0 1011.0 10.0ZM1427.0 0.0V-510.0H1574.0V-390.0H1577.0V0.0ZM1577.0 -266.0 1564.0 -387.0Q1582.0 -452.0 1623.0 -486.0Q1664.0 -520.0 1725.0 -520.0Q1744.0 -520.0 1753.0 -516.0V-376.0Q1748.0 -378.0 1739.0 -378.5Q1730.0 -379.0 1717.0 -379.0Q1645.0 -379.0 1611.0 -353.5Q1577.0 -328.0 1577.0 -266.0ZM1804.0 0.0V-510.0H1954.0V0.0ZM2191.0 0.0 1990.0 -510.0H2151.0L2308.0 -34.0H2224.0L2380.0 -510.0H2537.0L2336.0 0.0ZM2809.0 10.0Q2725.0 10.0 2661.5 -23.5Q2598.0 -57.0 2562.5 -117.5Q2527.0 -178.0 2527.0 -257.0Q2527.0 -336.0 2562.5 -395.0Q2598.0 -454.0 2661.5 -487.0Q2725.0 -520.0 2809.0 -520.0Q2894.0 -520.0 2957.5 -487.0Q3021.0 -454.0 3056.0 -395.0Q3091.0 -336.0 3091.0 -257.0Q3091.0 -178.0 3055.5 -117.5Q3020.0 -57.0 2956.5 -23.5Q2893.0 10.0 2809.0 10.0ZM2809.0 -108.0Q2844.0 -108.0 2872.5 -126.0Q2901.0 -144.0 2918.0 -177.5Q2935.0 -211.0 2935.0 -258.0Q2935.0 -327.0 2898.5 -364.5Q2862.0 -402.0 2809.0 -402.0Q2756.0 -402.0 2719.5 -364.0Q2683.0 -326.0 2683.0 -258.0Q2683.0 -211.0 2700.0 -177.5Q2717.0 -144.0 2745.5 -126.0Q2774.0 -108.0 2809.0 -108.0Z" style="fill:#ffffff"></path><rect x="1804" y="-740" width="150" height="150" style="fill:#ffffff"></rect></g></svg>
+          <p style="margin: 0; font-size: 15px; line-height: 24px; color: #B7BFC7;">Clarivo. Payroll, clearly.</p>
+        </div>
+        <nav aria-label="Product" style="display: flex; flex-direction: column; gap: 10px;">
+          <p style="margin: 0 0 2px; font-size: 13px; line-height: 18px; font-weight: 600; color: #989FA7;">Product</p>
+          <a href="#features" style="font-size: 15px; line-height: 24px; color: #ECEFF2; text-decoration: none;">Features</a>
+          <a href="#pricing" style="font-size: 15px; line-height: 24px; color: #ECEFF2; text-decoration: none;">Pricing</a>
+          <a href="#security" style="font-size: 15px; line-height: 24px; color: #ECEFF2; text-decoration: none;">Security</a>
+          <a href="#faq" style="font-size: 15px; line-height: 24px; color: #ECEFF2; text-decoration: none;">FAQ</a>
+        </nav>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <p style="margin: 0 0 2px; font-size: 13px; line-height: 18px; font-weight: 600; color: #989FA7;">Contact</p>
+          <a href="mailto:hello@clarivo-app.com" style="font-size: 15px; line-height: 24px; color: #ECEFF2; text-decoration: none;">hello@clarivo-app.com</a>
+        </div>
+        <nav aria-label="Legal" style="display: flex; flex-direction: column; gap: 10px;">
+          <p style="margin: 0 0 2px; font-size: 13px; line-height: 18px; font-weight: 600; color: #989FA7;">Legal</p>
+          <a href="https://clarivo-app.com/privacy" style="font-size: 15px; line-height: 24px; color: #ECEFF2; text-decoration: none;">Privacy policy</a>
+          <a href="https://clarivo-app.com/terms" style="font-size: 15px; line-height: 24px; color: #ECEFF2; text-decoration: none;">Terms</a>
+          <a href="https://clarivo-app.com/dpa" style="font-size: 15px; line-height: 24px; color: #ECEFF2; text-decoration: none;">Data processing agreement</a>
+        </nav>
+      </div>
+      <p style="margin: 0; padding-top: 24px; border-top: 1px solid #282F36; font-size: 13px; line-height: 20px; color: #989FA7;">© 2026 Clarivo · [legal entity name] · [registered address] · [registration number]</p>
+    </div>
+  </footer>
+</div>
+</body>
+</html>
