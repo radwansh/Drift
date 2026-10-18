@@ -22,11 +22,19 @@ export function MarketingFooter() {
             <p className="font-cv-sans text-sm text-white/70">{FOOTER.brandLine}</p>
           </div>
 
+          {/* The column labels are not headings. As <h2> they sat alongside
+              the nine section headings, so a screen-reader user navigating by
+              heading heard twelve page sections where there are nine. As <h3>
+              they would skip a level. A labelled list says the same thing
+              without claiming to be page structure. */}
           <div className="flex flex-col gap-3">
-            <h2 className="font-cv-sans text-[13px] font-semibold uppercase tracking-wide text-white/50">
+            <p
+              id="footer-product"
+              className="font-cv-sans text-[13px] font-semibold uppercase tracking-wide text-white/50"
+            >
               Product
-            </h2>
-            <ul className="flex flex-col gap-2">
+            </p>
+            <ul aria-labelledby="footer-product" className="flex flex-col gap-2">
               {FOOTER.product.map((item) => (
                 <li key={item.href}>
                   <a
@@ -41,9 +49,9 @@ export function MarketingFooter() {
           </div>
 
           <div className="flex flex-col gap-3">
-            <h2 className="font-cv-sans text-[13px] font-semibold uppercase tracking-wide text-white/50">
+            <p className="font-cv-sans text-[13px] font-semibold uppercase tracking-wide text-white/50">
               Contact
-            </h2>
+            </p>
             <a
               href={`mailto:${SITE.email}`}
               className="rounded font-cv-sans text-sm text-white/80 underline-offset-2 hover:text-white hover:underline focus-visible:outline-none focus-visible:shadow-cv-focus-ring"
@@ -53,10 +61,13 @@ export function MarketingFooter() {
           </div>
 
           <div className="flex flex-col gap-3">
-            <h2 className="font-cv-sans text-[13px] font-semibold uppercase tracking-wide text-white/50">
+            <p
+              id="footer-legal"
+              className="font-cv-sans text-[13px] font-semibold uppercase tracking-wide text-white/50"
+            >
               Legal
-            </h2>
-            <ul className="flex flex-col gap-2">
+            </p>
+            <ul aria-labelledby="footer-legal" className="flex flex-col gap-2">
               {FOOTER.legal.map((item) => (
                 <li key={item.href}>
                   <Link
