@@ -92,6 +92,26 @@ export const HOW_IT_WORKS = {
   ],
 } as const;
 
+/**
+ * The sample company, read from docs/landing/design/Main.static.html.
+ *
+ * One fictional company in one currency, and the same figures in the hero, the
+ * KPI tiles and the sample alert — the README is firm about that, because a
+ * visitor who spots two different "total variance" numbers stops trusting the
+ * screenshots. Every surface showing these also carries a "Sample data" badge.
+ */
+export const SAMPLE = {
+  company: "Halden Logistics",
+  period: "September 2026 vs August 2026",
+  badge: "Sample data",
+  totalVariance: "+€18,420",
+  totalVariancePct: "+2.6%",
+  employeesAffected: "37",
+  headcount: "248",
+  newEmployees: "4",
+  departedEmployees: "2",
+} as const;
+
 export const FEATURES = {
   eyebrow: "Payroll dashboard",
   headline: "Every salary KPI in one click",
@@ -101,25 +121,29 @@ export const FEATURES = {
     "Need the detail? Open any employee in the Detailed View, or export the comparison to Excel, CSV or PDF.",
   tilesAlt:
     "Payroll KPI tiles: total variance, employees affected, new and departed employees (sample data)",
-  /** The first eight are in the app today. */
+  /**
+   * The first eight are in the app today. Figures are the sample company's,
+   * taken from the design so the tiles match the hero. The minus signs are
+   * U+2212, as the design has them.
+   */
   live: [
-    { label: "Total variance", line: "How much this payroll differs from the last one, and what drove it." },
-    { label: "Employees affected", line: "Everyone whose pay changed, at a glance." },
-    { label: "New employees", line: "Who joined the payroll this period." },
-    { label: "Departed employees", line: "Who left, so nobody is paid after they go." },
-    { label: "Largest increase", line: "The biggest pay rise this period, ready to check first." },
-    { label: "Largest decrease", line: "The biggest drop, before anyone calls payroll about it." },
-    { label: "Pay components", line: "Base, allowances, overtime, bonuses and deductions: see what moved." },
-    { label: "Departments", line: "Which teams drive the change in salary cost." },
+    { label: "Total variance", value: "+€18,420", caption: "+2.6%", line: "How much this payroll differs from the last one, and what drove it." },
+    { label: "Employees affected", value: "37", caption: "of 248", line: "Everyone whose pay changed, at a glance." },
+    { label: "New employees", value: "4", line: "Who joined the payroll this period." },
+    { label: "Departed employees", value: "2", line: "Who left, so nobody is paid after they go." },
+    { label: "Largest increase", value: "+€1,240", caption: "Sara K., Sales", line: "The biggest pay rise this period, ready to check first." },
+    { label: "Largest decrease", value: "−€860", caption: "Tom R., Operations", line: "The biggest drop, before anyone calls payroll about it." },
+    { label: "Pay components", value: "+€9,310", caption: "Overtime", line: "Base, allowances, overtime, bonuses and deductions: see what moved." },
+    { label: "Departments", value: "+€7,840", caption: "Sales", line: "Which teams drive the change in salary cost." },
   ],
   /** Behind the annualSalariesLive switch. */
   annual: [
-    { label: "Paid so far this year", line: "Net and gross salaries paid to date." },
-    { label: "Full-year forecast", line: "Where this year's payroll will land, period by period." },
-    { label: "Total employer cost", line: "Salaries plus employer contributions: the true cost of your team." },
-    { label: "Taxes and social security", line: "What you withhold and owe the authorities, to date." },
-    { label: "Cost per employee and headcount", line: "Average cost per head, and how your team is changing." },
-    { label: "Budget vs forecast", line: "Whether the year will land on budget, and by how much." },
+    { label: "Paid so far this year", value: "€6.47M", line: "Net and gross salaries paid to date." },
+    { label: "Full-year forecast", value: "€8.69M", line: "Where this year's payroll will land, period by period." },
+    { label: "Total employer cost", value: "€11.27M", line: "Salaries plus employer contributions: the true cost of your team." },
+    { label: "Taxes and social security", value: "€4.75M", line: "What you withhold and owe the authorities, to date." },
+    { label: "Cost per employee and headcount", value: "€5,063", caption: "248 employees", line: "Average cost per head, and how your team is changing." },
+    { label: "Budget vs forecast", value: "−1.8%", line: "Whether the year will land on budget, and by how much." },
   ],
 } as const;
 

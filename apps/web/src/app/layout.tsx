@@ -25,11 +25,14 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
+    // The canonical auth paths are /sign-in and /sign-up; /login and /signup
+    // redirect to them in middleware. These props must name the new paths or
+    // Clerk sends visitors to the redirect and they take an extra hop.
     <ClerkProvider
       afterSignInUrl="/dashboard"
       afterSignUpUrl="/dashboard"
-      signInUrl="/login"
-      signUpUrl="/signup"
+      signInUrl="/sign-in"
+      signUpUrl="/sign-up"
     >
       <html lang="en" suppressHydrationWarning>
         <body className={inter.className}>

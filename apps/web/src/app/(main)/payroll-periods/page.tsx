@@ -28,7 +28,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Search, Filter, SlidersHorizontal, Upload, Trash2, AlertTriangle } from "lucide-react";
-import { usePayrollStore } from "@/lib/payroll-store";
 
 const PAGE_SIZE = 20;
 

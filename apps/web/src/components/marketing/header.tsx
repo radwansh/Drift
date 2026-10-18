@@ -75,12 +75,14 @@ export function MarketingHeader() {
               ))}
               <SignedOut>
                 <div className="mt-1 border-t border-cv-line pt-1">
-                  <a
+                  {/* next/link, not <a>: this one goes to a route rather than
+                      an in-page anchor, and no-html-link-for-pages is an error. */}
+                  <Link
                     href="/sign-in"
                     className="flex min-h-11 items-center rounded-cv-sm px-3 font-cv-sans text-sm font-medium text-cv-ink hover:bg-cv-surface-sunken focus-visible:outline-none focus-visible:shadow-cv-focus-ring"
                   >
                     Sign in
-                  </a>
+                  </Link>
                 </div>
               </SignedOut>
             </div>
