@@ -1,20 +1,16 @@
 "use client";
 
-import { useState } from "react";
 import { Button, type ButtonProps } from "./ui";
 import { launch } from "@/config/launch";
-import { EarlyAccessModal } from "./early-access-modal";
+import { useEarlyAccess } from "./early-access-provider";
 
 /**
  * The "Get early access" call to action — the header, the hero, each pricing
  * card and the final CTA all render this, so the four cannot drift apart.
  *
- * While `launch.waitlistMode` is on it opens the lead form; with the switch off
- * it becomes a plain link to /sign-up and the modal is never mounted. One
- * decision point for the whole page.
- *
- * A small client island on otherwise server-rendered sections, which keeps the
- * public pages statically rendered.
+ * While `launch.waitlistMode` is on it opens the shared dialog owned by
+ * `EarlyAccessProvider`; with the switch off it becomes a plain link to
+ * /sign-up. One decision point for the whole page.
  */
 export interface EarlyAccessButtonProps {
   children: React.ReactNode;
@@ -25,7 +21,9 @@ export interface EarlyAccessButtonProps {
 }
 
 export function EarlyAccessButton({ children, ...buttonProps }: EarlyAccessButtonProps) {
-  const [open, setOpen] = useState(false);
+  // Called before the branch, and `launch.waitlistMode` is a build-time
+  // constant, so hook order is stable across renders either way.
+  const { openEarlyAccess } = useEarlyAccess();
 
   if (!launch.waitlistMode) {
     return (
@@ -36,11 +34,8 @@ export function EarlyAccessButton({ children, ...buttonProps }: EarlyAccessButto
   }
 
   return (
-    <>
-      <Button onClick={() => setOpen(true)} {...buttonProps}>
-        {children}
-      </Button>
-      <EarlyAccessModal open={open} onClose={() => setOpen(false)} />
-    </>
+    <Button onClick={openEarlyAccess} {...buttonProps}>
+      {children}
+    </Button>
   );
 }
