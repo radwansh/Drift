@@ -57,20 +57,14 @@ export function Pricing() {
           />
         </div>
 
-        <ul className="mt-8 grid gap-5 lg:grid-cols-4">
+        {/* Three cards since Bureau moved to its own strip below. Every plan
+            left here is priced per company, which is why `per` no longer has a
+            per-client branch. */}
+        <ul className="mt-8 grid gap-5 lg:grid-cols-3">
           {PRICING.plans.map((plan) => {
             const founder = yearly ? plan.founderYearly : plan.founderMonthly;
             const list = yearly ? plan.listYearly : plan.listMonthly;
-            // `as const` gives each plan its own literal type, so only Bureau
-            // carries `perClient` and the union has to be narrowed by key.
-            const perClient = "perClient" in plan && plan.perClient === true;
-            const per = perClient
-              ? yearly
-                ? "per client company per year"
-                : "per client company per month"
-              : yearly
-                ? "per year"
-                : "per month";
+            const per = yearly ? "per year" : "per month";
 
             return (
               <li key={plan.name} className="flex">
@@ -114,22 +108,20 @@ export function Pricing() {
           })}
         </ul>
 
-        {/* Enterprise strip, full width. */}
-        <div className="mt-5 flex flex-col gap-4 rounded-cv-lg border border-cv-line bg-cv-bg p-6 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <h3 className="text-lg font-semibold text-cv-ink">{PRICING.enterprise.name}</h3>
-            <p className="mt-1 text-sm text-cv-ink-muted">{PRICING.enterprise.for}</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-4">
-            <p className="font-cv-mono text-base text-cv-ink">
-              {PRICING.enterprise.price}
-              <span className="ml-2 text-sm text-cv-ink-subtle">{PRICING.enterprise.note}</span>
-            </p>
-            <Button href={`mailto:${SITE.email}`} variant="secondary">
-              {PRICING.enterprise.cta}
-            </Button>
-          </div>
-        </div>
+        {/* The two plans sold by conversation rather than by card. */}
+        <ContactStrip
+          name={PRICING.enterprise.name}
+          audience={PRICING.enterprise.for}
+          price={PRICING.enterprise.price}
+          note={PRICING.enterprise.note}
+          cta={PRICING.enterprise.cta}
+        />
+        <ContactStrip
+          name={PRICING.bureau.name}
+          audience={PRICING.bureau.for}
+          note={PRICING.bureau.note}
+          cta={PRICING.bureau.cta}
+        />
 
         <div className="mt-10">
           <h3 className="text-base font-semibold text-cv-ink">{PRICING.includesTitle}</h3>
@@ -153,5 +145,45 @@ export function Pricing() {
         </p>
       </div>
     </section>
+  );
+}
+
+/**
+ * A full-width row for a plan that is quoted rather than listed: Enterprise and
+ * Bureau. One component so the pair cannot drift apart visually.
+ *
+ * `price` is optional, which is the only difference between them — Enterprise
+ * says "On request" where Bureau says nothing at all, and the note carries the
+ * terms in both cases.
+ */
+function ContactStrip({
+  name,
+  audience,
+  price,
+  note,
+  cta,
+}: {
+  name: string;
+  audience: string;
+  price?: string;
+  note: string;
+  cta: string;
+}) {
+  return (
+    <div className="mt-5 flex flex-col gap-4 rounded-cv-lg border border-cv-line bg-cv-bg p-6 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0">
+        <h3 className="text-lg font-semibold text-cv-ink">{name}</h3>
+        <p className="mt-1 text-sm text-cv-ink-muted">{audience}</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-4">
+        <p className="font-cv-mono text-base text-cv-ink">
+          {price}
+          <span className={cn("text-sm text-cv-ink-subtle", price && "ml-2")}>{note}</span>
+        </p>
+        <Button href={`mailto:${SITE.email}`} variant="secondary">
+          {cta}
+        </Button>
+      </div>
+    </div>
   );
 }

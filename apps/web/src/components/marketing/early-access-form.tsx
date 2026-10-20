@@ -90,8 +90,8 @@ export function EarlyAccessForm({ headingId, headingLevel = 2, onDone }: EarlyAc
           Request received
         </Heading>
         <p className="mx-auto mt-2 max-w-[38ch] text-sm leading-relaxed text-cv-ink-muted">
-          You are on the list. We review every request by hand and will email you an access
-          link when your place comes up.
+          You are on the list. We will email you an access link when the Beta version is
+          ready.
         </p>
         {onDone && (
           <Button onClick={onDone} variant="accent" className="mt-6">

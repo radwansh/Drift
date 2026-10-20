@@ -343,28 +343,27 @@ export const PRICING = {
       listYearly: "€2,990",
       highlighted: false,
     },
-    {
-      // The employee cap is the load-bearing part, not the price. Without one
-      // a bureau's 1,800-employee client cost the same as its 20-employee
-      // client, so a single mid-size company could call itself a bureau,
-      // register itself as its own client, and pay €19 where Business is
-      // €299. It also left sizeLine below untrue for this plan: there was no
-      // "plan's limit" for a file to go over.
-      name: "Bureau",
-      for: "Payroll bureaus, up to 200 employees per client",
-      listMonthly: "€19",
-      founderMonthly: "€9",
-      founderYearly: "€90",
-      listYearly: "€190",
-      perClient: true,
-      highlighted: false,
-    },
   ],
   enterprise: {
     name: "Enterprise",
     for: "Over 2,000 employees or several countries",
     price: "On request",
     note: "Founder discount applies",
+    cta: "Talk to us",
+  },
+  /**
+   * Below Enterprise rather than in the plan grid, and without a figure.
+   *
+   * Bureau sells by a different unit — per client company, not per company —
+   * so a price sitting in the same row as Starter's read as "the cheapest
+   * plan" to anyone scanning four cards. Enterprise was already pulled out for
+   * the same reason. The terms that constrain the deal are still stated, in
+   * `note` and in `smallPrint`; only the number moves into the conversation.
+   */
+  bureau: {
+    name: "Bureau",
+    for: "Payroll bureaus and accountants, up to 200 employees per client company",
+    note: "Priced per client company, from five clients",
     cta: "Talk to us",
   },
   includesTitle: "Every plan includes:",
