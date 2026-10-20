@@ -58,3 +58,40 @@ export async function limitInsightGeneration(companyId: string): Promise<RateLim
     return { success: true, remaining: null, reset: null, enforced: false };
   }
 }
+
+let earlyAccessLimiter: Ratelimit | null = null;
+
+/**
+ * The early-access form is the one unauthenticated write on the public site,
+ * and it reaches three systems — trial_requests, Zoho and Clerk's waitlist.
+ * Without a ceiling, a script turns the CRM into a bin, which is the opposite
+ * of what the form is for.
+ *
+ * Keyed by caller IP rather than by email: the email column is already unique
+ * and the procedure rejects a duplicate, so an email key would hand every new
+ * address a fresh bucket and stop nothing.
+ *
+ * Five an hour is generous for a human filling in one form and still lets a
+ * shared office NAT through. Fails open like the limiter above.
+ */
+export async function limitEarlyAccessRequests(ipAddress: string): Promise<RateLimitResult> {
+  if (!isRateLimitConfigured) {
+    return { success: true, remaining: null, reset: null, enforced: false };
+  }
+  if (!earlyAccessLimiter) {
+    earlyAccessLimiter = new Ratelimit({
+      redis: new Redis({ url: url!, token: token! }),
+      limiter: Ratelimit.slidingWindow(5, "1 h"),
+      prefix: "clarivo:early-access",
+      analytics: false,
+    });
+  }
+
+  try {
+    const { success, remaining, reset } = await earlyAccessLimiter.limit(ipAddress);
+    return { success, remaining, reset, enforced: true };
+  } catch (err) {
+    console.error("[rate-limit] Upstash unreachable, allowing early-access request:", err);
+    return { success: true, remaining: null, reset: null, enforced: false };
+  }
+}

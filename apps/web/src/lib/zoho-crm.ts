@@ -65,7 +65,7 @@ export async function createZohoLead(input: ZohoLeadInput): Promise<string> {
             Last_Name: input.lastName,
             Email: input.email,
             Company: input.companyName,
-            Lead_Source: "Drift Landing Page",
+            Lead_Source: "Clarivo Landing Page",
             Description: `Company size: ${input.companySize}`,
             Lead_Status: "New",
           },

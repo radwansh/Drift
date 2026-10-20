@@ -1,6 +1,56 @@
+/* Clarivo design-system tokens, from docs/landing/design-system/tokens.css.
+   Imported before Tailwind so the --cv-* custom properties exist for the
+   theme.extend mapping in tailwind.config.ts. Every name is cv-prefixed, so
+   this sits alongside the shadcn/ui variables below rather than over them. */
+@import "./clarivo-tokens.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* DriftStrip animations, from docs/landing/design-system/components/bundle.css.
+   These stay as CSS rather than Tailwind utilities because the keyframes read
+   --cv-lift, which the component sets per size so the lift always matches the
+   tick height. The reduced-motion rule is the design system's own. */
+.cv-drift__tick {
+  background: currentColor;
+  opacity: 0.45;
+}
+.cv-drift__tick--drift {
+  background: var(--cv-signal);
+  opacity: 1;
+}
+.cv-drift--lift .cv-drift__tick--drift {
+  animation: cv-drift-lift 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) 0.2s both;
+}
+.cv-drift--scan .cv-drift__tick {
+  animation: cv-drift-scan 1.2s ease-in-out infinite;
+}
+@keyframes cv-drift-lift {
+  from {
+    transform: translateY(0);
+    background: var(--cv-delta-flat);
+  }
+  to {
+    transform: translateY(calc(-1 * var(--cv-lift)));
+    background: var(--cv-signal);
+  }
+}
+@keyframes cv-drift-scan {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(calc(-1 * var(--cv-lift)));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cv-drift__tick {
+    animation: none !important;
+  }
+}
 
 @layer base {
   :root {

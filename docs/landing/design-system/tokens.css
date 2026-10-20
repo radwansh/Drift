@@ -1,0 +1,179 @@
+/* Clarivo design tokens, generated from tokens.json (design system version 1791983806-7026).
+   Every name carries a cv- prefix so it never collides with shadcn/ui variables (--primary, --accent, --border, --chart-*, --radius-*).
+   Light values sit on :root. The landing page is designed light-only, so nothing switches it to dark.
+   The dark values are kept under [data-cv-theme="dark"] for the app later; nothing sets that attribute today.
+   Fonts: load Instrument Sans and Geist Mono with next/font/google, variables --font-instrument-sans and --font-geist-mono. */
+:root {
+  --cv-bg: var(--cv-slate-25);
+  --cv-surface: #ffffff;
+  --cv-surface-sunken: var(--cv-slate-50);
+  --cv-surface-raised: #ffffff;
+  --cv-surface-inverse: var(--cv-slate-900);
+  --cv-line: var(--cv-slate-100);
+  --cv-border: var(--cv-slate-500);
+  --cv-ink: var(--cv-slate-900);
+  --cv-ink-muted: var(--cv-slate-700);
+  --cv-ink-subtle: var(--cv-slate-600);
+  --cv-ink-disabled: var(--cv-slate-400);
+  --cv-ink-inverse: #ffffff;
+  --cv-primary: var(--cv-slate-900);
+  --cv-primary-hover: var(--cv-slate-800);
+  --cv-on-primary: #ffffff;
+  --cv-accent: var(--cv-cobalt-500);
+  --cv-accent-hover: var(--cv-cobalt-600);
+  --cv-accent-soft: var(--cv-cobalt-50);
+  --cv-on-accent: #ffffff;
+  --cv-focus: var(--cv-accent);
+  --cv-signal: var(--cv-rust-500);
+  --cv-signal-ink: var(--cv-rust-600);
+  --cv-signal-soft: var(--cv-rust-50);
+  --cv-on-signal: var(--cv-slate-900);
+  --cv-delta-up: var(--cv-signal);
+  --cv-delta-up-ink: var(--cv-signal-ink);
+  --cv-delta-down: var(--cv-accent);
+  --cv-delta-down-ink: var(--cv-accent);
+  --cv-delta-flat: var(--cv-slate-400);
+  --cv-delta-flat-ink: var(--cv-ink-subtle);
+  --cv-chart-previous: #747d86;
+  --cv-chart-current: var(--cv-ink);
+  --cv-chart-1: var(--cv-cobalt-500);
+  --cv-chart-2: #c83b86;
+  --cv-chart-3: #c97f14;
+  --cv-chart-4: #00948e;
+  --cv-chart-5: #7d4dbe;
+  --cv-chart-6: #319047;
+  --cv-chart-grid: var(--cv-slate-100);
+  --cv-chart-axis: var(--cv-slate-300);
+  --cv-success: #25975b;
+  --cv-success-ink: #187c49;
+  --cv-success-soft: #e7f9ec;
+  --cv-warning: #eaa01a;
+  --cv-warning-ink: #8d5e00;
+  --cv-warning-soft: #fff3e4;
+  --cv-on-warning: var(--cv-slate-900);
+  --cv-danger: #d02c61;
+  --cv-danger-hover: #b01f4f;
+  --cv-danger-ink: #b01f4f;
+  --cv-danger-soft: #feeff1;
+  --cv-on-danger: #ffffff;
+  --cv-slate-25: #f7f8f9;
+  --cv-slate-50: #f0f3f5;
+  --cv-slate-100: #e6eaed;
+  --cv-slate-200: #d6dbe1;
+  --cv-slate-300: #bec5cc;
+  --cv-slate-400: #979fa8;
+  --cv-slate-500: #7f8790;
+  --cv-slate-600: #677079;
+  --cv-slate-700: #4e5862;
+  --cv-slate-800: #2b343d;
+  --cv-slate-900: #121a22;
+  --cv-slate-950: #0c1116;
+  --cv-rust-50: #fef2ee;
+  --cv-rust-100: #ffe2d9;
+  --cv-rust-200: #ffc5b2;
+  --cv-rust-300: #ff9d7e;
+  --cv-rust-400: #f37952;
+  --cv-rust-500: #e0592a;
+  --cv-rust-600: #bd481f;
+  --cv-rust-700: #983a18;
+  --cv-rust-800: #742e16;
+  --cv-rust-900: #4f2011;
+  --cv-cobalt-50: #f1f5fe;
+  --cv-cobalt-100: #dfeaff;
+  --cv-cobalt-200: #c0d4fe;
+  --cv-cobalt-300: #95b6ff;
+  --cv-cobalt-400: #608cf6;
+  --cv-cobalt-500: #2f5bd3;
+  --cv-cobalt-600: #244ab4;
+  --cv-cobalt-700: #1c3c94;
+  --cv-cobalt-800: #152d6c;
+  --cv-cobalt-900: #0e1e47;
+  --cv-shadow-sm: 0 1px 2px #121a220f, 0 1px 3px #121a2214;
+  --cv-shadow-md: 0 2px 4px #121a2210, 0 8px 20px -4px #121a2224;
+  --cv-shadow-lg: 0 4px 8px #121a2214, 0 24px 48px -12px #121a2238;
+  --cv-focus-ring: 0 0 0 2px #ffffff, 0 0 0 4px #2f5bd3;
+  --cv-space-1: 4px;
+  --cv-space-2: 8px;
+  --cv-space-3: 12px;
+  --cv-space-4: 16px;
+  --cv-space-5: 20px;
+  --cv-space-6: 24px;
+  --cv-space-8: 32px;
+  --cv-space-10: 40px;
+  --cv-space-12: 48px;
+  --cv-space-16: 64px;
+  --cv-space-24: 96px;
+  --cv-radius-xs: 2px;
+  --cv-radius-sm: 4px;
+  --cv-radius-md: 6px;
+  --cv-radius-lg: 10px;
+  --cv-radius-xl: 16px;
+  --cv-radius-full: 9999px;
+  --cv-control-sm: 32px;
+  --cv-control-md: 40px;
+  --cv-control-lg: 48px;
+  --cv-icon-sm: 16px;
+  --cv-icon-md: 20px;
+  --cv-target-min: 24px;
+  --cv-font-sans: var(--font-instrument-sans, "Instrument Sans"), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --cv-font-mono: var(--font-geist-mono, "Geist Mono"), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+[data-cv-theme="dark"] {
+  --cv-bg: var(--cv-slate-950);
+  --cv-surface: var(--cv-slate-900);
+  --cv-surface-sunken: #080d11;
+  --cv-surface-raised: #1c2229;
+  --cv-surface-inverse: var(--cv-slate-25);
+  --cv-line: #282f36;
+  --cv-border: #687078;
+  --cv-ink: #eceff2;
+  --cv-ink-muted: #b7bfc7;
+  --cv-ink-subtle: #989fa7;
+  --cv-ink-disabled: #5c646c;
+  --cv-ink-inverse: var(--cv-slate-900);
+  --cv-primary: #f3f5f7;
+  --cv-primary-hover: #dadee3;
+  --cv-on-primary: var(--cv-slate-900);
+  --cv-accent: #79a1fc;
+  --cv-accent-hover: var(--cv-cobalt-300);
+  --cv-accent-soft: #1a263f;
+  --cv-on-accent: var(--cv-slate-950);
+  --cv-signal-ink: #f2805b;
+  --cv-signal-soft: #3b1d14;
+  --cv-delta-flat: #5c646c;
+  --cv-chart-1: #537feb;
+  --cv-chart-2: #d65997;
+  --cv-chart-3: #c87e10;
+  --cv-chart-4: #04a19b;
+  --cv-chart-5: #8f68cb;
+  --cv-chart-6: #42a056;
+  --cv-chart-grid: #292f35;
+  --cv-chart-axis: #474e56;
+  --cv-success: #4cb874;
+  --cv-success-ink: #5ec386;
+  --cv-success-soft: #0f2e1b;
+  --cv-warning-ink: #f2af48;
+  --cv-warning-soft: #352206;
+  --cv-danger-ink: #ef7cac;
+  --cv-danger-soft: #3b1b20;
+  --cv-shadow-sm: 0 1px 2px #00000066;
+  --cv-shadow-md: 0 8px 24px -4px #000000b3;
+  --cv-shadow-lg: 0 24px 48px -12px #000000cc;
+  --cv-focus-ring: 0 0 0 2px #0c1116, 0 0 0 4px #79a1fc;
+}
+
+/* Type scale */
+.cv-type-display-xl { font-family: var(--cv-font-sans); font-size: 64px; line-height: 68px; font-weight: 600; letter-spacing: -0.035em; }
+.cv-type-display { font-family: var(--cv-font-sans); font-size: 44px; line-height: 48px; font-weight: 600; letter-spacing: -0.03em; }
+.cv-type-title { font-family: var(--cv-font-sans); font-size: 28px; line-height: 34px; font-weight: 600; letter-spacing: -0.02em; }
+.cv-type-heading { font-family: var(--cv-font-sans); font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.01em; }
+.cv-type-subheading { font-family: var(--cv-font-sans); font-size: 16px; line-height: 24px; font-weight: 600; }
+.cv-type-body { font-family: var(--cv-font-sans); font-size: 15px; line-height: 24px; font-weight: 400; }
+.cv-type-body-sm { font-family: var(--cv-font-sans); font-size: 14px; line-height: 20px; font-weight: 400; }
+.cv-type-button { font-family: var(--cv-font-sans); font-size: 14px; line-height: 20px; font-weight: 600; }
+.cv-type-label { font-family: var(--cv-font-sans); font-size: 13px; line-height: 18px; font-weight: 500; letter-spacing: 0.005em; }
+.cv-type-caption { font-family: var(--cv-font-sans); font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.01em; }
+.cv-type-kpi { font-family: var(--cv-font-sans); font-size: 36px; line-height: 40px; font-weight: 600; letter-spacing: -0.02em; }
+.cv-type-figure { font-family: var(--cv-font-mono); font-size: 13px; line-height: 20px; font-weight: 400; }
+.cv-type-code { font-family: var(--cv-font-mono); font-size: 13px; line-height: 20px; font-weight: 400; }
