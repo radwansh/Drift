@@ -13,7 +13,21 @@
 import type { IconName } from "./ui";
 
 export const SITE = {
-  url: "https://clarivo-app.com",
+  /**
+   * The host that actually serves the site. Vercel has the apex
+   * `clarivo-app.com` 308-redirecting to `www`, so a canonical of
+   * `https://clarivo-app.com/...` named a URL that immediately redirects — in
+   * every canonical tag, every sitemap entry, the robots `host` line and the
+   * JSON-LD @id. Those should name the serving URL.
+   *
+   * Only used in machine-readable output, never in visible copy, so the brand
+   * is still written `clarivo-app.com` everywhere a person reads it.
+   *
+   * To make the apex canonical instead, flip the redirect in Vercel so `www`
+   * points at the apex and change this back — both halves have to move
+   * together or the mismatch returns the other way round.
+   */
+  url: "https://www.clarivo-app.com",
   name: "Clarivo",
   email: "hello@clarivo-app.com",
   /** 47 characters. content.md keeps this under 60. */
