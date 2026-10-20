@@ -13,7 +13,21 @@
 import type { IconName } from "./ui";
 
 export const SITE = {
-  url: "https://clarivo-app.com",
+  /**
+   * The host that actually serves the site. Vercel has the apex
+   * `clarivo-app.com` 308-redirecting to `www`, so a canonical of
+   * `https://clarivo-app.com/...` named a URL that immediately redirects — in
+   * every canonical tag, every sitemap entry, the robots `host` line and the
+   * JSON-LD @id. Those should name the serving URL.
+   *
+   * Only used in machine-readable output, never in visible copy, so the brand
+   * is still written `clarivo-app.com` everywhere a person reads it.
+   *
+   * To make the apex canonical instead, flip the redirect in Vercel so `www`
+   * points at the apex and change this back — both halves have to move
+   * together or the mismatch returns the other way round.
+   */
+  url: "https://www.clarivo-app.com",
   name: "Clarivo",
   email: "hello@clarivo-app.com",
   /** 47 characters. content.md keeps this under 60. */
@@ -313,10 +327,10 @@ export const PRICING = {
     {
       name: "Growth",
       for: "Up to 500 employees",
-      listMonthly: "€139",
-      founderMonthly: "€69",
-      founderYearly: "€690",
-      listYearly: "€1,390",
+      listMonthly: "€99",
+      founderMonthly: "€49",
+      founderYearly: "€490",
+      listYearly: "€990",
       highlighted: true,
       tag: "Best for growing teams",
     },
@@ -329,22 +343,27 @@ export const PRICING = {
       listYearly: "€2,990",
       highlighted: false,
     },
-    {
-      name: "Bureau",
-      for: "Payroll bureaus and accountants",
-      listMonthly: "€15",
-      founderMonthly: "€7",
-      founderYearly: "€70",
-      listYearly: "€150",
-      perClient: true,
-      highlighted: false,
-    },
   ],
   enterprise: {
     name: "Enterprise",
     for: "Over 2,000 employees or several countries",
     price: "On request",
     note: "Founder discount applies",
+    cta: "Talk to us",
+  },
+  /**
+   * Below Enterprise rather than in the plan grid, and without a figure.
+   *
+   * Bureau sells by a different unit — per client company, not per company —
+   * so a price sitting in the same row as Starter's read as "the cheapest
+   * plan" to anyone scanning four cards. Enterprise was already pulled out for
+   * the same reason. The terms that constrain the deal are still stated, in
+   * `note` and in `smallPrint`; only the number moves into the conversation.
+   */
+  bureau: {
+    name: "Bureau",
+    for: "Payroll bureaus and accountants, up to 200 employees per client company",
+    note: "Priced per client company, from five clients",
     cta: "Talk to us",
   },
   includesTitle: "Every plan includes:",
@@ -362,7 +381,7 @@ export const PRICING = {
   sizeLine:
     "Clarivo counts the employees in each payroll file you upload. If a file goes over your plan's limit, we invite you to move up a plan; your comparison still runs.",
   smallPrint:
-    "Prices exclude VAT. Monthly billing, cancel anytime; yearly billing gets two months free. The founder price applies to companies that sign up during the beta and lasts 24 months from the first invoice. Fair use applies to AI summaries.",
+    "Prices exclude VAT. Monthly billing, cancel anytime; yearly billing gets two months free. The founder price applies to companies that sign up during the beta and lasts 24 months from the first invoice. The Bureau plan is billed per client company, from five clients upwards; a client company over 200 employees takes the plan that matches its size. Fair use applies to AI summaries.",
 } as const;
 
 /** Rendered visibly and as FAQPage structured data, from this one array. */

@@ -32,9 +32,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     // waitlistUrl is what makes Clerk's own screens link to our page: with
     // sign-up mode set to Waitlist, <SignIn /> grows a "Join the waitlist"
     // link, and without this prop it points at Clerk's hosted page instead.
+    //
+    // Fallback, not force: the middleware sends a signed-out visitor to
+    // /sign-in with a redirect_url so they land back on the page they asked
+    // for. `signInForceRedirectUrl` would discard that and drop everyone on
+    // /dashboard, undoing the deep link. Fallback only applies when no
+    // redirect_url is present, which is the behaviour the old afterSignInUrl
+    // had.
     <ClerkProvider
-      afterSignInUrl="/dashboard"
-      afterSignUpUrl="/dashboard"
+      signInFallbackRedirectUrl="/dashboard"
+      signUpFallbackRedirectUrl="/dashboard"
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
       waitlistUrl="/waitlist"
