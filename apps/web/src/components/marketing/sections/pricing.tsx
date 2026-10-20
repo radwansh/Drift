@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { Badge, Button, Icon, SegmentedControl } from "../ui";
 import { PRICING, SITE } from "../content";
 import { launch } from "@/config/launch";
+import { EarlyAccessButton } from "../early-access-button";
 
 /**
  * Section 9: pricing. Anchor #pricing.
@@ -101,9 +102,12 @@ export function Pricing() {
 
                   <Badge tone="signal">{PRICING.founderBadge}</Badge>
 
-                  <Button href="/sign-up" variant={plan.highlighted ? "accent" : "secondary"} className="mt-auto">
+                  <EarlyAccessButton
+                    variant={plan.highlighted ? "accent" : "secondary"}
+                    className="mt-auto"
+                  >
                     {PRICING.cta}
-                  </Button>
+                  </EarlyAccessButton>
                 </div>
               </li>
             );

@@ -1,5 +1,6 @@
 import { Badge, Button, DriftStrip, Stat } from "../ui";
 import { HERO, SAMPLE } from "../content";
+import { EarlyAccessButton } from "../early-access-button";
 
 /**
  * Section 2: the hero. Carries the page's only H1.
@@ -32,9 +33,9 @@ export function Hero() {
           </p>
 
           <div className="flex flex-wrap items-center gap-3">
-            <Button href="/sign-up" variant="accent" size="lg" iconRight="arrow-right">
+            <EarlyAccessButton variant="accent" size="lg" iconRight="arrow-right">
               {HERO.primary}
-            </Button>
+            </EarlyAccessButton>
             <Button href="#how-it-works" variant="secondary" size="lg">
               {HERO.secondary}
             </Button>

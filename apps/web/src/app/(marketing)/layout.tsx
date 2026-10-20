@@ -1,6 +1,7 @@
 import { Instrument_Sans, Geist_Mono } from "next/font/google";
 import { MarketingHeader } from "@/components/marketing/header";
 import { MarketingFooter } from "@/components/marketing/footer";
+import { authEntryPointsVisible } from "@/config/environment";
 
 /**
  * Layout for the public pages: /, /privacy, /terms, /security, /dpa.
@@ -40,7 +41,9 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
       data-theme="light"
       className={`${instrumentSans.variable} ${geistMono.variable} flex min-h-screen flex-col bg-cv-bg font-cv-sans text-cv-ink antialiased`}
     >
-      <MarketingHeader />
+      {/* Read here, in a server component, and passed down: VERCEL_ENV is not
+          available to client code, and the header is a client component. */}
+      <MarketingHeader showAuth={authEntryPointsVisible} />
       <main className="flex-1">{children}</main>
       <MarketingFooter />
     </div>

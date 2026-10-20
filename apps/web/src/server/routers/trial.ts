@@ -1,9 +1,12 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
+import { headers } from "next/headers";
+import { clerkClient } from "@clerk/nextjs/server";
 import { trialRequests, requireDb } from "@saas/db";
 import { publicProcedure, protectedProcedure, router } from "../trpc";
 import { createZohoLead } from "@/lib/zoho-crm";
+import { limitEarlyAccessRequests } from "../rate-limit";
 
 const COMPANY_SIZE_OPTIONS = [
   "1-10",
@@ -24,6 +27,21 @@ export const trialRouter = router({
     }))
     .mutation(async ({ input }) => {
       const db = requireDb();
+
+      // Read the caller's IP here rather than from the tRPC context:
+      // `createContext()` takes no request, and next/headers is request-scoped
+      // inside a route handler, so this needs no change to the shared context.
+      // The first entry of x-forwarded-for is the client; the rest are proxies.
+      const forwardedFor = (await headers()).get("x-forwarded-for");
+      const callerIp = forwardedFor?.split(",")[0]?.trim() || "unknown";
+
+      const limit = await limitEarlyAccessRequests(callerIp);
+      if (!limit.success) {
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: "Too many requests. Please try again later.",
+        });
+      }
 
       const existing = await db.query.trialRequests.findFirst({
         where: eq(trialRequests.email, input.email),
@@ -50,6 +68,32 @@ export const trialRouter = router({
         console.log("trial.submit: createZohoLead returned:", zohoLeadId);
       } catch (err) {
         console.error("trial.submit: Zoho lead creation failed:", err);
+      }
+
+      // Clerk is the access gate: an entry on its waiting list is what lets an
+      // approval be one click (Dashboard -> Waitlist -> Invite) instead of a
+      // hand-made invitation.
+      //
+      // It holds the email and nothing else — `waitlistEntries.create` accepts
+      // only `{ emailAddress, notify }`, with no custom fields or metadata — so
+      // the lead details stay in trial_requests and in Zoho, and this is the
+      // thinnest of the three writes on purpose.
+      //
+      // `notify: false` because this flow sends its own approval mail from
+      // `trial.approve`; letting Clerk also mail the person would mean two
+      // different "you're in" messages.
+      try {
+        const clerk = await clerkClient();
+        const entry = await clerk.waitlistEntries.create({
+          emailAddress: input.email,
+          notify: false,
+        });
+        console.log("trial.submit: Clerk waitlist entry created", entry.id);
+      } catch (err) {
+        // Unconfigured or failing Clerk must not lose the lead — the row and
+        // the CRM record are the parts that matter, and an entry can be added
+        // by hand from either.
+        console.error("trial.submit: Clerk waitlist entry failed:", err);
       }
 
       const [request] = await db.insert(trialRequests).values({

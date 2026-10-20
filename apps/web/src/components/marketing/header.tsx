@@ -4,6 +4,7 @@ import Link from "next/link";
 import { SignedIn, SignedOut } from "@clerk/nextjs";
 import { Button, Icon, Logo } from "./ui";
 import { NAV } from "./content";
+import { EarlyAccessButton } from "./early-access-button";
 
 /**
  * Section 1: the sticky public header.
@@ -17,8 +18,12 @@ import { NAV } from "./content";
  * Below 861 px the links fold into a native `<details>` menu. Native, not
  * state: it needs no JavaScript, closes on Escape for free, and keeps the
  * whole header server-renderable apart from the Clerk gate.
+ *
+ * `showAuth` comes from the layout rather than being read here, because the
+ * signal is `VERCEL_ENV` and this file is a client component — see
+ * config/environment.ts for why that is deliberately not a NEXT_PUBLIC_ value.
  */
-export function MarketingHeader() {
+export function MarketingHeader({ showAuth }: { showAuth: boolean }) {
   return (
     <header className="sticky top-0 z-50 border-b border-cv-line bg-cv-surface/95 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4 sm:px-6">
@@ -42,14 +47,20 @@ export function MarketingHeader() {
 
         <div className="ml-auto flex items-center gap-2 min-[861px]:ml-0">
           <SignedOut>
-            <Button href="/sign-in" variant="ghost" size="sm" className="hidden min-[861px]:inline-flex">
-              Sign in
-            </Button>
-            <Button href="/sign-up" variant="accent" size="sm">
+            {/* Hidden on production until launch. "Get early access" stays:
+                it collects a lead, it does not open an account. */}
+            {showAuth && (
+              <Button href="/sign-in" variant="ghost" size="sm" className="hidden min-[861px]:inline-flex">
+                Sign in
+              </Button>
+            )}
+            <EarlyAccessButton variant="accent" size="sm">
               Get early access
-            </Button>
+            </EarlyAccessButton>
           </SignedOut>
           <SignedIn>
+            {/* Always shown. Somebody already signed in is past the gate, and
+                hiding their way back to the app would only strand them. */}
             <Button href="/dashboard" variant="accent" size="sm">
               Open Clarivo
             </Button>
@@ -73,18 +84,20 @@ export function MarketingHeader() {
                   {item.label}
                 </a>
               ))}
-              <SignedOut>
-                <div className="mt-1 border-t border-cv-line pt-1">
-                  {/* next/link, not <a>: this one goes to a route rather than
-                      an in-page anchor, and no-html-link-for-pages is an error. */}
-                  <Link
-                    href="/sign-in"
-                    className="flex min-h-11 items-center rounded-cv-sm px-3 font-cv-sans text-sm font-medium text-cv-ink hover:bg-cv-surface-sunken focus-visible:outline-none focus-visible:shadow-cv-focus-ring"
-                  >
-                    Sign in
-                  </Link>
-                </div>
-              </SignedOut>
+              {showAuth && (
+                <SignedOut>
+                  <div className="mt-1 border-t border-cv-line pt-1">
+                    {/* next/link, not <a>: this one goes to a route rather than
+                        an in-page anchor, and no-html-link-for-pages is an error. */}
+                    <Link
+                      href="/sign-in"
+                      className="flex min-h-11 items-center rounded-cv-sm px-3 font-cv-sans text-sm font-medium text-cv-ink hover:bg-cv-surface-sunken focus-visible:outline-none focus-visible:shadow-cv-focus-ring"
+                    >
+                      Sign in
+                    </Link>
+                  </div>
+                </SignedOut>
+              )}
             </div>
           </details>
         </div>

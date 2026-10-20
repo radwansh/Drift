@@ -4,8 +4,9 @@ import { useTheme } from "next-themes";
 import { dark } from "@clerk/themes";
 
 /**
- * /sign-up — Clerk's prebuilt screen, and the destination of every "Get early
- * access" button on the landing page.
+ * /sign-up — Clerk's prebuilt screen. While `launch.waitlistMode` is on the
+ * landing page sends visitors to /waitlist instead, so this route is reached
+ * only by an approved invitation from the waiting list, or directly.
  *
  * Step 7 of the rename plan replaces this with the custom Registration Form
  * from the sign-up diagram; until then Clerk's own screen handles the bot

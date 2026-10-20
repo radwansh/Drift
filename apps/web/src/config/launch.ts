@@ -40,6 +40,23 @@ export interface LaunchSwitches {
 
   /** "Built by Radwan Sheb, …" above the final buttons. Approved. */
   founderLine: boolean;
+
+  /**
+   * On. The beta is closed, so every "Get early access" button opens the lead
+   * form (`EarlyAccessButton`) instead of linking to /sign-up.
+   *
+   * A submission writes three places: a trial_requests row, a Zoho lead, and a
+   * Clerk waitlist entry so the approval is one click. Clerk's own waitlist
+   * holds an email and nothing else, which is why the lead fields need the
+   * table and the CRM.
+   *
+   * Sign-up mode must be set to "Waitlist" in the Clerk dashboard
+   * (Configure → Restrictions) for an invitation to be the only way in.
+   *
+   * Turn off the day the beta opens; all four buttons become /sign-up links
+   * and the modal stops being mounted.
+   */
+  waitlistMode: boolean;
 }
 
 export const launch: LaunchSwitches = {
@@ -51,4 +68,5 @@ export const launch: LaunchSwitches = {
     deletedOnRequest: false,
   },
   founderLine: true,
+  waitlistMode: true,
 };

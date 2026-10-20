@@ -2,9 +2,9 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 /**
- * Public routes: the five marketing pages, the auth screens, the tRPC
- * endpoint (which does its own authorisation per procedure) and the webhooks.
- * Everything else is behind sign-in.
+ * Public routes: the five marketing pages, the auth screens, the waiting-list
+ * form, the tRPC endpoint (which does its own authorisation per procedure) and
+ * the webhooks. Everything else is behind sign-in.
  */
 const isPublicRoute = createRouteMatcher([
   "/",
@@ -14,6 +14,7 @@ const isPublicRoute = createRouteMatcher([
   "/dpa",
   "/sign-in(.*)",
   "/sign-up(.*)",
+  "/waitlist",
   "/login(.*)",
   "/signup(.*)",
   "/api/trpc(.*)",

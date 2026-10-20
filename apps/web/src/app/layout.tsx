@@ -28,11 +28,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     // The canonical auth paths are /sign-in and /sign-up; /login and /signup
     // redirect to them in middleware. These props must name the new paths or
     // Clerk sends visitors to the redirect and they take an extra hop.
+    //
+    // waitlistUrl is what makes Clerk's own screens link to our page: with
+    // sign-up mode set to Waitlist, <SignIn /> grows a "Join the waitlist"
+    // link, and without this prop it points at Clerk's hosted page instead.
     <ClerkProvider
       afterSignInUrl="/dashboard"
       afterSignUpUrl="/dashboard"
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
+      waitlistUrl="/waitlist"
     >
       <html lang="en" suppressHydrationWarning>
         <body className={inter.className}>

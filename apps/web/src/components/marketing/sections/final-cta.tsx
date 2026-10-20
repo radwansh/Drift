@@ -1,6 +1,8 @@
 import { Button, DriftStrip } from "../ui";
 import { FINAL_CTA } from "../content";
 import { launch } from "@/config/launch";
+import { authEntryPointsVisible } from "@/config/environment";
+import { EarlyAccessButton } from "../early-access-button";
 
 /**
  * Section 11: the final call to action.
@@ -32,12 +34,16 @@ export function FinalCta() {
         )}
 
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-          <Button href="/sign-up" variant="accent" size="lg" iconRight="arrow-right">
+          <EarlyAccessButton variant="accent" size="lg" iconRight="arrow-right">
             {FINAL_CTA.primary}
-          </Button>
-          <Button href="/sign-in" variant="secondary" size="lg">
-            {FINAL_CTA.secondary}
-          </Button>
+          </EarlyAccessButton>
+          {/* Hidden on production until launch, like the header's. A server
+              component, so the env read happens here directly. */}
+          {authEntryPointsVisible && (
+            <Button href="/sign-in" variant="secondary" size="lg">
+              {FINAL_CTA.secondary}
+            </Button>
+          )}
         </div>
 
         <p className="mt-6 text-sm text-cv-ink-subtle">{FINAL_CTA.trust}</p>
