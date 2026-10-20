@@ -429,9 +429,10 @@ export const FOOTER = {
     { label: "Data processing agreement", href: "/dpa" },
   ],
   /**
-   * Placeholders until the company is registered. content.md says to fill
-   * these in before publishing; they are left visible rather than hidden so
-   * nobody ships the page without noticing them.
+   * No legal entity yet, so the line carries the notice alone. Once Clarivo is
+   * registered, add the entity name, registered address and registration
+   * number here — most EU jurisdictions require them on a commercial site, and
+   * the footer is where a visitor looks for them.
    */
-  company: "© 2026 Clarivo · [legal entity name] · [registered address] · [registration number]",
+  company: "© 2026 Clarivo",
 } as const;
