@@ -327,10 +327,10 @@ export const PRICING = {
     {
       name: "Growth",
       for: "Up to 500 employees",
-      listMonthly: "€139",
-      founderMonthly: "€69",
-      founderYearly: "€690",
-      listYearly: "€1,390",
+      listMonthly: "€99",
+      founderMonthly: "€49",
+      founderYearly: "€490",
+      listYearly: "€990",
       highlighted: true,
       tag: "Best for growing teams",
     },
@@ -344,12 +344,18 @@ export const PRICING = {
       highlighted: false,
     },
     {
+      // The employee cap is the load-bearing part, not the price. Without one
+      // a bureau's 1,800-employee client cost the same as its 20-employee
+      // client, so a single mid-size company could call itself a bureau,
+      // register itself as its own client, and pay €19 where Business is
+      // €299. It also left sizeLine below untrue for this plan: there was no
+      // "plan's limit" for a file to go over.
       name: "Bureau",
-      for: "Payroll bureaus and accountants",
-      listMonthly: "€15",
-      founderMonthly: "€7",
-      founderYearly: "€70",
-      listYearly: "€150",
+      for: "Payroll bureaus, up to 200 employees per client",
+      listMonthly: "€19",
+      founderMonthly: "€9",
+      founderYearly: "€90",
+      listYearly: "€190",
       perClient: true,
       highlighted: false,
     },
@@ -376,7 +382,7 @@ export const PRICING = {
   sizeLine:
     "Clarivo counts the employees in each payroll file you upload. If a file goes over your plan's limit, we invite you to move up a plan; your comparison still runs.",
   smallPrint:
-    "Prices exclude VAT. Monthly billing, cancel anytime; yearly billing gets two months free. The founder price applies to companies that sign up during the beta and lasts 24 months from the first invoice. Fair use applies to AI summaries.",
+    "Prices exclude VAT. Monthly billing, cancel anytime; yearly billing gets two months free. The founder price applies to companies that sign up during the beta and lasts 24 months from the first invoice. The Bureau plan is billed per client company, from five clients upwards; a client company over 200 employees takes the plan that matches its size. Fair use applies to AI summaries.",
 } as const;
 
 /** Rendered visibly and as FAQPage structured data, from this one array. */
