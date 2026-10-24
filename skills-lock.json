@@ -91,6 +91,12 @@
       "skillPath": "skills/emails/SKILL.md",
       "computedHash": "09d3406cb503e77f70681b79efc51fb7d2bc58dd29e452ee66e0cf5a11e493ce"
     },
+    "explore-data": {
+      "source": "anthropics/knowledge-work-plugins",
+      "sourceType": "github",
+      "skillPath": "data/skills/explore-data/SKILL.md",
+      "computedHash": "eeb0f7d4b8a834f773253a3038ca41b38b5ce2c1706dd0a4f3f7b4a38ce819e3"
+    },
     "find-bugs": {
       "source": "getsentry/skills",
       "sourceType": "github",
@@ -115,6 +121,12 @@
       "skillPath": "skills/neon-postgres/SKILL.md",
       "computedHash": "0d936096676b18674d47828a87b21fcabf37cf0d7e3ed002e46e169eb7e0a7da"
     },
+    "people-report": {
+      "source": "anthropics/knowledge-work-plugins",
+      "sourceType": "github",
+      "skillPath": "human-resources/skills/people-report/SKILL.md",
+      "computedHash": "da829ef263de824ee5e9fdd30110638b6ba4304464b6be723a7c89de0ab7f8ae"
+    },
     "playwright-best-practices": {
       "source": "currents-dev/playwright-best-practices-skill",
       "sourceType": "github",
@@ -138,6 +150,12 @@
       "sourceType": "github",
       "skillPath": "plugins/property-based-testing/skills/property-based-testing/SKILL.md",
       "computedHash": "c754807c7113dfb2e8c2de64e19a6612f87282b621da8b1e50e2a7137d8bbe8c"
+    },
+    "reconciliation": {
+      "source": "anthropics/knowledge-work-plugins",
+      "sourceType": "github",
+      "skillPath": "finance/skills/reconciliation/SKILL.md",
+      "computedHash": "554678d84090b2435035a2a2a714d7da691f2752abbbddce3f01b8f6d1ed941e"
     },
     "schema": {
       "source": "coreyhaines31/marketingskills",
@@ -169,6 +187,12 @@
       "skillPath": "skills/skill-scanner/SKILL.md",
       "computedHash": "9ec22514620fedc4e9f2d9b886551a1d4f8383dd272c210d85526a71b7b84adb"
     },
+    "statistical-analysis": {
+      "source": "anthropics/knowledge-work-plugins",
+      "sourceType": "github",
+      "skillPath": "data/skills/statistical-analysis/SKILL.md",
+      "computedHash": "6dba9b6a31e7ffc7205120700151a3522df91c19a6dba3d13bb9b4835e768feb"
+    },
     "test-driven-development": {
       "source": "obra/superpowers",
       "sourceType": "github",
@@ -180,6 +204,12 @@
       "sourceType": "github",
       "skillPath": "skills/turborepo/SKILL.md",
       "computedHash": "c83a6ff75c62092f71da91408164ed3426f11749b032fd23ecc855e27c2fb538"
+    },
+    "variance-analysis": {
+      "source": "anthropics/knowledge-work-plugins",
+      "sourceType": "github",
+      "skillPath": "finance/skills/variance-analysis/SKILL.md",
+      "computedHash": "f6036af48ef7db4f9d4de489afcd281bf51cdff5829ebe3fec068f39ddf76c77"
     },
     "vercel-react-best-practices": {
       "source": "vercel-labs/agent-skills",

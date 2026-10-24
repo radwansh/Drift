@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Installs the agent skills used by Clarivo's code-reviewer, test-engineer and
-# marketing-lead subagents (.claude/agents/) into .claude/skills/ for Claude Code.
+# Installs the agent skills used by Clarivo's code-reviewer, test-engineer,
+# marketing-lead and payroll-manager subagents (.claude/agents/) into
+# .claude/skills/ for Claude Code.
 #
 # Run from anywhere inside the repo, then commit .claude/skills/ and skills-lock.json.
 # Committed skills load in the terminal, the desktop app, VS Code, cloud sessions
@@ -40,6 +41,13 @@ add coreyhaines31/marketingskills \
   --skill customer-research
 add addyosmani/web-quality-skills --skill seo
 add resend/resend-skills --skill email-best-practices
+
+# --- payroll-manager ------------------------------------------------------------
+# Anthropic's finance, data and HR skills. Excel work uses the xlsx skill from
+# your claude.ai account, which isn't redistributable, so it isn't vendored here.
+add anthropics/knowledge-work-plugins \
+  --skill variance-analysis --skill reconciliation \
+  --skill explore-data --skill statistical-analysis --skill people-report
 
 # --- shared stack knowledge (your own sessions; agents load these on demand) ----
 add vercel/turborepo --skill turborepo
