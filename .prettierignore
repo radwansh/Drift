@@ -1,0 +1,3 @@
+# Vendored agent skills, managed by `npx skills` (scripts/install-agent-skills.sh).
+.claude/skills/
+skills-lock.json
