@@ -109,7 +109,16 @@ describe("runComparison - integration", () => {
     expect(summary.largestIncrease?.employeeName).toBe("Alice");
     expect(summary.largestDecrease).toBeNull();
 
-    expect(summary.totalPayrollVariance.absolute).toBe(3700);
+    // Net: 17,500 -> 20,700, excluding departed Dave from the current side and
+    // new Eve from the previous side.
+    expect(summary.totalPayrollVariance.absolute).toBe(3200);
+    expect(summary.totalNet).toEqual({ previous: 17_500, current: 20_700, absolute: 3200, percentage: 18.29 });
+
+    // Gross: 19,800 -> 23,500. This assertion used to read 3,700 under the
+    // name "totalPayrollVariance" — the component sum, which in this fixture
+    // equals gross exactly, because there are no deduction columns in it. The
+    // headline was reporting gross while being read as net.
+    expect(summary.totalGross).toEqual({ previous: 19_800, current: 23_500, absolute: 3700, percentage: 18.69 });
 
     expect(summary.distribution).toHaveLength(5);
   });

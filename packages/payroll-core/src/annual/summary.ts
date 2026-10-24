@@ -471,8 +471,16 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
     missingLabels: missing.map((m) => m.label),
     categories: {
       byCategory: ytdCategories,
+      // Sum across periods, not overwrite. `acc[k] = v` left byKey holding the
+      // last period alone, so expanding a category showed one month under a
+      // year's label, the "Uncategorised components" row contradicted the
+      // "Earnings not categorised" row three lines above it in the same table,
+      // and the Excel Components sheet headed "Total to date" was December.
       byKey: periodRows.reduce<Record<string, { category: Category; total: number }>>((acc, r) => {
-        for (const [k, v] of Object.entries(r.byKey)) acc[k] = v;
+        for (const [k, v] of Object.entries(r.byKey)) {
+          const running = acc[k];
+          acc[k] = { category: v.category, total: (running?.total ?? 0) + v.total };
+        }
         return acc;
       }, {}),
       quantities: quantityTotals,

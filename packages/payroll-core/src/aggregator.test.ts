@@ -53,6 +53,10 @@ describe("aggregateResults", () => {
         status: "increased",
         previousComponents: { salary: 5000 },
         currentComponents: { salary: 5500 },
+        previousNet: 5000,
+        currentNet: 5500,
+        previousGross: 6250,
+        currentGross: 6875,
         netDelta: 500,
       }),
       makeComparison({
@@ -60,6 +64,10 @@ describe("aggregateResults", () => {
         status: "decreased",
         previousComponents: { salary: 3000 },
         currentComponents: { salary: 2500 },
+        previousNet: 3000,
+        currentNet: 2500,
+        previousGross: 3750,
+        currentGross: 3125,
         netDelta: -500,
       }),
     ];
@@ -67,6 +75,87 @@ describe("aggregateResults", () => {
     const result = aggregateResults(results);
     expect(result.totalPayrollVariance.absolute).toBe(0);
     expect(result.totalPayrollVariance.percentage).toBe(0);
+    expect(result.totalNet).toEqual({ previous: 8000, current: 8000, absolute: 0, percentage: 0 });
+    expect(result.totalGross).toEqual({ previous: 10_000, current: 10_000, absolute: 0, percentage: 0 });
+  });
+
+  /**
+   * The regression test for the headline bug.
+   *
+   * Deduction columns are **positive** here, which is the case the repo had no
+   * fixture for — every existing one carried a negative tax column, where the
+   * component sum happens to equal net and the bug is invisible. With positive
+   * deductions the component sum comes to gross plus deductions, so all three
+   * figures differ and the headline cannot accidentally be right.
+   */
+  it("reports net and gross, never the sum of components", () => {
+    const results: ComparisonOutput[] = [
+      makeComparison({
+        employeeExternalId: "1",
+        status: "increased",
+        // Sum: 10,000 -> 11,000. Gross: 8,000 -> 8,800. Net: 6,000 -> 6,600.
+        previousComponents: { base: 8000, tax: 2000 },
+        currentComponents: { base: 8800, tax: 2200 },
+        previousGross: 8000,
+        currentGross: 8800,
+        previousNet: 6000,
+        currentNet: 6600,
+        netDelta: 600,
+      }),
+    ];
+
+    const result = aggregateResults(results);
+
+    expect(result.totalNet.absolute).toBe(600);
+    expect(result.totalGross.absolute).toBe(800);
+    // The old behaviour: 11,000 - 10,000.
+    expect(result.totalPayrollVariance.absolute).not.toBe(1000);
+    expect(result.totalPayrollVariance.absolute).toBe(600);
+
+    // The three money cells in a top-movers row must tie.
+    const mover = result.topMovers[0]!;
+    expect(mover.currentNet - mover.previousNet).toBeCloseTo(mover.changeAmount, 2);
+    expect(mover.previousNet).toBe(6000);
+    expect(mover.currentNet).toBe(6600);
+
+    // Percentage is against the employee's own previous net, not the sum.
+    expect(mover.changePercentage).toBe(10);
+  });
+
+  it("counts a missing gross or net instead of adding it as zero", () => {
+    const results: ComparisonOutput[] = [
+      makeComparison({
+        employeeExternalId: "1",
+        status: "increased",
+        previousNet: 1000,
+        currentNet: 1200,
+        previousGross: 1000,
+        // Current gross absent: must not read as a 1,000 drop.
+        currentGross: null,
+        netDelta: 200,
+      }),
+    ];
+
+    const result = aggregateResults(results);
+    expect(result.incompleteTotals).toEqual({ grossMissing: 1, netMissing: 0 });
+    expect(result.totalNet.absolute).toBe(200);
+  });
+
+  it("reports an unmeasurable percentage as null rather than zero", () => {
+    const results: ComparisonOutput[] = [
+      makeComparison({
+        employeeExternalId: "1",
+        status: "new",
+        currentNet: 4000,
+        currentGross: 5000,
+      }),
+    ];
+
+    const result = aggregateResults(results);
+    expect(result.totalNet.previous).toBe(0);
+    expect(result.totalNet.current).toBe(4000);
+    // A movement from nothing is not a 0% change.
+    expect(result.totalNet.percentage).toBeNull();
   });
 
   it("finds largest increase and decrease", () => {
@@ -100,9 +189,11 @@ describe("aggregateResults", () => {
 
   it("computes distribution buckets", () => {
     const results: ComparisonOutput[] = [
-      makeComparison({ status: "increased", netDelta: 1500, previousComponents: { salary: 5000 }, currentComponents: { salary: 6500 } }),
-      makeComparison({ status: "decreased", netDelta: -1000, previousComponents: { salary: 5000 }, currentComponents: { salary: 4000 } }),
-      makeComparison({ status: "unchanged", netDelta: 0, previousComponents: { salary: 5000 }, currentComponents: { salary: 5000 } }),
+      // Bucketing is against each employee's own previous net, so these need
+      // net populated — the component values alone no longer stand in for it.
+      makeComparison({ status: "increased", netDelta: 1500, previousNet: 5000, currentNet: 6500, previousComponents: { salary: 5000 }, currentComponents: { salary: 6500 } }),
+      makeComparison({ status: "decreased", netDelta: -1000, previousNet: 5000, currentNet: 4000, previousComponents: { salary: 5000 }, currentComponents: { salary: 4000 } }),
+      makeComparison({ status: "unchanged", netDelta: 0, previousNet: 5000, currentNet: 5000, previousComponents: { salary: 5000 }, currentComponents: { salary: 5000 } }),
     ];
 
     const result = aggregateResults(results);
@@ -147,6 +238,9 @@ describe("aggregateResults", () => {
         employeeName: "Alice",
         department: "Eng",
         status: "increased",
+        // Department totals are gross.
+        previousGross: 5000,
+        currentGross: 6000,
         previousComponents: { salary: 5000 },
         currentComponents: { salary: 6000 },
       }),
@@ -155,6 +249,8 @@ describe("aggregateResults", () => {
         employeeName: "Bob",
         department: "Sales",
         status: "unchanged",
+        previousGross: 4000,
+        currentGross: 4000,
         previousComponents: { salary: 4000 },
         currentComponents: { salary: 4000 },
       }),

@@ -82,6 +82,34 @@ describe("computeSummary sign conventions and quantities", () => {
   });
 });
 
+describe("computeSummary category byKey", () => {
+  it("sums each component across periods instead of keeping only the last", () => {
+    const months = [
+      period({ periodStart: "2026-01-01", periodEnd: "2026-01-31", gross: 1000, net: 800, components: [pos("Base Salary", 1000), pos("Income Tax", 200)] }),
+      period({ periodStart: "2026-02-01", periodEnd: "2026-02-28", gross: 1000, net: 800, components: [pos("Base Salary", 1000), pos("Income Tax", 200)] }),
+      period({ periodStart: "2026-03-01", periodEnd: "2026-03-31", gross: 1000, net: 800, components: [pos("Base Salary", 1000), pos("Income Tax", 200)] }),
+    ];
+
+    const s = summaryFor({ periods: months });
+
+    // byKey used `acc[k] = v` inside a reduce over every period, so it held
+    // March alone: one month's figure under a year's label, on screen and in
+    // the Excel Components sheet headed "Total to date".
+    expect(s.categories.byKey["Base Salary"]!.total).toBe(3000);
+    expect(s.categories.byKey["Income Tax"]!.total).toBe(600);
+
+    // The invariant worth holding onto: a category's children must sum to the
+    // category row. It was three times out.
+    const childrenOf = (category: string) =>
+      Object.values(s.categories.byKey)
+        .filter((v) => v.category === category)
+        .reduce((a, v) => a + v.total, 0);
+
+    expect(childrenOf("base_salary")).toBe(s.categories.byCategory.base_salary);
+    expect(childrenOf("income_tax")).toBe(s.categories.byCategory.income_tax);
+  });
+});
+
 describe("computeSummary coverage and warnings", () => {
   it("flags a missing June and counts duplicates once", () => {
     const months = [1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12];

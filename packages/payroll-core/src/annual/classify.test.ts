@@ -16,6 +16,16 @@ describe("classifyComponent", () => {
     expect(classifyComponent("Employer NSSF")).toBe("social_security_employer");
     expect(classifyComponent("Company bonus")).toBe("bonus_commission");
     expect(classifyComponent("Employer training levy")).toBe("other_employer_cost");
+
+    // Private cover is an employer cost, not a statutory contribution. Bare
+    // employer insurance used to match the social-security rule, which
+    // overstated the statutory line and the employer on-cost rate, so a
+    // reconciliation against a social security filing was out by the whole
+    // medical premium.
+    expect(classifyComponent("Health Insurance Employer")).toBe("other_employer_cost");
+
+    // Still statutory when the name carries a social-security signal.
+    expect(classifyComponent("Employer Social Insurance")).toBe("social_security_employer");
   });
 
   it("excludes taxable base and pre-tax amounts from income tax", () => {

@@ -24,7 +24,9 @@ export function KpiCards({ summary }: KpiCardsProps) {
 
   const cards = [
     {
-      title: "Total Variance",
+      // Net, which is what totalPayrollVariance now holds. It read "Total
+      // Variance" over a figure that was gross plus deductions.
+      title: "Net Variance",
       value: formatCurrency(Math.abs(variance.absolute)),
       subtext: variance.percentage !== null ? `${isPositive ? "+" : ""}${variance.percentage.toFixed(1)}%` : "N/A",
       iconName: isPositive ? "TrendingUp" : "TrendingDown",

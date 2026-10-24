@@ -17,9 +17,12 @@ function ruleBasedNarrative(
     ? ` (${variance.percentage.toFixed(1)}%)`
     : "";
 
+  // "net pay", not "total payroll": the figure is net. It was the sum of every
+  // mapped component — gross plus deductions on a register with positive
+  // deduction columns — described as total payroll.
   let summaryText =
     `For ${companyName}, comparing ${currentPeriod} to ${previousPeriod}, ` +
-    `total payroll saw a ${direction} of $${absVariance.toFixed(2)}${pctText}. `;
+    `net pay saw a ${direction} of $${absVariance.toFixed(2)}${pctText}. `;
 
   summaryText +=
     `${affected.total} employees were compared: ` +

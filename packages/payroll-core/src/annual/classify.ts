@@ -268,8 +268,19 @@ export function classifyComponentWithReason(key: string): ClassificationReason {
   const employerSide = has("employer") || hasEmployerToken(text);
   const employeeSide = has("employee") || hasEmployeeToken(text);
   if (employerSide && !employeeSide) {
-    if (has("social") || has("insurance")) {
+    // "social" already resolves pension, provident, retirement, NSSF and GOSI
+    // through the synonym group, so a statutory employer contribution matches
+    // here under any of its names.
+    if (has("social")) {
       return { category: "social_security_employer", rule: "employer-social", matched };
+    }
+    // Employer insurance with no social-security signal is private cover: a
+    // genuine employer cost, but not a statutory contribution. It used to match
+    // the rule above, which overstated the statutory line and the employer
+    // on-cost rate — so anyone reconciling to a social security filing was out
+    // by the whole medical premium.
+    if (has("insurance")) {
+      return { category: "other_employer_cost", rule: "employer-insurance", matched };
     }
     if (has("levy")) {
       return { category: "other_employer_cost", rule: "employer-levy", matched };

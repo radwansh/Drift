@@ -394,10 +394,27 @@ describe("step 3: an upload reaches the database", () => {
     expect(result.results).toHaveLength(2);
     expect(result.comparisonRun.status).toBe("completed");
 
-    // `totalPayrollVariance` sums the mapped components, not the gross column:
-    // per employee Basic Salary + Income Tax is 5000-600=4400 in January and
-    // 6000-720=5280 in February, so 2*(5280-4400) = 1760 across the company.
-    expect(result.summary.totalPayrollVariance.absolute).toBeCloseTo(1_760, 2);
+    // The headline is net, read off the Net Salary column: 4,000 -> 4,800 per
+    // employee, so +1,600 across the two.
+    //
+    // This assertion used to read 1,760, which is the sum of the mapped
+    // components (Basic Salary + the negative Income Tax: 4,400 -> 5,280). That
+    // is neither net (1,600) nor gross (2,000) — this fixture is a compact
+    // demonstration of the bug, and the test asserted it as intended behaviour.
+    expect(result.summary.totalPayrollVariance.absolute).toBeCloseTo(1_600, 2);
+    expect(result.summary.totalNet.absolute).toBeCloseTo(1_600, 2);
+    expect(result.summary.totalNet.previous).toBeCloseTo(8_000, 2);
+    expect(result.summary.totalNet.current).toBeCloseTo(9_600, 2);
+
+    // Gross moves differently, and is now reported separately rather than
+    // being conflated with net under one label.
+    expect(result.summary.totalGross.absolute).toBeCloseTo(2_000, 2);
+    expect(result.summary.totalGross.previous).toBeCloseTo(10_000, 2);
+    expect(result.summary.totalGross.current).toBeCloseTo(12_000, 2);
+
+    // Every employee had both figures, so nothing was excluded from the totals.
+    expect(result.summary.incompleteTotals).toEqual({ grossMissing: 0, netMissing: 0 });
+
     expect(result.summary.employeesAffected.increased).toBe(2);
   });
 });

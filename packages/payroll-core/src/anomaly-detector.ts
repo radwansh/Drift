@@ -56,12 +56,13 @@ function checkLargeNetChangeWithoutComponentChange(
   if (comp.netDelta === null || comp.grossDelta === null) return;
 
   const absNet = Math.abs(comp.netDelta);
-  const previousNet = Object.values(comp.previousComponents).reduce<number>(
-    (sum, v) => sum + (v ?? 0),
-    0,
-  );
 
-  if (previousNet === 0) return;
+  // The employee's own previous net, not the sum of their components. The
+  // component sum includes deductions, so it ran well above net and the
+  // threshold below fired late or not at all: a true +24% net movement
+  // computed as 16% and stayed silent.
+  const previousNet = comp.previousNet;
+  if (previousNet === null || previousNet === 0) return;
 
   const netPct = (absNet / previousNet) * 100;
 

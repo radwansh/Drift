@@ -40,6 +40,14 @@ describe("detectAnomalies", () => {
       makeComparison({
         currentComponents: { salary: 5000 },
         previousComponents: { salary: 5000 },
+        // The threshold divides by the employee's own previous net, so it has
+        // to be present: 1,000 on 5,000 is exactly the 20% trigger. It used to
+        // divide by the component sum, which on a register with deductions ran
+        // above net and made the rule fire late or not at all.
+        previousNet: 5000,
+        currentNet: 6000,
+        previousGross: 5000,
+        currentGross: 6000,
         grossDelta: 1000,
         netDelta: 1000,
       }),

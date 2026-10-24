@@ -23,7 +23,8 @@ function ruleBasedAuditSummary(comparisonData: {
 
   sections.push("## Executive Summary");
   sections.push(
-    `Total payroll ${dir} by $${absVar.toFixed(2)}${pctStr}. ` +
+    // Net, not "total payroll" — see the note in narrative.ts.
+    `Net pay ${dir} by $${absVar.toFixed(2)}${pctStr}. ` +
     `A total of ${affected.total} employees were compared across the two periods.`,
   );
   sections.push("");

@@ -59,10 +59,27 @@ export const ComparisonRun = z.object({
 });
 export type ComparisonRun = z.infer<typeof ComparisonRun>;
 
+/** A period-over-period money total and its movement. */
+export const PeriodTotal = z.object({
+  previous: z.number(),
+  current: z.number(),
+  absolute: z.number(),
+  percentage: z.number().nullable(),
+});
+export type PeriodTotal = z.infer<typeof PeriodTotal>;
+
 export const DashboardSummary = z.object({
+  /** Net, and the same movement as `totalNet`. */
   totalPayrollVariance: z.object({
     absolute: z.number(),
     percentage: z.number().nullable(),
+  }),
+  totalNet: PeriodTotal,
+  totalGross: PeriodTotal,
+  /** Employees excluded from the totals above because a figure was absent. */
+  incompleteTotals: z.object({
+    grossMissing: z.number().int(),
+    netMissing: z.number().int(),
   }),
   employeesAffected: z.object({
     total: z.number().int(),

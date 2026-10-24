@@ -5,6 +5,9 @@ import type { AggregatedSummary } from "@saas/payroll-core";
 function makeSummary(overrides: Partial<AggregatedSummary> = {}): AggregatedSummary {
   return {
     totalPayrollVariance: { absolute: 15000, percentage: 5.2 },
+    totalNet: { previous: 288_461.54, current: 303_461.54, absolute: 15000, percentage: 5.2 },
+    totalGross: { previous: 360_576.92, current: 379_326.92, absolute: 18_750, percentage: 5.2 },
+    incompleteTotals: { grossMissing: 0, netMissing: 0 },
     employeesAffected: { total: 100, increased: 30, decreased: 10, unchanged: 60 },
     newEmployees: 3,
     departedEmployees: 2,
