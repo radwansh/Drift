@@ -3,13 +3,51 @@
 Audit date: 2026-10-25, by the repo's own `payroll-manager` agent against `main` @ `e0666bb`.
 Plan written against `main` @ `6afd1d5`.
 
-> **Status: step 0 done (PR #5, `0f227c2`). Steps 1–10 outstanding.**
+> **Status: steps 0, 1, 2, 3 and 7 done. Steps 4, 5, 6, 8, 9 and 10 outstanding.**
 >
-> - **0** Tenant scoping on `employees` and `exports`. Merged, with 13 tests in
->   `apps/web/test/tenant-scoping.test.ts`; 7 of the 13 fail if the scoping is
->   removed, so the behaviour is bound rather than restated.
+> Each step was checked against its own unfixed source — the new tests are
+> re-run with that step's files stashed, and only count as binding the
+> behaviour if they fail with a diagnostic naming the real defect.
 >
-> Nothing else below has been started.
+> - **0** Tenant scoping on `employees` and `exports`. Merged as PR #5
+>   (`0f227c2`), with 13 tests in `apps/web/test/tenant-scoping.test.ts`; 7 of
+>   the 13 fail if the scoping is removed.
+> - **1** `AggregatedSummary` carries `totalNet`, `totalGross` and
+>   `incompleteTotals`; all nine component-sum proxy sites are gone and
+>   `totalPayrollVariance` is net (`d93e3ff`). Three existing tests asserted the
+>   proxy and were corrected against their fixture data, one of them carrying a
+>   comment that spelled out the wrong arithmetic.
+> - **2** A duplicated employee id refuses the comparison (`ac6522f`).
+>   `DuplicateEmployeeIdsError` is thrown in `comparator.ts` before anything is
+>   classified or aggregated, and `validate.ts` makes a repeated id an upload
+>   error so the period is never written.
+>
+>   **Departs from this document deliberately:** the step below asks for a
+>   `critical` anomaly per id *and* to surface it. An anomaly implies a
+>   dashboard whose totals are wrong by construction, and numbers on screen get
+>   used, so the figures are withheld and the refusal carries the detail
+>   instead. It throws rather than returning a field, because a field a caller
+>   ignores is how the original bug worked.
+> - **3a** `summary.ts` `byKey` sums across periods (`d93e3ff`).
+> - **3b** Bare employer insurance classifies as `other_employer_cost`
+>   (`d93e3ff`).
+> - **7** 46 of 46 register headers classify correctly, from 24 (`23bf69a`).
+>   Transliterated Arabic went 0 to 6 of 6. The two sign errors are asserted as
+>   sides of the bridge rather than as labels. Every header in `samples/` was
+>   classified before and after and did not move.
+>
+> Outstanding question for Radwan, from step 7: a bare **`Maladie`** column now
+> reads as the sick-absence deduction, which is what this document specifies,
+> but the same word names the health-insurance cotisation and the guard only
+> catches that when `assurance` or `mutuelle` is present. A vocabulary
+> judgement for whoever signs off payroll rules, not a rule to take from a
+> model's memory.
+>
+> Note that **step 7 does not finish the retro-pay forecast**. `other_earning`
+> falls through to `avgAll` in `forecast.ts`, so retro pay is no longer
+> forecast as permanent base salary but is smeared as a year-to-date average
+> instead. Step 6 is what stops it repeating, and now has the classification it
+> needs underneath it.
 
 The audit's own verdict, worth keeping at the top of this document because it
 decides where effort goes:
