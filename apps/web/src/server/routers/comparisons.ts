@@ -31,7 +31,7 @@ export const comparisonsRouter = router({
       previousPeriodId: z.string().uuid(),
     }))
     .mutation(async ({ ctx, input }) => {
-      const [currentPeriod, previousPeriod] = await Promise.all([
+      const [currentPeriod, previousPeriod, company] = await Promise.all([
         ctx.db.query.payrollPeriods.findFirst({
           where: and(
             eq(payrollPeriods.id, input.currentPeriodId),
@@ -44,10 +44,29 @@ export const comparisonsRouter = router({
             eq(payrollPeriods.companyId, ctx.companyId),
           ),
         }),
+        // Step 8b: the comparison's figures have to reach the UI with a
+        // currency, or `formatCurrency` labels a Lebanese payroll in dollars.
+        // Read in the same batch, so it costs no extra round trip.
+        ctx.db.query.companies.findFirst({
+          where: eq(companies.id, ctx.companyId),
+          columns: { currencyCode: true },
+        }),
       ]);
       if (!currentPeriod || !previousPeriod) {
         throw new TRPCError({ code: "NOT_FOUND", message: "One or both periods not found" });
       }
+
+      /**
+       * The company currency, as step 8b specifies — one currency per tenant,
+       * so there is nothing to choose between.
+       *
+       * The two periods also carry a `currencyCode` each, and nothing checks
+       * that they agree with each other or with this one. Two periods in
+       * different currencies make the variance meaningless, not merely
+       * mislabelled, so that is a check and not a formatting question;
+       * recorded as a finding rather than guessed at here.
+       */
+      const currency = company?.currencyCode ?? "USD";
 
       const [currentSnapshots, previousSnapshots] = await Promise.all([
         ctx.db.select().from(employeeSnapshots)
@@ -105,7 +124,7 @@ export const comparisonsRouter = router({
           .where(eq(comparisonRuns.id, run.id))
           .returning();
 
-        return { comparisonRun: updated, summary, results };
+        return { comparisonRun: updated, summary, results, currency };
       } catch (cause) {
         await ctx.db.update(comparisonRuns)
           .set({ status: "error", updatedAt: new Date() })
@@ -182,6 +201,7 @@ export const comparisonsRouter = router({
         summary: run.resultSummary,
         aiNarrative: run.aiNarrative,
         companyName: company?.name ?? "",
+        currency: company?.currencyCode ?? "USD",
         currentPeriod: currentPeriod ? `${currentPeriod.periodStart} - ${currentPeriod.periodEnd}` : "",
         previousPeriod: previousPeriod ? `${previousPeriod.periodStart} - ${previousPeriod.periodEnd}` : "",
       };

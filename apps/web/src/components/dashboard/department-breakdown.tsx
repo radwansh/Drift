@@ -19,9 +19,11 @@ interface DepartmentRow {
 
 interface DepartmentBreakdownProps {
   departments?: DepartmentRow[];
+  /** The company currency (step 8b). */
+  currency: string;
 }
 
-export function DepartmentBreakdown({ departments }: DepartmentBreakdownProps) {
+export function DepartmentBreakdown({ departments, currency }: DepartmentBreakdownProps) {
   return (
     <Card>
       <CardHeader>
@@ -65,10 +67,10 @@ export function DepartmentBreakdown({ departments }: DepartmentBreakdownProps) {
                       <TableCell className="font-medium">{dept.department}</TableCell>
                       <TableCell className="text-right">{dept.headcountCurrent}</TableCell>
                       <TableCell className="text-right">{dept.headcountPrevious}</TableCell>
-                      <TableCell className="text-right font-mono text-xs">{formatCurrency(dept.totalCurrent)}</TableCell>
-                      <TableCell className="text-right font-mono text-xs">{formatCurrency(dept.totalPrevious)}</TableCell>
+                      <TableCell className="text-right font-mono text-xs">{formatCurrency(dept.totalCurrent, currency)}</TableCell>
+                      <TableCell className="text-right font-mono text-xs">{formatCurrency(dept.totalPrevious, currency)}</TableCell>
                       <TableCell className={cn("text-right font-mono text-xs", isPositive ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-                        {isPositive ? "+" : ""}{formatCurrency(dept.absoluteChange)}
+                        {isPositive ? "+" : ""}{formatCurrency(dept.absoluteChange, currency)}
                       </TableCell>
                       <TableCell className="text-right">
                         {dept.percentageChange !== null ? (

@@ -18,9 +18,11 @@ interface MoverRow {
 
 interface TopMoversProps {
   movers?: MoverRow[];
+  /** The company currency (step 8b). */
+  currency: string;
 }
 
-export function TopMovers({ movers }: TopMoversProps) {
+export function TopMovers({ movers, currency }: TopMoversProps) {
   return (
     <Card>
       <CardHeader>
@@ -57,10 +59,10 @@ export function TopMovers({ movers }: TopMoversProps) {
                     <TableRow key={index}>
                       <TableCell className="font-medium">{mover.employeeName}</TableCell>
                       <TableCell className="text-muted-foreground">{mover.department ?? "—"}</TableCell>
-                      <TableCell className="text-right font-mono text-xs">{formatCurrency(mover.previousNet)}</TableCell>
-                      <TableCell className="text-right font-mono text-xs">{formatCurrency(mover.currentNet)}</TableCell>
+                      <TableCell className="text-right font-mono text-xs">{formatCurrency(mover.previousNet, currency)}</TableCell>
+                      <TableCell className="text-right font-mono text-xs">{formatCurrency(mover.currentNet, currency)}</TableCell>
                       <TableCell className={cn("text-right font-mono text-xs font-medium", isPositive ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-                        {isPositive ? "+" : ""}{formatCurrency(mover.changeAmount)}
+                        {isPositive ? "+" : ""}{formatCurrency(mover.changeAmount, currency)}
                       </TableCell>
                       <TableCell className="text-right">
                         {mover.changePercentage !== null ? (

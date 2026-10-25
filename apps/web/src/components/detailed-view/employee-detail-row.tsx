@@ -7,6 +7,8 @@ import { AlertTriangle, Info, AlertCircle } from "lucide-react";
 
 interface EmployeeDetailRowProps {
   data: ComparisonOutput;
+  /** The company currency (step 8b). */
+  currency: string;
 }
 
 const severityIcon = {
@@ -21,7 +23,7 @@ const severityColor = {
   critical: "text-red-500",
 };
 
-export function EmployeeDetailRow({ data }: EmployeeDetailRowProps) {
+export function EmployeeDetailRow({ data, currency }: EmployeeDetailRowProps) {
   const grossTotalPrev = Object.values(data.previousComponents).reduce(
     (s: number, v) => s + (v ?? 0),
     0,
@@ -60,12 +62,12 @@ export function EmployeeDetailRow({ data }: EmployeeDetailRowProps) {
                 <td className="px-3 py-2 font-medium">{formatComponentName(delta.component)}</td>
                 <td className="px-3 py-2 text-right tabular-nums">
                   {delta.previousValue !== null
-                    ? formatCurrency(delta.previousValue)
+                    ? formatCurrency(delta.previousValue, currency)
                     : "\u2014"}
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">
                   {delta.currentValue !== null
-                    ? formatCurrency(delta.currentValue)
+                    ? formatCurrency(delta.currentValue, currency)
                     : "\u2014"}
                 </td>
                 <td
@@ -80,7 +82,7 @@ export function EmployeeDetailRow({ data }: EmployeeDetailRowProps) {
                   }`}
                 >
                   {delta.absoluteDiff !== null
-                    ? `${delta.absoluteDiff > 0 ? "+" : ""}${formatCurrency(Math.abs(delta.absoluteDiff))}`
+                    ? `${delta.absoluteDiff > 0 ? "+" : ""}${formatCurrency(Math.abs(delta.absoluteDiff), currency)}`
                     : "\u2014"}
                 </td>
                 <td
@@ -105,10 +107,10 @@ export function EmployeeDetailRow({ data }: EmployeeDetailRowProps) {
             <tr className="border-t bg-muted/30 font-semibold">
               <td className="px-3 py-2">Components Total</td>
               <td className="px-3 py-2 text-right tabular-nums">
-                {formatCurrency(grossTotalPrev ?? 0)}
+                {formatCurrency(grossTotalPrev ?? 0, currency)}
               </td>
               <td className="px-3 py-2 text-right tabular-nums">
-                {formatCurrency(grossTotalCurr ?? 0)}
+                {formatCurrency(grossTotalCurr ?? 0, currency)}
               </td>
               <td
                 className={`px-3 py-2 text-right tabular-nums ${
@@ -122,7 +124,7 @@ export function EmployeeDetailRow({ data }: EmployeeDetailRowProps) {
                 }`}
               >
                 {data.grossDelta !== null
-                  ? `${data.grossDelta > 0 ? "+" : ""}${formatCurrency(Math.abs(data.grossDelta))}`
+                  ? `${data.grossDelta > 0 ? "+" : ""}${formatCurrency(Math.abs(data.grossDelta), currency)}`
                   : "\u2014"}
               </td>
               <td className="px-3 py-2 text-right"></td>
@@ -131,7 +133,7 @@ export function EmployeeDetailRow({ data }: EmployeeDetailRowProps) {
               <td className="px-3 py-2">Net Salary &Delta;</td>
               <td className="px-3 py-2 text-right tabular-nums" colSpan={2}>
                 {data.netDelta !== null
-                  ? `${data.netDelta > 0 ? "+" : ""}${formatCurrency(data.netDelta)}`
+                  ? `${data.netDelta > 0 ? "+" : ""}${formatCurrency(data.netDelta, currency)}`
                   : "\u2014"}
               </td>
               <td className="px-3 py-2 text-right"></td>

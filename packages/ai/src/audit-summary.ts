@@ -1,14 +1,25 @@
 import type { DashboardSummary } from "@saas/types";
 import { callClaude, isAiAvailable } from "./client";
 import { AUDIT_SYSTEM_PROMPT } from "./audit-summary/prompts";
+import { formatMoney } from "./money";
 
-function ruleBasedAuditSummary(comparisonData: {
+/**
+ * `currency` is required (step 8b). Four `$` signs were hardcoded into this
+ * summary — the executive line, the average change, and both largest movers —
+ * and the function received no currency at all, so an audit summary for a
+ * Lebanese or Kuwaiti company stated its payroll in dollars.
+ */
+export interface AuditSummaryInput {
   summary: DashboardSummary;
   companyName: string;
   currentPeriod: string;
   previousPeriod: string;
-}): string {
-  const { summary, companyName, currentPeriod, previousPeriod } = comparisonData;
+  currency: string;
+}
+
+function ruleBasedAuditSummary(comparisonData: AuditSummaryInput): string {
+  const { summary, companyName, currentPeriod, previousPeriod, currency } = comparisonData;
+  const money = (amount: number) => formatMoney(amount, currency);
   const v = summary.totalPayrollVariance;
   const affected = summary.employeesAffected;
   const dir = v.absolute >= 0 ? "increase" : "decrease";
@@ -24,7 +35,7 @@ function ruleBasedAuditSummary(comparisonData: {
   sections.push("## Executive Summary");
   sections.push(
     // Net, not "total payroll" — see the note in narrative.ts.
-    `Net pay ${dir} by $${absVar.toFixed(2)}${pctStr}. ` +
+    `Net pay ${dir} by ${money(absVar)}${pctStr}. ` +
     `A total of ${affected.total} employees were compared across the two periods.`,
   );
   sections.push("");
@@ -42,25 +53,25 @@ function ruleBasedAuditSummary(comparisonData: {
   if (summary.averageChange.absolute !== 0) {
     const avgDir = summary.averageChange.absolute >= 0 ? "increase" : "decrease";
     sections.push(
-      `- **Average Change per Employee:** ${avgDir} of $${Math.abs(summary.averageChange.absolute).toFixed(2)}` +
+      `- **Average Change per Employee:** ${avgDir} of ${money(Math.abs(summary.averageChange.absolute))}` +
       (summary.averageChange.percentage !== null ? ` (${summary.averageChange.percentage.toFixed(1)}%)` : ""),
     );
   }
   if (summary.largestIncrease) {
     sections.push(
       `- **Largest Increase:** ${summary.largestIncrease.employeeName} (${summary.largestIncrease.department ?? "N/A"}) ` +
-      `+$${summary.largestIncrease.amount.toFixed(2)}`,
+      `+${money(summary.largestIncrease.amount)}`,
     );
   }
   if (summary.largestDecrease) {
     sections.push(
       `- **Largest Decrease:** ${summary.largestDecrease.employeeName} (${summary.largestDecrease.department ?? "N/A"}) ` +
-      `-$${Math.abs(summary.largestDecrease.amount).toFixed(2)}`,
+      `-${money(Math.abs(summary.largestDecrease.amount))}`,
     );
   }
 
   const compLines = summary.componentBreakdown.slice(0, 5).map(
-    (c) => `- **${c.component}:** ${c.totalChange >= 0 ? "+" : ""}$${c.totalChange.toFixed(2)} (${c.employeeCount} employees)`,
+    (c) => `- **${c.component}:** ${c.totalChange >= 0 ? "+" : ""}${money(c.totalChange)} (${c.employeeCount} employees)`,
   );
   if (compLines.length > 0) {
     sections.push("### Component Changes");
@@ -115,14 +126,7 @@ function ruleBasedAuditSummary(comparisonData: {
   return sections.join("\n");
 }
 
-export async function generateAuditSummary(
-  comparisonData: {
-    summary: DashboardSummary;
-    companyName: string;
-    currentPeriod: string;
-    previousPeriod: string;
-  },
-): Promise<string> {
+export async function generateAuditSummary(comparisonData: AuditSummaryInput): Promise<string> {
   if (!isAiAvailable) {
     return ruleBasedAuditSummary(comparisonData);
   }

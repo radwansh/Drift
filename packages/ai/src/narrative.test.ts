@@ -41,7 +41,7 @@ function makeSummary(overrides: Partial<AggregatedSummary> = {}): AggregatedSumm
 describe("generateNarrative", () => {
   it("returns a narrative with summary highlights and concerns", async () => {
     const summary = makeSummary();
-    const result = await generateNarrative(summary, "Acme Corp", "June 2024", "May 2024");
+    const result = await generateNarrative(summary, "Acme Corp", "June 2024", "May 2024", "USD");
 
     expect(result.summary).toBeTruthy();
     expect(result.summary).toContain("increase");
@@ -57,13 +57,13 @@ describe("generateNarrative", () => {
         { employeeId: "E999", employeeName: "Critical Case", type: "duplicate_employee", severity: "critical", description: "Duplicate employee record detected" },
       ],
     });
-    const result = await generateNarrative(summary, "Test Co", "Q2", "Q1");
+    const result = await generateNarrative(summary, "Test Co", "Q2", "Q1", "USD");
     expect(result.severity).toBe("critical");
   });
 
   it("handles no anomalies", async () => {
     const summary = makeSummary({ anomalies: [] });
-    const result = await generateNarrative(summary, "Stable Corp", "Jan", "Dec");
+    const result = await generateNarrative(summary, "Stable Corp", "Jan", "Dec", "USD");
 
     expect(result.severity).toBe("routine");
     expect(result.concerns.length).toBe(0);
@@ -73,7 +73,7 @@ describe("generateNarrative", () => {
     const summary = makeSummary({
       totalPayrollVariance: { absolute: -5000, percentage: -2.5 },
     });
-    const result = await generateNarrative(summary, "Down Co", "Feb", "Jan");
+    const result = await generateNarrative(summary, "Down Co", "Feb", "Jan", "USD");
 
     expect(result.summary).toContain("decrease");
   });
@@ -84,14 +84,14 @@ describe("generateNarrative", () => {
       employeesAffected: { total: 50, increased: 0, decreased: 0, unchanged: 50 },
       averageChange: { absolute: 0, percentage: 0 },
     });
-    const result = await generateNarrative(summary, "Flat Co", "Mar", "Feb");
+    const result = await generateNarrative(summary, "Flat Co", "Mar", "Feb", "USD");
 
     expect(result.summary).toBeTruthy();
   });
 
   it("includes new/departed employee counts when present", async () => {
     const summary = makeSummary({ newEmployees: 5, departedEmployees: 3 });
-    const result = await generateNarrative(summary, "Growth Inc", "P2", "P1");
+    const result = await generateNarrative(summary, "Growth Inc", "P2", "P1", "USD");
 
     expect(result.summary).toContain("5 new");
     expect(result.summary).toContain("3");

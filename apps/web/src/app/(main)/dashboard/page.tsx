@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import type { AggregatedSummary } from "@saas/payroll-core";
 import type { AiNarrative } from "@saas/types";
 import { trpc } from "@/lib/trpc";
+import { formatCurrency } from "@/lib/utils";
 import { usePeriodOptions } from "@/hooks/use-period-options";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { AlertTriangle } from "lucide-react";
@@ -19,16 +20,23 @@ import { TopMovers } from "@/components/dashboard/top-movers";
 import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
 
-function buildNarrative(summary: AggregatedSummary): AiNarrative {
+/**
+ * Step 8b: every figure here was a hardcoded `$` over `toLocaleString()`, so a
+ * Lebanese or Kuwaiti company's variance was narrated in dollars. The amounts
+ * now carry the company's code through `formatCurrency`.
+ */
+function buildNarrative(summary: AggregatedSummary, currency: string): AiNarrative {
+  const variance = summary.totalPayrollVariance;
+  const money = (amount: number) => formatCurrency(amount, currency);
   return {
-    summary: `Payroll variance is ${summary.totalPayrollVariance.absolute >= 0 ? "+" : ""}$${Math.abs(summary.totalPayrollVariance.absolute).toLocaleString()} (${summary.totalPayrollVariance.percentage?.toFixed(1) ?? "N/A"}%) across ${summary.employeesAffected.total} employees. ${summary.employeesAffected.increased} employees saw increases, ${summary.employeesAffected.decreased} saw decreases.`,
+    summary: `Payroll variance is ${variance.absolute >= 0 ? "+" : ""}${money(Math.abs(variance.absolute))} (${variance.percentage?.toFixed(1) ?? "N/A"}%) across ${summary.employeesAffected.total} employees. ${summary.employeesAffected.increased} employees saw increases, ${summary.employeesAffected.decreased} saw decreases.`,
     highlights: [
-      `${summary.employeesAffected.increased} employees received salary increases totaling $${Math.abs(summary.totalPayrollVariance.absolute).toLocaleString()}`,
-      summary.largestIncrease ? `${summary.largestIncrease.employeeName} (${summary.largestIncrease.department}) had the largest increase of $${summary.largestIncrease.amount.toLocaleString()}` : null,
+      `${summary.employeesAffected.increased} employees received salary increases totaling ${money(Math.abs(variance.absolute))}`,
+      summary.largestIncrease ? `${summary.largestIncrease.employeeName} (${summary.largestIncrease.department}) had the largest increase of ${money(summary.largestIncrease.amount)}` : null,
       `${summary.newEmployees} new employees were added this period`,
     ].filter(Boolean) as string[],
     concerns: [
-      summary.largestDecrease ? `${summary.largestDecrease.employeeName} (${summary.largestDecrease.department}) had the largest decrease of $${Math.abs(summary.largestDecrease.amount).toLocaleString()}` : null,
+      summary.largestDecrease ? `${summary.largestDecrease.employeeName} (${summary.largestDecrease.department}) had the largest decrease of ${money(Math.abs(summary.largestDecrease.amount))}` : null,
       `${summary.employeesAffected.decreased} employees experienced salary decreases`,
       summary.anomalies.length > 0 ? `${summary.anomalies.length} anomaly flag(s) detected requiring attention` : null,
     ].filter(Boolean) as string[],
@@ -54,11 +62,15 @@ export default function DashboardPage() {
   const [previousPeriodId, setPreviousPeriodId] = useState("");
   const [summary, setSummary] = useState<AggregatedSummary | null>(null);
   const [narrative, setNarrative] = useState<AiNarrative | null>(null);
+  // Step 8b: the figures reach the UI with the company currency, rather than
+  // every formatter falling back to USD.
+  const [currency, setCurrency] = useState("USD");
 
   const comparison = trpc.comparisons.run.useMutation({
     onSuccess: (result) => {
       setSummary(result.summary);
-      setNarrative(buildNarrative(result.summary));
+      setCurrency(result.currency);
+      setNarrative(buildNarrative(result.summary, result.currency));
     },
   });
   const loading = comparison.isPending;
@@ -149,18 +161,18 @@ export default function DashboardPage() {
 
       {narrative && <AiSummaryBanner narrative={narrative} onRegenerate={() => console.log("Regenerate AI summary")} />}
 
-      <KpiCards summary={summary} />
+      <KpiCards summary={summary} currency={currency} />
 
       <div className="grid grid-cols-1 gap-6">
         <VarianceDistributionChart distribution={summary.distribution} />
-        <ComponentBreakdown components={summary.componentBreakdown} />
+        <ComponentBreakdown components={summary.componentBreakdown} currency={currency} />
       </div>
 
       <AnomalyFlagsPanel anomalies={summary.anomalies} />
 
-      <DepartmentBreakdown departments={summary.departmentBreakdown} />
+      <DepartmentBreakdown departments={summary.departmentBreakdown} currency={currency} />
 
-      <TopMovers movers={summary.topMovers} />
+      <TopMovers movers={summary.topMovers} currency={currency} />
     </div>
   );
 }

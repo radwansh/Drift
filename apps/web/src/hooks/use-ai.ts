@@ -10,7 +10,17 @@ export function useAiNarrative(comparisonId?: string) {
   const [isThinking, setIsThinking] = useState(false);
 
   const fetchNarrative = useCallback(
-    async (summary: AggregatedSummary, companyName?: string, currentPeriod?: string, previousPeriod?: string) => {
+    async (
+      summary: AggregatedSummary,
+      companyName?: string,
+      currentPeriod?: string,
+      previousPeriod?: string,
+      // Step 8b. Required by `generateNarrative`; the fallback is explicit here
+      // rather than hidden in the formatter, so a caller that has the company
+      // currency can pass it and one that does not can see what it is settling
+      // for.
+      currency = "USD",
+    ) => {
       setIsThinking(true);
       try {
         const result = await generateNarrative(
@@ -18,6 +28,7 @@ export function useAiNarrative(comparisonId?: string) {
           companyName ?? "Your Company",
           currentPeriod ?? "Current Period",
           previousPeriod ?? "Previous Period",
+          currency,
         );
         setNarrative(result);
         return result;
