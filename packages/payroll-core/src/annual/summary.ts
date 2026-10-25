@@ -11,7 +11,7 @@ import type {
 import { EMPLOYEE_DEDUCTION_CATEGORIES, EMPLOYER_COST_CATEGORIES, QUANTITY_CATEGORIES } from "./types";
 import { classifyComponent } from "./classify";
 import { buildCategoryTotals, sumCategories } from "./categoryTotals";
-import { buildForecast } from "./forecast";
+import { buildForecast, type OneOffsExcluded } from "./forecast";
 import { computeHeadcountFlows, type HeadcountFlows } from "./headcount";
 import { computeYoY, type YoYResult } from "./yoy";
 import { countSupersededUploads, dedupePeriods, generateExpectedPeriods } from "./periods";
@@ -132,6 +132,13 @@ export interface AnnualSummary {
    */
   categoryForecast: Partial<Record<Category, number>>;
   categoryFullYear: Partial<Record<Category, number>>;
+  /**
+   * One-offs inside the uploaded periods that the forecast does not repeat
+   * (step 6). Already counted in `categories.byCategory` and in the actual
+   * bridge; reported separately so the exclusion is named on screen rather than
+   * left for the reader to notice.
+   */
+  oneOffsExcluded: OneOffsExcluded;
   quantities: Partial<Record<"absence_days" | "other_quantity", number>>;
   bridge: { actual: BridgeLine; forecast: BridgeLine; fullYear: BridgeLine };
   forecastPerPeriod: { label: string; gross: Money; employeeDeductions: Money; employerCosts: Money; net: Money }[];
@@ -489,6 +496,7 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
     },
     categoryForecast: categoryForecast,
     categoryFullYear: categoryFullYear,
+    oneOffsExcluded: forecast.oneOffs,
     quantities: quantityTotals,
     bridge: {
       actual: buildBridge(ytdGross, actualEmployerCosts, actualEmployeeDeductions, actualEarningsBalance, actualBalance, ytdNet),

@@ -38,7 +38,12 @@ interface CategoryRow {
   toDate: number;
   forecast: number;
   fullYear: number;
-  kind: "earning" | "balance" | "uncategorised";
+  /**
+   * "memo" is a line that is already counted inside the rows above it, so it is
+   * excluded from the add-up-to-gross check. One-offs held out of the forecast
+   * are the only memo line today (step 6).
+   */
+  kind: "earning" | "balance" | "uncategorised" | "memo";
   components: { key: string; label: string; total: number }[];
 }
 
@@ -87,6 +92,29 @@ export function AnnualCategories({ summary, onCategorise }: AnnualCategoriesProp
         fullYear: summary.bridge.fullYear.earningsBalance,
         kind: "balance",
         components: [],
+      });
+    }
+
+    // Step 6: the forecast projects a recurring floor and holds one-offs back,
+    // so say so. A silent exclusion is a different kind of wrong number — the
+    // bonus line reads low against last year and nothing on the page explains
+    // why. The amount is inside "To date" already, hence the dashes.
+    const oneOffs = summary.oneOffsExcluded;
+    if (oneOffs.total !== 0) {
+      out.push({
+        id: "one_offs_excluded",
+        label: "One-offs excluded from forecast",
+        toDate: oneOffs.total,
+        forecast: 0,
+        fullYear: 0,
+        kind: "memo",
+        components: Object.entries(oneOffs.byCategory)
+          .map(([category, total]) => ({
+            key: category,
+            label: CATEGORY_LABELS[category as Category],
+            total: total ?? 0,
+          }))
+          .sort((a, b) => Math.abs(b.total) - Math.abs(a.total)),
       });
     }
 
@@ -171,6 +199,7 @@ export function AnnualCategories({ summary, onCategorise }: AnnualCategoriesProp
                       className={cn(
                         row.kind === "uncategorised" && "bg-amber-500/10",
                         row.kind === "balance" && "bg-muted/40",
+                        row.kind === "memo" && "bg-muted/40 text-muted-foreground",
                       )}
                     >
                       <TableCell className="sticky left-0 z-10 whitespace-nowrap bg-background font-medium">
@@ -198,10 +227,14 @@ export function AnnualCategories({ summary, onCategorise }: AnnualCategoriesProp
                         {formatMoney(row.toDate, currency)}
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-right tabular-nums">
-                        {row.kind === "uncategorised" ? "—" : formatMoney(row.forecast, currency)}
+                        {row.kind === "uncategorised" || row.kind === "memo"
+                          ? "—"
+                          : formatMoney(row.forecast, currency)}
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-right tabular-nums">
-                        {row.kind === "uncategorised" ? "—" : formatMoney(row.fullYear, currency)}
+                        {row.kind === "uncategorised" || row.kind === "memo"
+                          ? "—"
+                          : formatMoney(row.fullYear, currency)}
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-right tabular-nums">
                         {formatPct(pct)}
@@ -253,6 +286,13 @@ export function AnnualCategories({ summary, onCategorise }: AnnualCategoriesProp
               ? "Categories add up to gross."
               : `Categories are ${formatMoney(Math.abs(gross - earningsTotal), currency)} short of gross.`}
           </span>
+          {summary.oneOffsExcluded.total !== 0 && (
+            <span>
+              {formatMoney(summary.oneOffsExcluded.total, currency)} of one-offs is counted in the
+              period it was paid and is not projected into the remaining periods, so it is already
+              inside the figures above and is not added again.
+            </span>
+          )}
           {summary.categories.uncategorisedKeys.length > 0 && onCategorise && (
             <Button size="sm" variant="outline" onClick={onCategorise}>
               Categorise components

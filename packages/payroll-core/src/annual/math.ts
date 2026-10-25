@@ -41,3 +41,17 @@ export function pctChange(current: number, previous: number): number | null {
   if (previous === 0 || !Number.isFinite(previous)) return null;
   return ((current - previous) / previous) * 100;
 }
+
+/**
+ * Middle value, averaging the two middle values for an even count.
+ *
+ * Used by the forecast to find a recurring level that one large month cannot
+ * move (step 6): a mean is dragged by a March annual bonus, a median is not.
+ */
+export function median(values: readonly number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[mid] ?? 0;
+  return ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
+}

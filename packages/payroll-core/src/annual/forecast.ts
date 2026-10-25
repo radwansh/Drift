@@ -7,12 +7,17 @@ import type {
   Money,
   PeriodType,
 } from "./types";
-import { EMPLOYEE_DEDUCTION_CATEGORIES, EARNING_CATEGORIES, EMPLOYER_COST_CATEGORIES } from "./types";
+import {
+  CATEGORY_LABELS,
+  EMPLOYEE_DEDUCTION_CATEGORIES,
+  EARNING_CATEGORIES,
+  EMPLOYER_COST_CATEGORIES,
+} from "./types";
 import { buildCategoryTotals } from "./categoryTotals";
 import { generateExpectedPeriods } from "./periods";
 import { groupBySlot } from "./slots";
 import { clamp } from "./dates";
-import { average, roundMoney } from "./math";
+import { average, median, roundMoney, sum } from "./math";
 
 const RECURRING: readonly Category[] = [
   "base_salary",
@@ -31,6 +36,65 @@ const STATUTORY: readonly Category[] = [
   "social_security_employee",
   "social_security_employer",
 ];
+
+/**
+ * A period's amount is a one-off when it exceeds this multiple of the median of
+ * the *other* periods (step 6).
+ *
+ * The comparison is leave-one-out rather than against the median of the whole
+ * series, because when a large share of the window is spiky the median sits
+ * between the spikes and nothing clears the bar. At the four-month cut of
+ * samples/2025, March and April both carry launch overtime: the median of all
+ * four is 32,352.09, 3x of which is 97,056.27, and neither 57,739.36 nor
+ * 64,942.33 reaches it — so the whole launch spike projected into every
+ * remaining month (+108.8% against the run rate). Leave-one-out catches both.
+ */
+const ONE_OFF_SPIKE_MULTIPLE = 3;
+
+/** Below three periods a spike cannot be told from a level, so none is called. */
+const ONE_OFF_MIN_PERIODS = 3;
+
+export interface RunRateSplit {
+  /** The per-period recurring level, projected into each remaining slot. */
+  recurring: number;
+  /** Signed excess over `recurring` per actual period; 0 where there is none. */
+  excess: number[];
+  /** Sum of `excess` — what the forecast deliberately does not repeat. */
+  oneOffTotal: number;
+}
+
+/**
+ * Split a variable category's actual periods into a recurring floor and the
+ * one-offs sitting on top of it (step 6 of docs/PAYROLL_AUDIT_FIX_PLAN.md).
+ *
+ * v1 projected `avgAll` — the year-to-date mean — for every category that was
+ * neither statutory nor recurring, so a March annual bonus was smeared across
+ * every remaining month. The error hid: at the March cut of samples/2025 the
+ * fictional bonus (+33.0%) cancelled the understated base (-6.7%) and the gross
+ * headline read 1.4% low, so a manager was told "gross is on plan" while the
+ * bonus line was a third over and the base line 7% under.
+ *
+ * Magnitudes, not signed values, decide what is a spike, so a large negative
+ * adjustment is treated the same way as a large payment. A median of zero — a
+ * category that is normally nil, which is what retro pay and severance look
+ * like — makes any non-zero period a one-off, which is the intended reading.
+ */
+export function splitRunRate(values: readonly number[]): RunRateSplit {
+  if (values.length === 0) return { recurring: 0, excess: [], oneOffTotal: 0 };
+  if (values.length < ONE_OFF_MIN_PERIODS) {
+    return { recurring: median(values), excess: values.map(() => 0), oneOffTotal: 0 };
+  }
+
+  const isOneOff = values.map((value, i) => {
+    const others = values.filter((_, j) => j !== i);
+    return Math.abs(value) > Math.abs(median(others)) * ONE_OFF_SPIKE_MULTIPLE;
+  });
+
+  const ordinary = values.filter((_, i) => !isOneOff[i]);
+  const recurring = ordinary.length > 0 ? average(ordinary) : median(values);
+  const excess = values.map((value, i) => (isOneOff[i] ? value - recurring : 0));
+  return { recurring, excess, oneOffTotal: sum(excess) };
+}
 
 export interface ForecastOptions {
   year: number;
@@ -67,6 +131,17 @@ export interface ForecastPeriod {
   categories: Partial<Record<Category, number>>;
 }
 
+/**
+ * One-offs found in the actual periods that the forecast does not repeat
+ * (step 6). The amounts are already inside the actual category totals; this is
+ * what was withheld from the projection, reported so the exclusion is visible
+ * rather than implied.
+ */
+export interface OneOffsExcluded {
+  byCategory: Partial<Record<Category, number>>;
+  total: Money;
+}
+
 export interface ForecastTotals {
   totals: Partial<Record<Category, Money>>;
   gross: Money;
@@ -87,6 +162,8 @@ export interface ForecastResult extends ForecastTotals {
   estimated: ForecastTotals;
   /** True when no earnings component is mapped, so gross/net are projected directly. */
   directGrossNet: boolean;
+  /** One-offs held out of the projection (step 6). Empty when nothing was held out. */
+  oneOffs: OneOffsExcluded;
 }
 
 const METHOD_NAMES: Record<ForecastMethod, string> = {
@@ -245,6 +322,15 @@ export function buildForecast(opts: ForecastOptions): ForecastResult {
   const avgAll = (cat: Category) => (rows.length > 0 ? (ytdByCategory[cat] ?? 0) / rows.length : 0);
   const lastActual = (cat: Category) => (rows.length > 0 ? rows[rows.length - 1]?.[cat] ?? 0 : 0);
 
+  // Step 6: a run rate is the level that recurs, so each variable category is
+  // split into a floor and the one-offs above it. `VARIABLE` was declared and
+  // exported here from the start and never read, which is why nothing
+  // distinguished a bonus from rent.
+  const variableSplits: Partial<Record<Category, RunRateSplit>> = {};
+  for (const cat of VARIABLE) {
+    variableSplits[cat] = splitRunRate(rows.map((r) => r[cat] ?? 0));
+  }
+
   const windowRows = rows.slice(-3);
   const avgWindow = (cat: Category) =>
     windowRows.length > 0 ? average(windowRows.map((r) => r[cat] ?? 0)) : 0;
@@ -279,6 +365,9 @@ export function buildForecast(opts: ForecastOptions): ForecastResult {
       }
       if (STATUTORY.includes(cat)) return ytdRate(cat);
       if (RECURRING.includes(cat)) return lastActual(cat);
+      // A variable category projects its recurring floor, never the smeared
+      // average that carried a one-off into every remaining period (step 6).
+      if (VARIABLE.includes(cat)) return variableSplits[cat]?.recurring ?? avgAll(cat);
       return avgAll(cat);
     };
 
@@ -356,6 +445,33 @@ export function buildForecast(opts: ForecastOptions): ForecastResult {
   const perPeriod = remaining.map(projectSlot);
   const perEstimated = missingPast.map(projectSlot);
 
+  // Only the run-rate method holds one-offs back, so it is the only one that has
+  // an exclusion to declare. `average` is the average of the last three periods
+  // and `prior_year` aligns last year's figures by slot — both say what they do,
+  // and a slot-aligned prior-year bonus belongs in the month it was paid.
+  // Reporting an exclusion that was not applied would be a wrong number of its
+  // own, so the line stays empty for them, and empty when nothing was projected.
+  const oneOffs: OneOffsExcluded = { byCategory: {}, total: 0 };
+  if (method === "run_rate" && perPeriod.length + perEstimated.length > 0) {
+    for (const cat of VARIABLE) {
+      const excluded = roundMoney(variableSplits[cat]?.oneOffTotal ?? 0);
+      if (excluded === 0) continue;
+      oneOffs.byCategory[cat] = excluded;
+      oneOffs.total = roundMoney(oneOffs.total + excluded);
+    }
+  }
+  if (oneOffs.total !== 0) {
+    // No figure in the prose: payroll-core has no currency, and an unlabelled
+    // amount on screen is the bug step 8 is about. The amount travels in
+    // `oneOffs` for the UI to format.
+    const names = Object.keys(oneOffs.byCategory)
+      .map((c) => CATEGORY_LABELS[c as Category].toLowerCase())
+      .join(", ");
+    assumptions.push(
+      `One-offs in ${names} are counted in the period they were paid and are not projected forward.`,
+    );
+  }
+
   return {
     method,
     methodsAvailable,
@@ -364,6 +480,7 @@ export function buildForecast(opts: ForecastOptions): ForecastResult {
     perEstimated,
     estimated: perEstimated.length > 0 ? totalsOf(perEstimated) : emptyTotals(),
     directGrossNet,
+    oneOffs,
     ...(perPeriod.length > 0 ? totalsOf(perPeriod) : emptyTotals()),
   };
 }
