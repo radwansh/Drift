@@ -10,11 +10,26 @@ import type { Category } from "./types";
  * "Gross Pay" and "Total Deductions" — which double-count if mapped as
  * components — and French and Arabic headers.
  *
+ * Step 7 of docs/PAYROLL_AUDIT_FIX_PLAN.md closed the next 22, of 46 real
+ * register headers: retro and back pay, arrears, severance, notice and a leave
+ * payout (all read as recurring base salary or as an absence deduction);
+ * end-of-service, indemnity and gratuity provisions (read as employee
+ * earnings inside gross); `Charges patronales`; `Congés payés` and `Maladie`;
+ * the six transliterated Arabic headers, of which none was recognised although
+ * their Arabic-script forms were; `FTE`; and `Cost Centre`. The architecture
+ * was sound — the vocabulary had holes.
+ *
  * Rule order matters and is load-bearing:
  *   1.  total columns        never a component; mapping them double-counts
+ *   1b. text columns         a cost centre code would store as 0.00
  *   2.  quantities           days/hours are not money
+ *   2b. FTE                  a count, but only when the header is nothing else
  *   3.  taxable-base guard   "Taxable Salary" is a base, not a tax or a salary
  *   4.  employer side        before employee social, so "NSSF ER" lands right
+ *   4b. one-off earnings     before absence and bare salary: a payout is pay,
+ *                            and retro pay is not a permanent raise
+ *   4c. employer provisions  before allowance and bonus: an EOSB accrual is a
+ *                            cost of employing, not something anyone was paid
  *   5.  absence              before tax, so "Unpaid Leave" is not read as a levy
  *   6.  income tax
  *   7.  employee social security, then employee insurance
@@ -76,10 +91,11 @@ const SYNONYMS: Record<string, readonly string[]> = {
   // --- quantities ---
   days: ["days", "day", "jours", "jour", "ايام", "يوم"],
   hours: ["hours", "hour", "hrs", "hr", "heures", "heure", "ساعات", "ساعة"],
+  fte: ["fte", "ftes", "full time equivalent", "full time equivalents"],
   // --- absence ---
   absence: [
     "absence", "absences", "absent", "leave", "leaves", "unpaid", "lwop", "lateness", "late",
-    "no pay", "nopay", "conge", "absent sans solde",
+    "no pay", "nopay", "conge", "absent sans solde", "maladie", "maladies",
     "غياب", "اجازة",
   ],
   // --- side markers ---
@@ -93,9 +109,14 @@ const SYNONYMS: Record<string, readonly string[]> = {
     "social", "socials", "pension", "pensions", "retirement", "provident", "nssf", "gosi",
     "pifss", "cnps", "cnaps", "inss", "cnss", "ssn", "national insurance",
     "securite sociale", "retraite", "cotisation", "cotisations",
+    "daman", "ijtimai", "ijtimaii",
     "ضمان", "تقاعد", "التقاعد",
   ],
-  insurance: ["insurance", "insurances", "assurance", "mutuelle", "تأمين"],
+  insurance: [
+    "insurance", "insurances", "assurance", "mutuelle",
+    "takmeen", "tameen", "taameen",
+    "تأمين",
+  ],
   // --- tax ---
   tax: [
     "tax", "taxes", "paye", "withholding", "wht", "impot", "impots", "ir", "irpp", "irpef",
@@ -109,17 +130,34 @@ const SYNONYMS: Record<string, readonly string[]> = {
   bonus: [
     "bonus", "bonuses", "commission", "commissions", "incentive", "incentives", "gratuity",
     "award", "awards", "prime", "primes", "13th", "14th",
+    "mukafaa", "mukafa", "mukafaat",
     "مكافأة", "علاوة", "حافز",
   ],
   allowance: [
     "allowance", "allowances", "indemnite", "indemnites", "indemnity", "benefit", "benefits",
-    "per diem", "بدل", "بدلات",
+    "per diem", "badal", "badl", "badalat", "بدل", "بدلات",
   ],
-  housing: ["housing", "accommodation", "rent", "logement", "سكن"],
-  transport: ["transport", "transportation", "travel", "mileage", "fuel", "deplacement", "نقل", "مواصلات"],
+  housing: ["housing", "accommodation", "rent", "logement", "sakan", "سكن"],
+  transport: ["transport", "transportation", "travel", "mileage", "fuel", "deplacement", "naql", "نقل", "مواصلات"],
   meal: ["meal", "meals", "canteen", "repas", "panier", "طعام"],
-  base: ["base", "basic", "salaire de base", "fixe", "اساسي", "الاساسي"],
-  salary: ["salary", "salaries", "wage", "wages", "pay", "salaire", "paie", "راتب", "الراتب", "اجر"],
+  base: ["base", "basic", "salaire de base", "fixe", "asasi", "assasi", "اساسي", "الاساسي"],
+  salary: [
+    "salary", "salaries", "wage", "wages", "pay", "salaire", "paie",
+    "rateb", "ratib", "raatib",
+    "راتب", "الراتب", "اجر",
+  ],
+  // --- one-off earnings: money owed for an earlier period, or on leaving ---
+  one_off: [
+    "retro", "retros", "retroactive", "back pay", "backpay", "arrears", "arrear",
+    "rappel", "rappels", "severance", "notice", "payout", "payouts", "encashment", "in lieu",
+  ],
+  /** French paid leave: an earning, unlike every other `conge` form. */
+  paid_leave: ["conges payes", "conge paye"],
+  // --- employer provisions and burdens ---
+  end_of_service: ["end of service", "eosb", "fin de service"],
+  provision: ["provision", "provisions", "accrual", "accruals", "accrued"],
+  /** The French employer burden, which carries both signals in one phrase. */
+  employer_burden: ["charges patronales", "charge patronale"],
   // --- deductions ---
   deduction: ["deduction", "deductions", "retenue", "retenues", "خصم", "خصومات", "استقطاع"],
   loan: ["loan", "loans", "advance", "advances", "pret", "avance", "recovery", "سلفة", "قرض"],
@@ -197,6 +235,20 @@ const TOTAL_PATTERNS: readonly RegExp[] = [
 /** "Gross Salary Adjustment" is a component, not the gross total. */
 const TOTAL_EXCLUSIONS: readonly RegExp[] = [/\badjust/, /\barrear/, /\bcorrection\b/];
 
+/**
+ * Columns that hold text rather than money or a count.
+ *
+ * `ignore`, not `uncategorised`: the upload writes every mapped component as
+ * `Number(val) || 0`, so a cost centre code becomes 0.00 for every employee —
+ * a figure that then sits in the bridge, and a zero-valued component for the
+ * anomaly detector to flag per head. Dimension columns belong to step 9, which
+ * gives them somewhere to live; until then they are kept out of the money.
+ */
+const IGNORE_TEXT_PATTERNS: readonly RegExp[] = [
+  /\bcost cent(re|er)\b/,
+  /\bcostcent(re|er)\b/,
+];
+
 export function isTotalColumn(key: string): boolean {
   const text = normalize(key);
   if (!text) return false;
@@ -246,6 +298,14 @@ export function classifyComponentWithReason(key: string): ClassificationReason {
     return { category: "ignore", rule: "total-column", matched: ["total"] };
   }
 
+  // 1b. Text columns, which are not money and not merely uncategorised: the
+  //     upload stores a component as `Number(val) || 0`, so a cost centre code
+  //     lands as 0.00 against every employee — a real figure in the bridge, and
+  //     one zero-valued component per head for the anomaly detector to flag.
+  if (IGNORE_TEXT_PATTERNS.some((r) => r.test(text))) {
+    return { category: "ignore", rule: "text-column", matched };
+  }
+
   // 2. Quantities are not money.
   if (has("days") || has("hours")) {
     const isAbsence = has("absence");
@@ -254,6 +314,14 @@ export function classifyComponentWithReason(key: string): ClassificationReason {
       rule: isAbsence ? "quantity-absence" : "quantity",
       matched,
     };
+  }
+
+  // 2b. An FTE column is a headcount quantity, and it unblocks cost per FTE.
+  //     Only when it is the whole header: "FTE Salary" is money stated at
+  //     full-time equivalent, and reading it as a count would drop it out of
+  //     every money category.
+  if (has("fte") && vocab.size === 1) {
+    return { category: "other_quantity", rule: "quantity-fte", matched };
   }
 
   // 3. A taxable-base or pre-tax column is a reporting basis, neither a tax nor
@@ -287,8 +355,52 @@ export function classifyComponentWithReason(key: string): ClassificationReason {
     }
   }
 
-  // 5. Absence money (an unpaid-leave deduction, not a levy).
-  if (has("absence")) {
+  // 4b. One-off money paid to the employee: retro and back pay, arrears, a
+  //     severance or notice payment, a leave payout, French paid leave. An
+  //     earning, and `other_earning` rather than `base_salary` because none of
+  //     it is the run rate.
+  //
+  //     Ahead of three rules that each took one of these the wrong way:
+  //       - the bare-salary rule read "Retro Pay" as base salary, so a one-off
+  //         became permanent and the forecast carried it into every remaining
+  //         period of the year;
+  //       - the absence rule read "Accrued Leave Payout" as a deduction, which
+  //         books money paid *to* the employee against pay and absolute-values
+  //         it, moving the bridge the wrong way on both sides;
+  //       - the provision rule below would read the same column as an employer
+  //         accrual, and a payout is the opposite of an accrual.
+  //
+  //     Skipped when the header also names a deduction, a loan, a statutory
+  //     contribution or a tax, so "Loan Arrears" stays a deduction and a
+  //     "Rappel de cotisation" stays on the social security line rather than
+  //     becoming an earning. A retro that names a line belongs on that line.
+  if (!has("deduction") && !has("loan") && !has("social") && !has("tax")) {
+    if (has("paid_leave")) {
+      return { category: "other_earning", rule: "paid-leave", matched };
+    }
+    if (has("one_off")) {
+      return { category: "other_earning", rule: "one-off-earning", matched };
+    }
+  }
+
+  // 4c. Employer provisions and burdens, which belong outside gross.
+  //     End-of-service benefit, indemnity and gratuity accruals are a
+  //     top-three employer cost across the GCC and Lebanon, and they were
+  //     landing inside gross as an allowance or a bonus — so gross, the
+  //     net-to-gross bridge and the employer on-cost rate were wrong at once.
+  //     Only an accrual or a provision qualifies: a bare "Gratuity" is pay.
+  if (has("employer_burden")) {
+    return { category: "other_employer_cost", rule: "employer-burden", matched };
+  }
+  if (has("end_of_service") || has("provision")) {
+    return { category: "other_employer_cost", rule: "employer-provision", matched };
+  }
+
+  // 5. Absence money (an unpaid-leave deduction, not a levy). Insurance wins:
+  //    `maladie` joined the absence vocabulary for the bare "Maladie" column,
+  //    which shares a word with "Assurance maladie" — French health cover, not
+  //    sick leave.
+  if (has("absence") && !has("insurance")) {
     return { category: "absence_deduction", rule: "absence-money", matched };
   }
 
