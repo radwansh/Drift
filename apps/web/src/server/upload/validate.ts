@@ -32,7 +32,8 @@ export function validateRows(
 ): ValidationResult {
   const errors: ValidationError[] = [];
   const warnings: ValidationError[] = [];
-  const employeeIds = new Set<string>();
+  /** First file row that held each employee ID, so a repeat can name its pair. */
+  const employeeIdRows = new Map<string, number>();
   let totalGross = 0;
   let totalNet = 0;
   let employeeCount = 0;
@@ -56,15 +57,25 @@ export function validateRows(
         });
       } else {
         const idStr = String(empId).trim();
-        if (employeeIds.has(idStr)) {
-          warnings.push({
+        const firstRow = employeeIdRows.get(idStr);
+        if (firstRow !== undefined) {
+          // An error, not a warning (step 2 of docs/PAYROLL_AUDIT_FIX_PLAN.md).
+          // As a warning the upload completed and the period was marked
+          // `ready` with both rows in it; the comparison then kept the first
+          // row per ID and dropped the rest, so one person paid twice produced
+          // a dashboard reading "no change" with no flag of any kind. The
+          // register is what has to be corrected, so the gate is at the door.
+          // The first row holding the ID is named because that is the pair the
+          // payroll admin has to look at.
+          errors.push({
             row: rowNum,
             column: empIdMapping.sourceColumn,
-            message: `Duplicate employee ID: ${idStr}`,
-            severity: "warning",
+            message: `Duplicate employee ID ${idStr}: also on row ${firstRow}`,
+            severity: "error",
           });
+        } else {
+          employeeIdRows.set(idStr, rowNum);
         }
-        employeeIds.add(idStr);
       }
     }
 

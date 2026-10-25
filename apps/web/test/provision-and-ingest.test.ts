@@ -582,3 +582,114 @@ describe("step 4: tenant filing", () => {
     expect((owned.rows[0] as { companyId: string }).companyId).not.toBe(b.companyId);
   });
 });
+
+/**
+ * Step 2 of docs/PAYROLL_AUDIT_FIX_PLAN.md.
+ *
+ * A repeated employee ID was a warning, so the period was written and marked
+ * `ready` with both rows in it, and the comparison then kept the first row and
+ * dropped the rest. The gate is at ingest: nothing is written at all.
+ */
+describe("step 2: a register with a repeated employee ID never becomes a period", () => {
+  it("refuses the ingest and writes no period", async () => {
+    const user = await ensureUser(ctx.db, "clerk_dup_ingest", {
+      email: "dup@example.test",
+    });
+    const caller = periodsCaller("clerk_dup_ingest");
+    const data = sheet(10_000);
+
+    // One person, paid twice: the same row repeated, which is what a bad
+    // export or a merged off-cycle run looks like in the file.
+    const duplicated = { ...data, rows: [data.rows[0]!, data.rows[0]!] };
+
+    await expect(
+      caller.ingest({
+        ...duplicated,
+        periodType: "monthly",
+        periodStart: "2026-03-01",
+        periodEnd: "2026-03-31",
+        currencyCode: "USD",
+        filename: "march-duplicated.csv",
+      }),
+    ).rejects.toThrow(/Duplicate employee ID E1/);
+
+    const periods = await ctx.db.execute(sql`
+      SELECT count(*)::int AS n FROM payroll_periods WHERE company_id = ${user.companyId}
+    `);
+    expect((periods.rows[0] as { n: number }).n).toBe(0);
+  });
+
+  it("accepts the same register once the duplicate row is removed", async () => {
+    const user = await ensureUser(ctx.db, "clerk_dup_fixed", {
+      email: "dupfixed@example.test",
+    });
+    const caller = periodsCaller("clerk_dup_fixed");
+    const data = sheet(10_000);
+
+    const result = await caller.ingest({
+      ...data,
+      periodType: "monthly",
+      periodStart: "2026-03-01",
+      periodEnd: "2026-03-31",
+      currencyCode: "USD",
+      filename: "march.csv",
+    });
+
+    expect(result.employeeCount).toBe(2);
+    const periods = await ctx.db.execute(sql`
+      SELECT status FROM payroll_periods WHERE company_id = ${user.companyId}
+    `);
+    expect(periods.rows.map((r) => (r as { status: string }).status)).toEqual(["ready"]);
+  });
+});
+
+/**
+ * Step 2, the legacy half: periods that were uploaded while a duplicate ID was
+ * only a warning are already in the database, and the comparison is the last
+ * line of defence for them.
+ */
+describe("step 2: a stored period carrying a duplicate ID refuses at comparison time", () => {
+  it("reports it as bad input, names the ID, and records the run as failed", async () => {
+    await ensureUser(ctx.db, "clerk_dup_legacy", { email: "duplegacy@example.test" });
+    const caller = periodsCaller("clerk_dup_legacy");
+
+    const jan = await caller.ingest({
+      ...sheet(10_000),
+      periodType: "monthly",
+      periodStart: "2026-01-01",
+      periodEnd: "2026-01-31",
+      currencyCode: "USD",
+      filename: "jan.csv",
+    });
+    const feb = await caller.ingest({
+      ...sheet(10_000),
+      periodType: "monthly",
+      periodStart: "2026-02-01",
+      periodEnd: "2026-02-28",
+      currencyCode: "USD",
+      filename: "feb.csv",
+    });
+
+    // Written straight into the snapshot table, which is what the upload used
+    // to allow: E1 paid a second 5,000.00 in February.
+    await ctx.db.execute(sql`
+      INSERT INTO employee_snapshots
+        (payroll_period_id, employee_external_id, employee_name, department,
+         components, gross_salary, net_salary, currency_code)
+      VALUES
+        (${feb.periodId}, 'E1', 'Ada', 'Engineering', '{}'::jsonb, '5000', '5000', 'USD')
+    `);
+
+    await expect(
+      comparisonsCaller("clerk_dup_legacy").run({
+        currentPeriodId: feb.periodId,
+        previousPeriodId: jan.periodId,
+      }),
+    ).rejects.toThrow(/Comparison refused.*E1 \(2 rows in the current register, 1 in the previous\)/s);
+
+    const runs = await ctx.db.execute(sql`
+      SELECT status FROM comparison_runs WHERE current_period_id = ${feb.periodId}
+    `);
+    expect(runs.rows.map((r) => (r as { status: string }).status)).toEqual(["error"]);
+  });
+});

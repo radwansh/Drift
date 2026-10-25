@@ -9,7 +9,7 @@ import {
   users,
   companies,
 } from "@saas/db";
-import { runComparison } from "@saas/payroll-core";
+import { runComparison, DuplicateEmployeeIdsError } from "@saas/payroll-core";
 import type { EmployeeRecord } from "@saas/payroll-core";
 import { memberProcedure, router } from "../trpc";
 
@@ -106,11 +106,20 @@ export const comparisonsRouter = router({
           .returning();
 
         return { comparisonRun: updated, summary, results };
-      } catch (e) {
+      } catch (cause) {
         await ctx.db.update(comparisonRuns)
           .set({ status: "error", updatedAt: new Date() })
           .where(eq(comparisonRuns.id, run.id));
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Comparison failed" });
+
+        // A duplicate employee ID is bad input, not a server fault, and its
+        // message names the IDs and their row counts so the admin knows which
+        // rows to correct (step 2 of docs/PAYROLL_AUDIT_FIX_PLAN.md). Reported
+        // as INTERNAL_SERVER_ERROR it read "Comparison failed", which says
+        // nothing and suggests the fault is ours.
+        if (cause instanceof DuplicateEmployeeIdsError) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: cause.message, cause });
+        }
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Comparison failed", cause });
       }
     }),
 

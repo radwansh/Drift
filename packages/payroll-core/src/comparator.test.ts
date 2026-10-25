@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { runComparison } from "./comparator";
-import type { EmployeeRecord } from "./types";
+import { runComparison, DuplicateEmployeeIdsError } from "./comparator";
+import type { EmployeeRecord, AggregatedSummary } from "./types";
 
 function emp(
   id: string,
@@ -146,5 +146,120 @@ describe("runComparison - integration", () => {
     const bob = results.find((r) => r.employeeExternalId === "2")!;
     expect(bob.anomalyFlags).not.toBeNull();
     expect(bob.anomalyFlags!.some((f) => f.type === "zero_salary_component")).toBe(true);
+  });
+});
+
+/**
+ * Step 2 of docs/PAYROLL_AUDIT_FIX_PLAN.md — a duplicate employee ID blocks.
+ *
+ * `matchEmployees` keeps the first row per ID and `runComparison` used to throw
+ * the duplicate list away, so a second payment vanished: measured on the
+ * fixture below, 5,000.00 paid twice reported `totalPayrollVariance 0.00`,
+ * `totalNet {previous: 5000, current: 5000, absolute: 0}` and an empty
+ * `anomalies` array. No flag of any kind, under a headline saying nothing moved.
+ *
+ * The comparison now refuses. Summing the rows instead would guess at intent:
+ * two rows for one ID may be a genuine off-cycle second payment (sum is right),
+ * a duplicated export (sum double-counts) or a reused ID for two people (sum
+ * merges two people's pay), and nothing in the register says which.
+ */
+describe("runComparison - a duplicate employee ID refuses the comparison", () => {
+  const one = (gross: number, net: number) =>
+    emp("E001", "A. One", "Ops", { base_salary: gross }, gross, net);
+
+  /**
+   * Runs the comparison and returns the refusal.
+   *
+   * A returned summary is reported first, and with its figures, because the
+   * defect this pins is not "no error was thrown" but "a wrong total was
+   * reported": the measured behaviour was `totalNet {previous: 5000, current:
+   * 5000, absolute: 0}` with an empty `anomalies` array while 5,000.00 of real
+   * money had been paid.
+   */
+  function refusalFrom(current: EmployeeRecord[], previous: EmployeeRecord[]) {
+    let caught: unknown;
+    let leaked: AggregatedSummary | null = null;
+    try {
+      leaked = runComparison(current, previous).summary;
+    } catch (e) {
+      caught = e;
+    }
+
+    if (leaked) {
+      throw new Error(
+        "runComparison reported on a register carrying a duplicate employee ID " +
+          "instead of refusing it: " +
+          `totalNet=${JSON.stringify(leaked.totalNet)} ` +
+          `totalGross=${JSON.stringify(leaked.totalGross)} ` +
+          `anomalies=${leaked.anomalies.length}`,
+      );
+    }
+    expect(caught).toBeInstanceOf(DuplicateEmployeeIdsError);
+    return caught as DuplicateEmployeeIdsError;
+  }
+
+  it("refuses a duplicate in the current period, naming the ID and its rows", () => {
+    const err = refusalFrom([one(5000, 5000), one(5000, 5000)], [one(5000, 5000)]);
+
+    expect(err.duplicates).toEqual([
+      { externalId: "E001", currentRows: 2, previousRows: 1 },
+    ]);
+    expect(err.message).toContain("E001");
+    expect(err.message).toContain("2 rows in the current register, 1 in the previous");
+  });
+
+  it("refuses a duplicate in the previous period only", () => {
+    const err = refusalFrom([one(5000, 5000)], [one(5000, 5000), one(5000, 5000)]);
+
+    expect(err.duplicates).toEqual([
+      { externalId: "E001", currentRows: 1, previousRows: 2 },
+    ]);
+    expect(err.message).toContain("1 row in the current register, 2 in the previous");
+  });
+
+  it("counts all three rows when the same ID appears three times", () => {
+    const err = refusalFrom(
+      [one(5000, 5000), one(5000, 5000), one(5000, 5000)],
+      [one(5000, 5000)],
+    );
+
+    expect(err.duplicates).toEqual([
+      { externalId: "E001", currentRows: 3, previousRows: 1 },
+    ]);
+    expect(err.message).toContain("3 rows in the current register");
+  });
+
+  it("names every duplicated ID, in ID order", () => {
+    const dup = (id: string) => emp(id, id, "Ops", { base_salary: 1000 }, 1000, 900);
+    const err = refusalFrom(
+      [dup("E009"), dup("E009"), dup("E002"), dup("E002")],
+      [dup("E009"), dup("E002")],
+    );
+
+    expect(err.duplicates.map((d) => d.externalId)).toEqual(["E002", "E009"]);
+    expect(err.message).toContain("2 employee IDs appear more than once");
+  });
+
+  it("reports +5,000.00 once the register is corrected, which is what the refusal protects", () => {
+    // The payroll manager's own fix: one row for E001 carrying both payments.
+    // 10,000 paid this period against 5,000 last = +5,000.00. That is the
+    // figure the plan measured as 0.00, and it is reachable the moment the
+    // register says what it means.
+    const { summary } = runComparison([one(10_000, 10_000)], [one(5000, 5000)]);
+
+    expect(summary.totalNet).toEqual({
+      previous: 5000, current: 10_000, absolute: 5000, percentage: 100,
+    });
+    expect(summary.totalGross.absolute).toBe(5000);
+    expect(summary.totalPayrollVariance.absolute).toBe(5000);
+  });
+
+  it("still compares a register whose IDs are unique", () => {
+    const { summary } = runComparison(
+      [one(5000, 5000), emp("E002", "B. Two", "Ops", { base_salary: 3000 }, 3000, 2700)],
+      [one(5000, 5000), emp("E002", "B. Two", "Ops", { base_salary: 3000 }, 3000, 2700)],
+    );
+    expect(summary.totalNet.absolute).toBe(0);
+    expect(summary.employeesAffected.total).toBe(2);
   });
 });
