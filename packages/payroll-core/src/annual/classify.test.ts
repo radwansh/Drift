@@ -392,3 +392,57 @@ describe("classifyComponent - step 7 guards", () => {
     expect(EARNING_CATEGORIES).toContain(classifyComponent("Sick Pay"));
   });
 });
+
+/**
+ * Step 10d. These are the component names the AI column mapper emits, and the
+ * mapper's name is what gets stored as the component key — so
+ * `classifyComponent` later reads it to decide which side of the bridge the
+ * money belongs on. The two vocabularies have to agree: a name the mapper can
+ * produce but the classifier misreads is the same defect as a bad mapping, one
+ * layer down.
+ *
+ * The mapper's schema had no employer-cost concept at all. It mapped
+ * "Pension, Social Security, SSS, NSSF" to `pension_deduction`, so an
+ * *employer* NSSF column became an employee deduction — inflating deductions,
+ * depressing net and understating employer cost, with gross untouched so
+ * nothing else noticed.
+ *
+ * The list lives in `packages/ai/src/column-mapper/prompts.ts`. It is mirrored
+ * here rather than imported because `@saas/ai` does not depend on this package
+ * at runtime, and adding that dependency for one test costs more than the
+ * mirror. The prompt carries a note pointing back here.
+ */
+describe("classifyComponent - the AI column mapper's schema names", () => {
+  const schema: [string, Category][] = [
+    ["base_salary", "base_salary"],
+    ["bonus", "bonus_commission"],
+    ["overtime", "overtime"],
+    ["housing_allowance", "allowance"],
+    ["transport_allowance", "allowance"],
+    ["other_allowance", "allowance"],
+    ["tax_deduction", "income_tax"],
+    ["pension_deduction", "social_security_employee"],
+    ["absence_deduction", "absence_deduction"],
+    ["absence_days", "absence_days"],
+    ["other_deduction", "other_deduction"],
+    // The employer side, which the schema did not have.
+    ["employer_social_security", "social_security_employer"],
+    ["employer_insurance", "other_employer_cost"],
+    ["employer_levy", "other_employer_cost"],
+  ];
+
+  it.each(schema)("%s classifies as %s", (name, category) => {
+    const reason = classifyComponentWithReason(name);
+    expect(
+      reason.category,
+      `"${name}" landed in ${reason.category} by rule "${reason.rule}"`,
+    ).toBe(category);
+  });
+
+  it("never puts an employer contribution on the employee side", () => {
+    for (const name of ["employer_social_security", "employer_insurance", "employer_levy"]) {
+      expect(EMPLOYEE_DEDUCTION_CATEGORIES).not.toContain(classifyComponent(name));
+      expect(EMPLOYER_COST_CATEGORIES).toContain(classifyComponent(name));
+    }
+  });
+});

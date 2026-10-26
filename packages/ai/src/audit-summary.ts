@@ -108,20 +108,42 @@ function ruleBasedAuditSummary(comparisonData: AuditSummaryInput): string {
   }
   sections.push("");
 
-  sections.push("## Compliance Assessment");
-  const hasCritical = summary.anomalies.some((a) => a.severity === "critical");
-  const hasWarning = summary.anomalies.some((a) => a.severity === "warning");
-  const largeChange = v.percentage !== null && Math.abs(v.percentage) > 15;
+  // Step 10b: this was a "Compliance Assessment" issuing High/Medium/Low Risk.
+  // Clarivo has no statutory rules, contribution ceilings or filing calendar,
+  // so it cannot assess compliance with anything, and a rating implies a
+  // regulatory judgement a payroll manager might rely on.
+  //
+  // It had no discriminating power either: "Medium Risk" fired whenever any
+  // warning existed, and the anomaly measurement showed every real month
+  // carrying well over a hundred — so it would have read Medium every period
+  // regardless of what happened, and "Low Risk - payroll processing appears
+  // normal" was reachable only on a payroll with no flags at all.
+  //
+  // What replaces it says what was checked and what was not, which is a claim
+  // this product can stand behind.
+  sections.push("## Data Quality");
+  const criticalCount = summary.anomalies.filter((a) => a.severity === "critical").length;
+  const warningCount = summary.anomalies.filter((a) => a.severity === "warning").length;
 
-  let rating: string;
-  if (hasCritical) {
-    rating = "**High Risk** - Critical anomalies require immediate investigation.";
-  } else if (hasWarning || largeChange) {
-    rating = "**Medium Risk** - Anomalies or significant variances detected. Further review recommended.";
-  } else {
-    rating = "**Low Risk** - No significant issues detected. Payroll processing appears normal.";
+  sections.push(
+    `${summary.employeesAffected.total} employees were compared across the two periods. ` +
+      `Automated checks raised ${criticalCount} critical and ${warningCount} warning ` +
+      `${warningCount === 1 ? "finding" : "findings"}.`,
+  );
+
+  const { grossMissing, netMissing } = summary.incompleteTotals;
+  if (grossMissing > 0 || netMissing > 0) {
+    sections.push(
+      `- ${grossMissing} gross and ${netMissing} net figures were absent from the register, ` +
+        "so those employees are excluded from the totals above.",
+    );
   }
-  sections.push(rating);
+
+  sections.push(
+    "- Not checked: statutory rates and ceilings, filing obligations, and whether this " +
+      "register ties to the bank payment or the general ledger. Clarivo compares what was " +
+      "uploaded against the previous period; it does not verify compliance.",
+  );
 
   return sections.join("\n");
 }
