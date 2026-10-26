@@ -3,8 +3,8 @@
 Audit date: 2026-10-25, by the repo's own `payroll-manager` agent against `main` @ `e0666bb`.
 Plan written against `main` @ `6afd1d5`.
 
-> **Status: steps 0, 1, 2, 3, 6, 7 and 8b done. Steps 4, 5, 8a, 9, 10, 11 and
-> 12 outstanding.**
+> **Status: steps 0, 1, 2, 3, 6, 7, 8a, 8b and 11 done. Steps 4, 5, 8a-ii, 9, 10
+> and 12 outstanding.**
 >
 > Each step was checked against its own unfixed source — the new tests are
 > re-run with that step's files stashed, and only count as binding the
@@ -451,6 +451,63 @@ no absence days, no employer social security, no other employer cost. Align it.
 labelling rule-based output with a model name, and the audit found no violation.
 
 **Data:** existing.
+
+---
+
+### Step 8a-ii — thread minor units through the annual engine
+
+Step 8a was split while being implemented. **8a (done, `bd16655`)** built the
+shared machinery and threaded it through the comparison side. **This is the
+annual half**, which is a different size of job: 82 `roundMoney` call sites
+across `forecast.ts`, `summary.ts`, `yoy.ts` and `scenario.ts`.
+
+**What is already in place:** `money.ts` owns `minorUnits(code)`,
+`smallestUnit(decimals)` and `roundToMinorUnits(value, decimals)`.
+`annual/math.ts`'s `roundMoney` delegates to it and already takes an optional
+`decimals` defaulting to 2. `computeSummary` already receives `currency`. So
+no new machinery is needed — this is threading, with a hard correctness bar.
+
+**The case it closes,** from the audit and still open: a KWD payroll of
+`3,703.701` a month over three months totals `11,111.103`, and the engine
+reports `11,111.10`. Three fils gone, `balance` still `0.00`, and no warning,
+because the engine rounds both sides of the bridge the same way — which is
+what makes the loss invisible rather than wrong-looking.
+
+**Change:** derive `decimals` from `currency` once in `computeSummary` and
+thread it to every money rounding below it, including through `buildForecast`,
+`computeYoY`, the scenario layer and `buildBridge`.
+
+**Three traps:**
+
+- **The `Number.EPSILON` nudge.** `annual/math.ts` adds it before rounding,
+  which is what makes 1.005 round up rather than down, and the annual suite
+  asserts figures that depend on it. At three decimals the nudge is relatively
+  larger against the quantum — verify it does not shift a KWD figure by a
+  fils, and if it does, say so rather than removing a nudge the USD suite
+  needs.
+- **The reconciliation warning will stay silent.** `RECONCILIATION_GAP` fires
+  on a percentage of gross, so a three-fils gap on an 11,111 payroll is six
+  orders of magnitude below it. **Do not fix that here** — the absolute floor
+  is step 4. Note it, so nobody reads a silent warning as proof the rounding
+  is now exact.
+- **Forecast figures are derived, not stored.** A forecast rounded at three
+  decimals and then summed must still tie to the full-year total; the existing
+  bridge-balances assertions are the guard, and they must hold at three
+  decimals as well as two.
+
+**Verification:**
+
+- **Every existing USD assertion byte-identical.** 309 payroll-core tests
+  today. If one moves, the change is wrong. `git diff --numstat` on existing
+  test files should show no deletions.
+- A KWD fixture of `3,703.701` across three months reports `11,111.103`, with
+  `balance` at `0.000`.
+- The bridge balances at three decimals on a fixture whose components do not
+  divide evenly into two.
+- A JPY fixture rounds to whole yen and its bridge still balances.
+
+**Data:** existing. No schema change — the currency is already on the company
+and already reaches `computeSummary`.
 
 ---
 
