@@ -1,6 +1,7 @@
 import type { Money } from "./types";
 import type { AnnualSummary } from "./summary";
 import { roundMoney } from "./math";
+import { minorUnits } from "../money";
 
 /**
  * Scenario planning (step 43).
@@ -13,6 +14,11 @@ import { roundMoney } from "./math";
  * It deliberately works on the summary rather than re-running the engine: the
  * baseline a user is comparing against is the one on their screen, so a scenario
  * has to start from exactly that and show the difference.
+ *
+ * That is also where its minor units come from (step 8a-ii): `summary.currency`
+ * is the currency the baseline is denominated in, so the scenario rounds to the
+ * same quantum as the figures it is being compared against. Taking it from
+ * anywhere else would let a scenario differ from its own baseline by rounding.
  */
 
 export interface Scenario {
@@ -52,6 +58,8 @@ function isProjected(kind: AnnualSummary["periods"][number]["kind"]): boolean {
 }
 
 export function applyScenario(summary: AnnualSummary, scenario: Scenario): ScenarioResult {
+  const decimals = minorUnits(summary.currency);
+  const round = (value: number) => roundMoney(value, decimals);
   const assumptions: string[] = [];
 
   // Per-head cost in a projected period, measured from the latest actual period
@@ -122,10 +130,10 @@ export function applyScenario(summary: AnnualSummary, scenario: Scenario): Scena
     return {
       label: p.label,
       kind: p.kind,
-      baselineGross: roundMoney(p.gross),
-      scenarioGross: roundMoney(gross),
-      baselineTotalEmploymentCost: roundMoney(p.totalEmploymentCost),
-      scenarioTotalEmploymentCost: roundMoney(gross * employerUplift),
+      baselineGross: round(p.gross),
+      scenarioGross: round(gross),
+      baselineTotalEmploymentCost: round(p.totalEmploymentCost),
+      scenarioTotalEmploymentCost: round(gross * employerUplift),
     };
   });
 
@@ -133,14 +141,14 @@ export function applyScenario(summary: AnnualSummary, scenario: Scenario): Scena
   const scenarioGross = periods.reduce((a, p) => a + p.scenarioGross, 0);
 
   const baseline = {
-    gross: roundMoney(baselineGross),
-    net: roundMoney(baselineGross * netShare),
-    totalEmploymentCost: roundMoney(baselineGross * employerUplift),
+    gross: round(baselineGross),
+    net: round(baselineGross * netShare),
+    totalEmploymentCost: round(baselineGross * employerUplift),
   };
   const scenarioTotals = {
-    gross: roundMoney(scenarioGross),
-    net: roundMoney(scenarioGross * netShare),
-    totalEmploymentCost: roundMoney(scenarioGross * employerUplift),
+    gross: round(scenarioGross),
+    net: round(scenarioGross * netShare),
+    totalEmploymentCost: round(scenarioGross * employerUplift),
   };
 
   return {
@@ -148,9 +156,9 @@ export function applyScenario(summary: AnnualSummary, scenario: Scenario): Scena
     baseline,
     scenario: scenarioTotals,
     difference: {
-      gross: roundMoney(scenarioTotals.gross - baseline.gross),
-      net: roundMoney(scenarioTotals.net - baseline.net),
-      totalEmploymentCost: roundMoney(
+      gross: round(scenarioTotals.gross - baseline.gross),
+      net: round(scenarioTotals.net - baseline.net),
+      totalEmploymentCost: round(
         scenarioTotals.totalEmploymentCost - baseline.totalEmploymentCost,
       ),
     },
@@ -163,5 +171,5 @@ export function costPerHeadLatest(summary: AnnualSummary): Money {
   const actuals = summary.periods.filter((p) => p.kind === "actual");
   const last = actuals[actuals.length - 1];
   if (!last || !last.headcount) return 0;
-  return roundMoney(last.totalEmploymentCost / last.headcount);
+  return roundMoney(last.totalEmploymentCost / last.headcount, minorUnits(summary.currency));
 }

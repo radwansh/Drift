@@ -18,6 +18,7 @@ import { generateExpectedPeriods } from "./periods";
 import { groupBySlot } from "./slots";
 import { clamp } from "./dates";
 import { average, median, roundMoney, sum } from "./math";
+import { DEFAULT_MINOR_UNITS } from "../money";
 
 const RECURRING: readonly Category[] = [
   "base_salary",
@@ -111,6 +112,16 @@ export interface ForecastOptions {
   resolve: (key: string) => Category;
   /** First month of the fiscal year (step 45); 1 = calendar year. */
   fiscalStartMonth?: number;
+  /**
+   * The currency's minor units (step 8a-ii). Defaults to 2, so a caller that
+   * does not know its currency behaves exactly as this engine did before.
+   *
+   * Every projected figure is derived — a per-slot forecast is rounded and then
+   * summed into the full year — so rounding the slots to a coarser quantum than
+   * the actuals loses money twice: once in each slot, and again in the total it
+   * is supposed to tie to.
+   */
+  decimals?: number;
 }
 
 export interface PreviousYearForecast {
@@ -227,20 +238,23 @@ function emptyTotals(): ForecastTotals {
   };
 }
 
-function totalsOf(periods: readonly ForecastPeriod[]): ForecastTotals {
+function totalsOf(periods: readonly ForecastPeriod[], decimals: number): ForecastTotals {
+  const round = (value: number) => roundMoney(value, decimals);
   return {
     totals: sumRows(periods.map((p) => p.categories)),
-    gross: roundMoney(periods.reduce((a, p) => a + p.gross, 0)),
-    employeeDeductions: roundMoney(periods.reduce((a, p) => a + p.employeeDeductions, 0)),
-    employerCosts: roundMoney(periods.reduce((a, p) => a + p.employerCosts, 0)),
-    earningsBalance: roundMoney(periods.reduce((a, p) => a + p.earningsBalance, 0)),
-    balance: roundMoney(periods.reduce((a, p) => a + p.balance, 0)),
-    net: roundMoney(periods.reduce((a, p) => a + p.net, 0)),
+    gross: round(periods.reduce((a, p) => a + p.gross, 0)),
+    employeeDeductions: round(periods.reduce((a, p) => a + p.employeeDeductions, 0)),
+    employerCosts: round(periods.reduce((a, p) => a + p.employerCosts, 0)),
+    earningsBalance: round(periods.reduce((a, p) => a + p.earningsBalance, 0)),
+    balance: round(periods.reduce((a, p) => a + p.balance, 0)),
+    net: round(periods.reduce((a, p) => a + p.net, 0)),
   };
 }
 
 export function buildForecast(opts: ForecastOptions): ForecastResult {
   const { actual, remaining, resolve } = opts;
+  const decimals = opts.decimals ?? DEFAULT_MINOR_UNITS;
+  const round = (value: number) => roundMoney(value, decimals);
   const missingPast = opts.missingPast ?? [];
 
   const rows = actual.map((p) => buildCategoryTotals(p.components, resolve).byCategory);
@@ -398,20 +412,20 @@ export function buildForecast(opts: ForecastOptions): ForecastResult {
       gross = EARNING_CATEGORIES.reduce((acc, c) => acc + (categories[c] ?? 0), 0) + earningsBalance;
     }
 
-    gross = roundMoney(gross);
-    earningsBalance = roundMoney(earningsBalance);
+    gross = round(gross);
+    earningsBalance = round(earningsBalance);
 
     // --- deductions and employer costs ---
     for (const cat of STATUTORY) {
       categories[cat] =
-        method === "run_rate" ? roundMoney(ytdRate(cat) * gross) : roundMoney(amountFor(cat));
+        method === "run_rate" ? round(ytdRate(cat) * gross) : round(amountFor(cat));
     }
-    categories.other_deduction = roundMoney(amountFor("other_deduction"));
-    categories.absence_deduction = roundMoney(amountFor("absence_deduction"));
-    categories.other_employer_cost = roundMoney(amountFor("other_employer_cost"));
+    categories.other_deduction = round(amountFor("other_deduction"));
+    categories.absence_deduction = round(amountFor("absence_deduction"));
+    categories.other_employer_cost = round(amountFor("other_employer_cost"));
 
-    const employeeDeductions = roundMoney(employeeDeductionTotal(categories));
-    const employerCosts = roundMoney(
+    const employeeDeductions = round(employeeDeductionTotal(categories));
+    const employerCosts = round(
       (categories.social_security_employer ?? 0) + (categories.other_employer_cost ?? 0),
     );
 
@@ -425,18 +439,18 @@ export function buildForecast(opts: ForecastOptions): ForecastResult {
         const prevAvg = average([...prevNetBySlot.values()]);
         net = (typeof fromSlot === "number" ? fromSlot : prevAvg) * growth;
       } else net = lastNet;
-      net = roundMoney(net);
+      net = round(net);
       // Keep the bridge self-consistent: whatever gross minus net is, it is the
       // unreconciled balance.
-      balance = roundMoney(gross - net - employeeDeductions);
+      balance = round(gross - net - employeeDeductions);
     } else {
-      if (method === "average") balance = roundMoney(windowBalance);
+      if (method === "average") balance = round(windowBalance);
       else if (method === "prior_year") {
         const fromSlot = prevBalanceBySlot.get(slot.index);
         const prevAvg = average([...prevBalanceBySlot.values()]);
-        balance = roundMoney((typeof fromSlot === "number" ? fromSlot : prevAvg) * growth);
-      } else balance = roundMoney(runRateBalance);
-      net = roundMoney(gross - employeeDeductions - balance);
+        balance = round((typeof fromSlot === "number" ? fromSlot : prevAvg) * growth);
+      } else balance = round(runRateBalance);
+      net = round(gross - employeeDeductions - balance);
     }
 
     return { slot, gross, employeeDeductions, employerCosts, earningsBalance, balance, net, categories };
@@ -454,10 +468,10 @@ export function buildForecast(opts: ForecastOptions): ForecastResult {
   const oneOffs: OneOffsExcluded = { byCategory: {}, total: 0 };
   if (method === "run_rate" && perPeriod.length + perEstimated.length > 0) {
     for (const cat of VARIABLE) {
-      const excluded = roundMoney(variableSplits[cat]?.oneOffTotal ?? 0);
+      const excluded = round(variableSplits[cat]?.oneOffTotal ?? 0);
       if (excluded === 0) continue;
       oneOffs.byCategory[cat] = excluded;
-      oneOffs.total = roundMoney(oneOffs.total + excluded);
+      oneOffs.total = round(oneOffs.total + excluded);
     }
   }
   if (oneOffs.total !== 0) {
@@ -478,10 +492,10 @@ export function buildForecast(opts: ForecastOptions): ForecastResult {
     assumptions,
     perPeriod,
     perEstimated,
-    estimated: perEstimated.length > 0 ? totalsOf(perEstimated) : emptyTotals(),
+    estimated: perEstimated.length > 0 ? totalsOf(perEstimated, decimals) : emptyTotals(),
     directGrossNet,
     oneOffs,
-    ...(perPeriod.length > 0 ? totalsOf(perPeriod) : emptyTotals()),
+    ...(perPeriod.length > 0 ? totalsOf(perPeriod, decimals) : emptyTotals()),
   };
 }
 
