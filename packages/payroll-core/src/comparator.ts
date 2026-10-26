@@ -3,7 +3,7 @@ import { matchEmployees, type DuplicateEmployeeId } from "./matcher";
 import { diffComponents } from "./differ";
 import { calculateDelta } from "./delta-calculator";
 import { classifyMatchedPairs } from "./classifier";
-import { detectAnomalies } from "./anomaly-detector";
+import { detectAnomalies, type AnomalyTolerances } from "./anomaly-detector";
 import { aggregateResults } from "./aggregator";
 import { minorUnits } from "./money";
 
@@ -82,6 +82,11 @@ export interface ComparisonOptions {
    * rounded away and the employee read as "unchanged".
    */
   currency?: string;
+  /**
+   * Per-company anomaly thresholds (step 5), from `companies.settings`.
+   * Omitted, `DEFAULT_TOLERANCES` applies.
+   */
+  tolerances?: Partial<AnomalyTolerances>;
 }
 
 export function runComparison(
@@ -140,6 +145,7 @@ export function runComparison(
       pair.current,
       pair.previous,
       comparisonOutput,
+      { tolerances: opts.tolerances, decimals },
     );
 
     comparisonOutput.anomalyFlags = anomalyFlags.length > 0 ? anomalyFlags : null;

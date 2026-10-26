@@ -187,7 +187,25 @@ describe("runComparison - integration", () => {
 
     const bob = results.find((r) => r.employeeExternalId === "2")!;
     expect(bob.anomalyFlags).not.toBeNull();
-    expect(bob.anomalyFlags!.some((f) => f.type === "zero_salary_component")).toBe(true);
+    const types = bob.anomalyFlags!.map((f) => f.type);
+
+    // This asserted `zero_salary_component`, retired in step 5: it fired on any
+    // component equal to zero and produced 3,166 flags across samples/2025,
+    // none critical. Bob's pay going from 5,000 to nothing is a real exception,
+    // and the rules that replaced it say so in terms a payroll manager can act
+    // on rather than noting that a cell contains zero.
+    expect(types).toContain("base_rate_change");
+    expect(types).toContain("net_change_beyond_tolerance");
+
+    const net = bob.anomalyFlags!.find((f) => f.type === "net_change_beyond_tolerance")!;
+    expect(net.description).toMatch(/fell 100\.0%/);
+    expect(net.description).toMatch(/salary/i);
+
+    // Alice's net rose 4,000 -> 5,000 with no component movement at all, which
+    // is the gross-or-net-disagrees-with-the-columns case.
+    const alice = results.find((r) => r.employeeExternalId === "1")!;
+    const aliceNet = alice.anomalyFlags!.find((f) => f.type === "net_change_beyond_tolerance")!;
+    expect(aliceNet.description).toMatch(/no component movement to explain it/);
   });
 });
 
