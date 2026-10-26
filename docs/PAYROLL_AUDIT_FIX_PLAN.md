@@ -3,7 +3,8 @@
 Audit date: 2026-10-25, by the repo's own `payroll-manager` agent against `main` @ `e0666bb`.
 Plan written against `main` @ `6afd1d5`.
 
-> **Status: steps 0, 1, 2, 3 and 7 done. Steps 4, 5, 6, 8, 9 and 10 outstanding.**
+> **Status: steps 0, 1, 2, 3, 6, 7 and 8b done. Steps 4, 5, 8a, 9, 10, 11 and
+> 12 outstanding.**
 >
 > Each step was checked against its own unfixed source — the new tests are
 > re-run with that step's files stashed, and only count as binding the
@@ -36,18 +37,32 @@ Plan written against `main` @ `6afd1d5`.
 >   sides of the bridge rather than as labels. Every header in `samples/` was
 >   classified before and after and did not move.
 >
-> Outstanding question for Radwan, from step 7: a bare **`Maladie`** column now
-> reads as the sick-absence deduction, which is what this document specifies,
-> but the same word names the health-insurance cotisation and the guard only
-> catches that when `assurance` or `mutuelle` is present. A vocabulary
-> judgement for whoever signs off payroll rules, not a rule to take from a
-> model's memory.
+> - **6** The run-rate forecast holds one-offs back instead of smearing them
+>   (`d6cd364`). `splitRunRate` divides a variable category's actual periods
+>   into a recurring floor and the one-offs above it, and `oneOffsExcluded` is
+>   named on the categories table and the bridge. The three design choices were
+>   measured rather than argued: leave-one-out median against the median of the
+>   whole series (overtime 5.2% against 14.6% mean error), a median floor
+>   against a trimmed mean (6.4% against 34.2% at the June cut), and a 3x
+>   multiple against 2x (absence 7.6% against 9.7%).
 >
-> Note that **step 7 does not finish the retro-pay forecast**. `other_earning`
-> falls through to `avgAll` in `forecast.ts`, so retro pay is no longer
-> forecast as permanent base salary but is smeared as a year-to-date average
-> instead. Step 6 is what stops it repeating, and now has the classification it
-> needs underneath it.
+>   **Gross at the March cut moves from −1.4% to −11.4%, and that is correct.**
+>   The −1.4% was two large opposing errors cancelling; removing one side
+>   exposes the other. Absence accuracy is also 0.8pp worse, declared as a
+>   trade-off and asserted at that value, because its July and December peaks
+>   are seasonal rather than one-off.
+> - **8b** The comparison feature labels money with the company's currency
+>   (`8d00c88`), `currencyDisplay: "code"` throughout, matching the annual side.
+>
+> **The base-salary figure is a separate defect and needs its own step.** The
+> audit's −6.7% at the March cut is *not* the smearing step 6 fixed: base is
+> `RECURRING`, held at the last actual period, so it never passed through
+> `avgAll`. The error is the run rate carrying March's 141 heads forward through
+> a year that ends at 151. Nothing above touches it. See step 12.
+>
+> The **`Maladie`** question from step 7 is answered, and the answer generalises
+> past that one word: where the classifier cannot tell which side of the bridge
+> a column belongs to, it must ask rather than choose. See step 11.
 
 The audit's own verdict, worth keeping at the top of this document because it
 decides where effort goes:
@@ -436,6 +451,113 @@ no absence days, no employer social security, no other employer cost. Align it.
 labelling rule-based output with a model name, and the audit found no violation.
 
 **Data:** existing.
+
+---
+
+### Step 11 — the classifier asks when it cannot tell
+
+**Finding:** `Maladie` on a French bulletin is usually the sick-absence
+deduction, but the same word names the health-insurance cotisation. Step 7 made
+it the deduction, which is right more often than not — and being right more
+often than not is the problem. The column is money, and the two readings put it
+on **opposite sides of the bridge**: one reduces pay, the other is a cost beside
+it. A confident wrong answer there moves gross, net and the statutory line at
+once, silently.
+
+This is not a `Maladie` problem. Any vocabulary has words that two payroll
+systems use differently, and no synonym table resolves that from the header
+alone. **Where the classifier cannot tell which side of the bridge a column
+belongs to, it must ask rather than choose.**
+
+**The answer channel already exists end to end** — this step only has to stop
+guessing and pose the question:
+
+- `component_categories` is a per-company override keyed `(companyId,
+  componentKey)` with `updatedBy`, so an answer is stored and attributed.
+- `savedCategories?: Record<string, Category>` on `AnnualSummaryOptions` is
+  already built from that table in `routers/annual.ts` and already wins over
+  `classifyComponent`.
+- `category-manager.tsx` is the surface, and it already shows which rule
+  matched.
+- `UNCATEGORISED` is the precedent for surfacing a component that needs
+  attention.
+
+**Change:**
+
+1. `classifyComponentWithReason` reports **ambiguity** when the matched signals
+   point at categories on different sides of the bridge — earning, employee
+   deduction, employer cost, quantity. Same-side ambiguity (allowance against
+   bonus) does not move a total anyone reconciles, so it must **not** raise a
+   question; this is about sides, not labels.
+2. The interim category is `uncategorised`, which routes the money into the
+   balancing lines where it is visibly unreconciled, rather than booking it
+   confidently to the wrong side. An honest gap beats a precise error.
+3. A new `AMBIGUOUS_COMPONENT` warning carries the candidate categories and the
+   signals that matched, so the question on screen is specific: *"Maladie could
+   be a sick-leave deduction or a health-insurance contribution — which is it
+   on your register?"* A warning that only says "ambiguous" makes the user do
+   the classifier's thinking.
+4. An entry in `savedCategories` suppresses both the ambiguity and the warning.
+   The question is asked **once** per company per column, and never again.
+
+**Verification:**
+
+- `Maladie` is ambiguous, with both candidates named, rather than silently
+  `absence_deduction`.
+- `Assurance maladie` and `Mutuelle` stay unambiguous — a disambiguating signal
+  resolves it.
+- `Maladie` with a `savedCategories` override classifies as the override and
+  raises nothing.
+- A same-side pair raises no question.
+- **The 46-header table from step 7 does not regress.** Every header that
+  classified confidently must still classify confidently. This change can only
+  add questions where there is genuine cross-side doubt — if it turns a
+  settled header into a question, the ambiguity rule is too broad, and a
+  classifier that asks about everything is as useless as one that guesses.
+
+**Data:** existing. No schema change — the override table, the summary option
+and the UI are all already there.
+
+---
+
+### Step 12 — the recurring forecast ignores headcount
+
+**Finding:** the audit recorded base salary forecast −6.7% at the March cut, and
+step 6 did not fix it, because the cause is different. Base is `RECURRING`, held
+at the last actual period, so it never passed through the averaging path that
+step 6 replaced. The error is that the run rate carries March's **141 heads**
+forward through a year that ends at **151**: a recurring category is projected
+at last month's level regardless of how many people it has to cover.
+
+This is now the largest remaining forecast error, and with step 6 done it no
+longer has an opposing error to hide behind — which is why gross at the March
+cut reads −11.4% rather than −1.4%.
+
+**Change:** project a recurring category per head and multiply by the headcount
+expected in each remaining slot, rather than carrying its total. `headcount.ts`
+already computes joiners, leavers and average headcount per slot, so the input
+exists.
+
+**Two things to be careful of:**
+
+- **Do not double-count the scenario layer.** `scenario.ts` already models
+  "hire N from slot X" on top of a computed forecast. If the forecast itself
+  begins to extrapolate headcount, a scenario applied over it must not add the
+  same heads twice.
+- **Extrapolating a trend is not the same as holding a level.** A company that
+  grew 141 to 151 over three months has not necessarily committed to 191 by
+  December. Holding the *latest* headcount is defensible; projecting its growth
+  rate is a forecast about hiring that Clarivo has no basis for. Prefer the
+  former and say which was chosen.
+
+**Verification:** the base-salary error at the March cut must improve against
+the twelve-month actual, measured per category across every cut N=1..11 as in
+step 6. Gross should move back toward accuracy for the right reason this time —
+one error corrected rather than two cancelling. State the before and after for
+every variable and recurring category, so a figure that gets worse is declared
+rather than found later.
+
+**Data:** existing. `headcount.ts` already derives the flows.
 
 ---
 
