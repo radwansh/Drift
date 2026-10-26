@@ -105,6 +105,13 @@ export interface CategoryTotals {
   byKey: Record<string, { category: Category; total: number }>;
   mixedSignKeys: string[];
   uncategorisedKeys: string[];
+  /**
+   * Columns the vocabulary could not place, each with the question to ask
+   * (step 11). A subset of `uncategorisedKeys`: these are uncategorised
+   * because the classifier declined to guess, not because nothing matched,
+   * and they get a question of their own rather than the generic notice.
+   */
+  ambiguousKeys: { key: string; question: string }[];
 }
 
 /**

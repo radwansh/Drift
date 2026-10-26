@@ -82,6 +82,65 @@ describe("computeSummary sign conventions and quantities", () => {
   });
 });
 
+describe("computeSummary ambiguous components", () => {
+  const withMaladie = () =>
+    period({
+      periodStart: "2026-01-01",
+      periodEnd: "2026-01-31",
+      gross: 1000,
+      net: 880,
+      components: [pos("Base Salary", 1000), pos("Maladie", 120)],
+    });
+
+  it("asks about a column it cannot place, and names the question", () => {
+    const s = summaryFor({ periods: [withMaladie()] });
+
+    expect(hasCode(s, "AMBIGUOUS_COMPONENT")).toBe(true);
+    const w = s.warnings.find((x) => x.code === "AMBIGUOUS_COMPONENT")!;
+    // The question travels with the column, so the choice can be made from
+    // the warning rather than guessed at in the categoriser.
+    expect(w.items[0]).toMatch(/^Maladie — .*sick-leave deduction or a health-insurance/i);
+    expect(w.action).toEqual({ type: "open_categoriser", keys: ["Maladie"] });
+
+    // Uncategorised in the interim, so the money is visibly unreconciled
+    // rather than booked confidently to the wrong report.
+    expect(s.categories.byKey["Maladie"]!.category).toBe("uncategorised");
+    expect(s.categories.ambiguousKeys.map((a) => a.key)).toEqual(["Maladie"]);
+
+    // Not also in the generic notice: one column, one explanation.
+    expect(hasCode(s, "UNCATEGORISED")).toBe(false);
+  });
+
+  it("stops asking once the user has answered", () => {
+    const s = summaryFor({
+      periods: [withMaladie()],
+      savedCategories: { Maladie: "absence_deduction" },
+    });
+
+    expect(hasCode(s, "AMBIGUOUS_COMPONENT")).toBe(false);
+    expect(s.categories.ambiguousKeys).toEqual([]);
+    expect(s.categories.byKey["Maladie"]!.category).toBe("absence_deduction");
+    expect(s.categories.byCategory.absence_deduction).toBe(120);
+  });
+
+  it("keeps the generic notice for a column that simply matched nothing", () => {
+    const s = summaryFor({
+      periods: [
+        period({
+          periodStart: "2026-01-01",
+          periodEnd: "2026-01-31",
+          gross: 1000,
+          net: 900,
+          components: [pos("Base Salary", 1000), pos("Mystery X", 100)],
+        }),
+      ],
+    });
+
+    expect(hasCode(s, "UNCATEGORISED")).toBe(true);
+    expect(hasCode(s, "AMBIGUOUS_COMPONENT")).toBe(false);
+  });
+});
+
 describe("computeSummary category byKey", () => {
   it("sums each component across periods instead of keeping only the last", () => {
     const months = [

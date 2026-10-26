@@ -273,12 +273,107 @@ const TAXABLE_BASE_PHRASES: readonly string[] = [
   "non taxable",
 ];
 
+/**
+ * A column the vocabulary cannot place, with the question to put to the user.
+ *
+ * Step 11. Some words mean different things on different registers, and no
+ * synonym table settles that from the header alone. `Maladie` on a French
+ * bulletin is usually the sick-absence deduction and sometimes the
+ * health-insurance cotisation — and being right more often than not is the
+ * problem, because a confident wrong answer is indistinguishable from a
+ * confident right one.
+ *
+ * Note what the two readings of `Maladie` have in common: both are employee
+ * deductions, so the bridge balances either way. The fix plan's first wording
+ * said ambiguity mattered when candidates fell on "different sides of the
+ * bridge", which would not have caught this case at all. What matters is that
+ * the candidates are **reported separately** — one belongs in the absences
+ * report and its percentage of gross, the other on the statutory line and in
+ * the on-cost rate. It reconciles perfectly and misstates two reports.
+ */
+export interface AmbiguityNote {
+  /** The categories it could reasonably be, for the user to choose between. */
+  candidates: Category[];
+  /** Specific enough that the user is not doing the classifier's thinking. */
+  question: string;
+}
+
+interface AmbiguityRule {
+  /** Words in the normalised header, any one of which raises the question. */
+  readonly words: readonly string[];
+  /**
+   * Words that settle it. Only list a word where the rule cascade below
+   * already reaches the right answer — a resolver silences the question and
+   * hands the decision back to the cascade, so resolving to a wrong answer is
+   * worse than asking.
+   */
+  readonly resolvedBy: readonly string[];
+  readonly candidates: readonly Category[];
+  readonly question: string;
+}
+
+/**
+ * Deliberately a short, declared list rather than a heuristic over the rule
+ * cascade. A classifier that asks about everything is as useless as one that
+ * guesses, and an explicit table cannot flood the user or regress a header
+ * that already classified confidently. It grows as real registers meet it,
+ * the same way the synonym table does.
+ */
+const AMBIGUITIES: readonly AmbiguityRule[] = [
+  {
+    words: ["maladie", "maladies"],
+    // `assurance`/`mutuelle` reach employee insurance through rule 7, a day or
+    // hour count reaches a quantity through rule 2, and `sans solde` is
+    // unambiguously unpaid absence. `cotisation` is NOT a resolver: it implies
+    // a contribution, but the cascade would still answer absence, so silencing
+    // the question there would bank the wrong answer.
+    resolvedBy: ["assurance", "mutuelle", "jours", "jour", "days", "day", "sans solde", "heures"],
+    // The two the engine would actually produce: `Assurance maladie` resolves
+    // to `other_deduction`, which is where employee insurance goes here, not
+    // to the statutory line. Offering a category the engine does not use for
+    // insurance would be a worse question than no question.
+    candidates: ["absence_deduction", "other_deduction"],
+    question:
+      'can be a sick-leave deduction or a health-insurance contribution. Both reduce net pay, ' +
+      "so the totals balance either way, but one belongs in the absences report and the other " +
+      "on the statutory line. Which is it on this register?",
+  },
+];
+
+/**
+ * The question a header raises, or undefined when the vocabulary can place it.
+ *
+ * Exported so a caller can ask without classifying, and so the suppression for
+ * an already-answered column lives with the override rather than in here.
+ */
+export function ambiguityFor(key: string): AmbiguityNote | undefined {
+  const text = normalize(key);
+  if (!text) return undefined;
+
+  const words = new Set(text.split(/\s+/).filter(Boolean));
+  const present = (w: string) => (w.includes(" ") ? text.includes(w) : words.has(w));
+
+  for (const rule of AMBIGUITIES) {
+    if (!rule.words.some(present)) continue;
+    if (rule.resolvedBy.some(present)) continue;
+    return { candidates: [...rule.candidates], question: rule.question };
+  }
+  return undefined;
+}
+
 export interface ClassificationReason {
   category: Category;
   /** Which rule fired, surfaced in the category manager (step 40). */
   rule: string;
   /** The canonical vocabulary that triggered it. */
   matched: string[];
+  /**
+   * Set when the vocabulary cannot place the column and the user has to say.
+   * The category is then `uncategorised`, which routes the money into the
+   * balancing lines where it is visibly unreconciled — an honest gap rather
+   * than a precise error on the wrong line.
+   */
+  ambiguity?: AmbiguityNote;
 }
 
 /**
@@ -292,6 +387,15 @@ export function classifyComponentWithReason(key: string): ClassificationReason {
   const vocab = vocabulary(text);
   const has = (w: string) => vocab.has(w);
   const matched = [...vocab];
+
+  // Before the cascade, because the cascade's job is to answer and this is the
+  // case where answering is the mistake. An override set by the user never
+  // reaches here — `resolveFor` in summary.ts short-circuits it — so a column
+  // that has been decided is not asked about twice.
+  const ambiguity = ambiguityFor(key);
+  if (ambiguity) {
+    return { category: "uncategorised", rule: "ambiguous", matched, ambiguity };
+  }
 
   // 1. Total columns never become components.
   if (isTotalColumn(key)) {

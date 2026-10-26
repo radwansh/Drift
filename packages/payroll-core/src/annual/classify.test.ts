@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyComponent, classifyComponentWithReason, isTotalColumn } from "./classify";
+import { ambiguityFor, classifyComponent, classifyComponentWithReason, isTotalColumn } from "./classify";
 import type { Category } from "./types";
 import {
   EARNING_CATEGORIES,
@@ -235,7 +235,12 @@ describe("classifyComponent - the 46 register headers of step 7", () => {
     ["Charges patronales", "other_employer_cost"],
     // --- French leave ---
     ["Congés payés", "other_earning"],
-    ["Maladie", "absence_deduction"],
+    // Step 7 asserted `absence_deduction` here, which is the commoner reading.
+    // Step 11 supersedes it: the same word names the health-insurance
+    // cotisation, the two readings land in different reports, and the
+    // classifier now declines to pick. `uncategorised` is the interim category
+    // while the question is open — see the step 11 block below.
+    ["Maladie", "uncategorised"],
     // --- transliterated Arabic, 0 of 6 recognised before this step ---
     ["Badal Naql", "allowance"],
     ["Badal Sakan", "allowance"],
@@ -258,6 +263,18 @@ describe("classifyComponent - the 46 register headers of step 7", () => {
       reason.category,
       `"${key}" landed in ${reason.category} by rule "${reason.rule}", matching ${JSON.stringify(reason.matched)}`,
     ).toBe(expected);
+  });
+
+  /**
+   * The constraint that keeps step 11 useful. Ambiguity is about columns whose
+   * readings land in different reports, not about every column with more than
+   * one plausible label — a classifier that asks about everything is as
+   * useless as one that guesses, so exactly one of these 46 may raise a
+   * question.
+   */
+  it("asks about Maladie and nothing else in the table", () => {
+    const asked = cases.filter(([key]) => ambiguityFor(key) !== undefined).map(([key]) => key);
+    expect(asked).toEqual(["Maladie"]);
   });
 
   /**
@@ -291,6 +308,38 @@ describe("classifyComponent - the 46 register headers of step 7", () => {
  * The collisions the new vocabulary creates, pinned so a fix for one header
  * does not quietly move another.
  */
+describe("classifyComponent - step 11, asking instead of guessing", () => {
+  it("asks about a bare Maladie column rather than choosing a reading", () => {
+    const reason = classifyComponentWithReason("Maladie");
+    expect(reason.rule).toBe("ambiguous");
+    expect(reason.category).toBe("uncategorised");
+    // Both candidates named, so the question is answerable from the warning.
+    expect(reason.ambiguity?.candidates).toEqual(["absence_deduction", "other_deduction"]);
+    expect(reason.ambiguity?.question).toMatch(/sick-leave deduction or a health-insurance/i);
+  });
+
+  it("stays silent once a disambiguating word is present", () => {
+    // Each of these reaches the right answer through the cascade, which is the
+    // only reason it is allowed to silence the question.
+    expect(ambiguityFor("Assurance maladie")).toBeUndefined();
+    expect(ambiguityFor("Mutuelle maladie")).toBeUndefined();
+    expect(ambiguityFor("Jours maladie")).toBeUndefined();
+    expect(ambiguityFor("Maladie sans solde")).toBeUndefined();
+  });
+
+  it("does not silence the question for a word the cascade would still get wrong", () => {
+    // `cotisation` implies a contribution, but the cascade answers absence, so
+    // treating it as a resolver would bank the wrong answer silently.
+    expect(ambiguityFor("Cotisation maladie")).toBeDefined();
+  });
+
+  it("raises no question for a column that is plainly one thing", () => {
+    for (const header of ["Base Salary", "Overtime", "Income Tax", "Employer Social Security", "Retro Pay"]) {
+      expect(ambiguityFor(header)).toBeUndefined();
+    }
+  });
+});
+
 describe("classifyComponent - step 7 guards", () => {
   it("reads French health cover as insurance, not sick leave", () => {
     // `maladie` had to join the absence vocabulary for the bare "Maladie"
@@ -320,8 +369,10 @@ describe("classifyComponent - step 7 guards", () => {
 
   it("still routes an unpaid absence to the deduction side", () => {
     expect(EMPLOYEE_DEDUCTION_CATEGORIES).toContain(classifyComponent("Unpaid Leave"));
-    expect(EMPLOYEE_DEDUCTION_CATEGORIES).toContain(classifyComponent("Maladie"));
     expect(classifyComponent("Sick-leave days")).toBe("absence_days");
+    // `Maladie` was asserted here too. It is now a question rather than a
+    // deduction (step 11); an unqualified absence word still resolves.
+    expect(EMPLOYEE_DEDUCTION_CATEGORIES).toContain(classifyComponent("Absence sans solde"));
   });
 
   it("leaves a retro that names a statutory line on that line", () => {

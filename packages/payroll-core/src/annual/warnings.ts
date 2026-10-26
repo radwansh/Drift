@@ -19,7 +19,8 @@ export type WarningCode =
   | "MIXED_CURRENCY"
   | "RECONCILIATION_GAP"
   | "MIXED_SIGN"
-  | "UNCATEGORISED";
+  | "UNCATEGORISED"
+  | "AMBIGUOUS_COMPONENT";
 
 export type WarningSeverity = "info" | "warning" | "critical";
 
@@ -141,6 +142,38 @@ export function mixedSign(keys: readonly string[]): AnnualWarning {
       "These deduction or employer-cost components appear both positive and negative in the same year, so their totals may be wrong.",
     items: [...keys],
     action: { type: "open_categoriser", keys: [...keys] },
+  };
+}
+
+/**
+ * A column the vocabulary declined to place, asked as a question (step 11).
+ *
+ * Separate from `uncategorised`, and a higher severity than it, because the
+ * two mean different things to the person reading them. Uncategorised is
+ * "nothing matched, tell us what this is". This is "we can see two readings
+ * and they land in different reports, so we will not pick one for you" — and
+ * unlike an unmatched column, the money here looks perfectly reconciled while
+ * being absent from the report it belongs in.
+ */
+export function ambiguousComponents(
+  entries: readonly { key: string; question: string }[],
+): AnnualWarning {
+  const keys = entries.map((e) => e.key);
+  return {
+    code: "AMBIGUOUS_COMPONENT",
+    severity: "warning",
+    title:
+      entries.length === 1
+        ? "1 component needs your decision"
+        : `${entries.length} components need your decision`,
+    detail:
+      "These column names mean different things on different payroll systems, so Clarivo " +
+      "will not choose for you. Until you do, their amounts are left out of the breakdowns " +
+      "and show in the unreconciled balance.",
+    // The question, per column, so the choice can be made from the warning
+    // itself rather than guessed at in the categoriser.
+    items: entries.map((e) => `${e.key} — ${e.question}`),
+    action: { type: "open_categoriser", keys },
   };
 }
 

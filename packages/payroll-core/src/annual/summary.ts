@@ -9,7 +9,7 @@ import type {
   PeriodType,
 } from "./types";
 import { EMPLOYEE_DEDUCTION_CATEGORIES, EMPLOYER_COST_CATEGORIES, QUANTITY_CATEGORIES } from "./types";
-import { classifyComponent } from "./classify";
+import { classifyComponent, ambiguityFor } from "./classify";
 import { buildCategoryTotals, sumCategories } from "./categoryTotals";
 import { buildForecast, type OneOffsExcluded } from "./forecast";
 import { computeHeadcountFlows, type HeadcountFlows } from "./headcount";
@@ -156,6 +156,18 @@ function resolveFor(saved?: Record<string, Category>) {
   return (key: string): Category => saved?.[key] ?? classifyComponent(key);
 }
 
+/**
+ * The question a column raises, unless the user has already answered it
+ * (step 11).
+ *
+ * The suppression belongs here rather than in the classifier, beside the
+ * override it depends on: a saved category is the answer, so a column that has
+ * one is never asked about again. Asked once per company per column.
+ */
+function ambiguityOfFor(saved?: Record<string, Category>) {
+  return (key: string) => (saved?.[key] ? undefined : ambiguityFor(key));
+}
+
 function buildBridge(
   gross: Money,
   employerCosts: Money,
@@ -225,7 +237,9 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
     if (actual.length < 3) warnings.push(warn.lowHistory(actual.length));
   }
 
-  const periodRows = actual.map((p) => buildCategoryTotals(p.components, resolve));
+  const periodRows = actual.map((p) =>
+    buildCategoryTotals(p.components, resolve, ambiguityOfFor(savedCategories)),
+  );
   const ytdCategories = sumCategories(periodRows.map((r) => r.byCategory));
   const ytdGross = roundMoney(actual.reduce((a, p) => a + p.gross, 0));
   const ytdNet = roundMoney(actual.reduce((a, p) => a + p.net, 0));
@@ -322,7 +336,19 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
   if (mixedKeys.length > 0) warnings.push(warn.mixedSign(mixedKeys));
 
   const uncategorisedKeys = Array.from(new Set(periodRows.flatMap((r) => r.uncategorisedKeys)));
-  if (uncategorisedKeys.length > 0) warnings.push(warn.uncategorised(uncategorisedKeys));
+
+  // An ambiguous column is uncategorised, so it would otherwise appear in both
+  // warnings with two different explanations. It gets the specific question and
+  // is taken out of the generic notice.
+  const ambiguousByKey = new Map<string, string>();
+  for (const row of periodRows) {
+    for (const a of row.ambiguousKeys) ambiguousByKey.set(a.key, a.question);
+  }
+  const ambiguousEntries = [...ambiguousByKey].map(([key, question]) => ({ key, question }));
+  if (ambiguousEntries.length > 0) warnings.push(warn.ambiguousComponents(ambiguousEntries));
+
+  const unmatchedKeys = uncategorisedKeys.filter((k) => !ambiguousByKey.has(k));
+  if (unmatchedKeys.length > 0) warnings.push(warn.uncategorised(unmatchedKeys));
 
   const statutory = {
     effectiveTaxRate: pct(ytdCategories.income_tax ?? 0, ytdGross),
@@ -493,6 +519,9 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
       quantities: quantityTotals,
       mixedSignKeys: mixedKeys,
       uncategorisedKeys,
+      // Carried on the summary as well as in the warning, so the category
+      // manager can put the question beside the column it is about.
+      ambiguousKeys: ambiguousEntries,
     },
     categoryForecast: categoryForecast,
     categoryFullYear: categoryFullYear,
