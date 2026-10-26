@@ -81,10 +81,39 @@ describe("roundToMinorUnits", () => {
     // The guarantee that makes step 8a safe to thread gradually: the default
     // is arithmetically identical to the `Math.round(v * 100) / 100` it
     // replaced, so an untouched caller cannot move.
+    //
+    // Compared with `===` rather than `toBe`, which uses `Object.is` and so
+    // distinguishes -0 from +0. That one difference is deliberate and is
+    // asserted on its own below: the guarantee is about value, and no
+    // arithmetic or comparison in either engine can tell the two zeros apart.
     for (const v of [0, 1.005, -1.005, 1234.5678, -0.004, 99.999, 1e9]) {
-      expect(roundToMinorUnits(v)).toBe(Math.round(v * 100) / 100);
-      expect(roundToMinorUnits(v, 2)).toBe(Math.round(v * 100) / 100);
+      const expected = Math.round(v * 100) / 100;
+      expect(roundToMinorUnits(v) === expected).toBe(true);
+      expect(roundToMinorUnits(v, 2) === expected).toBe(true);
     }
+  });
+
+  it("never returns a negative zero", () => {
+    // `Math.round` carries the sign of its input, so a tiny negative residue
+    // rounded to -0 — and `Intl.NumberFormat` renders that as "-KWD 0.000",
+    // putting a minus sign on the reconciliation line a payroll manager reads
+    // to decide the bridge is clean. Found by step 8a-ii, where the annual
+    // bridge residue is -1.8e-13 at three decimals and happened to be positive
+    // at two.
+    for (const [value, decimals] of [
+      [-1.8e-13, 3],
+      [-0.004, 2],
+      [-0.4, 0],
+      [-0, 2],
+    ] as const) {
+      const result = roundToMinorUnits(value, decimals);
+      expect(result).toBe(0);
+      expect(Object.is(result, -0)).toBe(false);
+    }
+
+    // A genuine negative is untouched.
+    expect(roundToMinorUnits(-1.006, 2)).toBe(-1.01);
+    expect(roundToMinorUnits(-0.006, 2)).toBe(-0.01);
   });
 
   it("keeps the third decimal of a three-decimal currency", () => {

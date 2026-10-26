@@ -96,22 +96,30 @@ describe("per-currency minor units in the annual engine (step 8a-ii)", () => {
     ).toBeCloseTo(s.bridge.actual.net, 3);
   });
 
-  it("leaves `balance` as a negative zero at three decimals, which is reported, not fixed here", () => {
-    // Pinned deliberately. No money is missing — the magnitude is exactly zero
-    // — but the residue at three decimals is -1.8e-13 where at two decimals it
-    // was positive, and `Math.round` carries the sign through. The consequence
-    // is cosmetic and real: `Intl.NumberFormat` renders -0 as "-KWD 0.000", so
-    // a three-decimal company's reconciliation line prints with a minus sign.
+  it("never reports `balance` as a negative zero", () => {
+    // This was pinned the other way by step 8a-ii, which found it and was
+    // scoped out of fixing it: the bridge residue is -1.8e-13 at three decimals
+    // where it happened to be positive at two, `Math.round` carries the sign,
+    // and `Intl.NumberFormat` renders -0 as "-KWD 0.000". A minus sign on the
+    // reconciliation line a payroll manager reads to decide the bridge is
+    // clean.
     //
-    // Normalising it means adding a `-0 -> 0` step inside annual/math.ts's
-    // `roundMoney`, which step 8a-ii is explicitly scoped out of touching. It
-    // is recorded here so the behaviour is visible in the suite rather than
-    // discovered on a dashboard, and so whoever fixes it changes this
-    // assertion on purpose.
+    // `roundToMinorUnits` now normalises it. Nothing else can move, because
+    // `-0 === 0` is already true, so no arithmetic or comparison in the engine
+    // distinguishes them — only `Object.is` and the formatter do.
     const s = summaryFor("KWD", kwdQuarter());
-    expect(Object.is(s.bridge.actual.balance, -0)).toBe(true);
-    // The two-decimal path on the same data does not produce it, which is why
-    // threading the minor units is what surfaced it.
+    expect(Object.is(s.bridge.actual.balance, -0)).toBe(false);
+    expect(s.bridge.actual.balance).toBe(0);
+
+    // And it renders without the sign, which is the point.
+    const formatted = new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "KWD",
+      currencyDisplay: "code",
+    }).format(s.bridge.actual.balance);
+    expect(formatted).not.toMatch(/^-/);
+
+    // The two-decimal path on the same data never produced it either.
     expect(Object.is(summaryFor("USD", kwdQuarter()).bridge.actual.balance, -0)).toBe(false);
   });
 

@@ -79,5 +79,15 @@ export function roundToMinorUnits(
   decimals: number = DEFAULT_MINOR_UNITS,
 ): number {
   const scale = 10 ** decimals;
-  return Math.round(value * scale) / scale;
+  const rounded = Math.round(value * scale) / scale;
+  // Never a negative zero. `Math.round` carries the sign of its input, so a
+  // tiny negative residue rounds to `-0` — and `Intl.NumberFormat` renders
+  // that as "-KWD 0.000", putting a minus sign on the reconciliation line a
+  // payroll manager reads to decide the bridge is clean.
+  //
+  // Surfaced by threading minor units through the annual engine: the same
+  // bridge residue happened to be positive at two decimals and is -1.8e-13 at
+  // three. Nothing else can move, because `-0 === 0` is already true, so no
+  // arithmetic, comparison or `toBeCloseTo` in the engine distinguishes them.
+  return rounded === 0 ? 0 : rounded;
 }
