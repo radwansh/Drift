@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildForecast, splitRunRate, VARIABLE_CATEGORIES } from "./forecast";
 import { computeSummary } from "./summary";
+import { applyScenario } from "./scenario";
 import { classifyComponent } from "./classify";
 import { generateExpectedPeriods, futureExpectedPeriods, coveredSlotIndexes } from "./periods";
 import { period, monthStart } from "./test-utils";
@@ -280,5 +281,198 @@ describe("step 6 backtest: samples/2025, every cut, per category", () => {
     expect(s.categories.byCategory.bonus_commission).toBeCloseTo(778_826.81, 2);
     // A complete year has nothing left to forecast, so there is no exclusion.
     expect(summaryAt(12).oneOffsExcluded.total).toBe(0);
+  });
+});
+
+/**
+ * Step 12 asked for a recurring category to be projected per head and multiplied
+ * by the headcount expected in each remaining slot, rather than carrying its
+ * total, and said to prefer holding the latest headcount over extrapolating its
+ * growth. Both halves were measured against this fixture before any code was
+ * written, and neither is an improvement the engine can make:
+ *
+ *  - **Holding the latest headcount is the identity.** The level carried forward
+ *    today is the last actual period's total, and the headcount being held is
+ *    that same period's headcount, so `(total / heads) x heads` is the number
+ *    already projected — at every cut, for every recurring category, to the cent.
+ *    Nothing improves because nothing moves.
+ *  - **Extrapolating the roster swaps the error's sign rather than removing it.**
+ *    Base at the March cut goes from -6.7% to +4.6%, and mean absolute error gets
+ *    worse on three of the four recurring categories.
+ *
+ * The decomposition says why: 70.9% of the March base error is heads that had not
+ * been hired by March. No rule that holds the latest level can see them, and a
+ * rule that guesses them is a hiring plan Clarivo does not have. See step 12 in
+ * docs/PAYROLL_AUDIT_FIX_PLAN.md for what was specified in its place.
+ *
+ * These tests exist so the measurement is not re-litigated from the prose: if the
+ * recurring projection ever moves, they fail and name the figure that moved.
+ */
+describe("step 12: headcount and the recurring forecast", () => {
+  const HEADS = MONTHS_2025.map((r) => r[2]!);
+  const RECURRING_CATS = [
+    "base_salary",
+    "allowance",
+    "other_deduction",
+    "other_employer_cost",
+  ] as const satisfies readonly Category[];
+
+  /** The engine's own recurring rule: the last actual period's total, per slot. */
+  function heldTotal(cat: Category, cut: number): number {
+    return categorySeries(cat)[cut - 1] ?? 0;
+  }
+
+  /** Step 12's preferred rule: per head, times the headcount held at the latest. */
+  function perHeadTimesHeldHeads(cat: Category, cut: number): number {
+    const heads = HEADS[cut - 1] ?? 0;
+    return heads === 0 ? 0 : (heldTotal(cat, cut) / heads) * heads;
+  }
+
+  function fullYearFrom(cat: Category, cut: number, level: number): number {
+    const ytd = categorySeries(cat)
+      .slice(0, cut)
+      .reduce((a, b) => a + b, 0);
+    return ytd + (12 - cut) * level;
+  }
+
+  const actualOf = (cat: Category) => categorySeries(cat).reduce((a, b) => a + b, 0);
+  const errPct = (projected: number, actual: number) => ((projected - actual) / actual) * 100;
+
+  it("already holds the latest headcount: per head times heads is the same number", () => {
+    // The two formulations are compared as levels, and the engine is checked
+    // against both, so this fails if either the rule or the identity changes.
+    for (const cat of RECURRING_CATS) {
+      for (const cut of CUTS) {
+        const held = heldTotal(cat, cut);
+        const perHead = perHeadTimesHeldHeads(cat, cut);
+        // Half a cent is the general claim; on this fixture the two are exact.
+        expect(Math.abs(perHead - held), `${cat} level at cut ${cut}`).toBeLessThan(0.005);
+
+        const engine = summaryAt(cut).categoryFullYear[cat] ?? 0;
+        expect(engine, `${cat} engine vs held total at cut ${cut}`).toBeCloseTo(
+          fullYearFrom(cat, cut, held),
+          2,
+        );
+        expect(engine, `${cat} engine vs per head x heads at cut ${cut}`).toBeCloseTo(
+          fullYearFrom(cat, cut, perHead),
+          2,
+        );
+      }
+    }
+
+    // The headcount it holds is on the rows the dashboard draws, and the year it
+    // projects ends above it: 141 heads carried through a year that closes at 151.
+    const march = summaryAt(3);
+    for (const row of march.periods.filter((p) => p.kind === "forecast")) {
+      expect(row.headcount, `${row.label} headcount`).toBe(141);
+    }
+    expect(HEADS[11]).toBe(151);
+  });
+
+  it("the March base error is 71% heads not yet hired, 29% pay rate", () => {
+    const base = categorySeries("base_salary");
+    const ytd = base.slice(0, 3).reduce((a, b) => a + b, 0);
+    const actualRest = base.slice(3).reduce((a, b) => a + b, 0);
+    const headsRest = HEADS.slice(3).reduce((a, b) => a + b, 0);
+    const projectedRest = 9 * heldTotal("base_salary", 3);
+
+    expect(ytd).toBeCloseTo(3_165_788.67, 2);
+    expect(actualRest).toBeCloseTo(10_744_363.26, 2);
+    expect(projectedRest).toBeCloseTo(9_817_471.17, 2);
+    expect(ytd + actualRest).toBeCloseTo(ACTUAL_BASE, 2);
+
+    const shortfall = actualRest - projectedRest;
+    expect(shortfall).toBeCloseTo(926_892.09, 2);
+
+    // Apr-Dec is paid over 1,354 head-months where March's roster would have
+    // been 9 x 141 = 1,269, at 7,935.28 a head against March's 7,736.38.
+    expect(headsRest).toBe(1_354);
+    const perHeadMarch = heldTotal("base_salary", 3) / HEADS[2]!;
+    const perHeadRest = actualRest / headsRest;
+    expect(perHeadMarch).toBeCloseTo(7_736.38, 2);
+    expect(perHeadRest).toBeCloseTo(7_935.28, 2);
+
+    // A payroll variance bridge over head-months and rate per head-month.
+    const headcountEffect = (headsRest - 9 * HEADS[2]!) * perHeadMarch;
+    const rateEffect = (perHeadRest - perHeadMarch) * headsRest;
+    expect(headcountEffect).toBeCloseTo(657_592.63, 2);
+    expect(rateEffect).toBeCloseTo(269_299.46, 2);
+    expect(headcountEffect + rateEffect).toBeCloseTo(shortfall, 2);
+    expect((headcountEffect / shortfall) * 100).toBeCloseTo(70.9, 1);
+
+    // The ceiling on any rule that holds the latest headcount: even taking the
+    // highest per-head level Jan-Mar shows (January's 7,755.78) moves the
+    // full-year base error only from -6.66% to -6.49%.
+    const bestPerHead = Math.max(...base.slice(0, 3).map((v, i) => v / HEADS[i]!));
+    expect(bestPerHead).toBeCloseTo(7_755.78, 2);
+    const ceiling = fullYearFrom("base_salary", 3, bestPerHead * HEADS[2]!);
+    expect(errPct(ceiling, ACTUAL_BASE)).toBeCloseTo(-6.49, 2);
+    expect(errPct(fullYearAt("base_salary", 3), ACTUAL_BASE)).toBeCloseTo(-6.66, 2);
+  });
+
+  it("extrapolating the roster swaps the error's sign and is worse on average", () => {
+    // The rejected option, written out so its figures are on the record rather
+    // than argued: the net flow per slot over the actual window, applied to each
+    // remaining slot in turn.
+    function extrapolated(cat: Category, cut: number): number {
+      const heads = HEADS.slice(0, cut);
+      const last = heads[cut - 1] ?? 0;
+      const flow = cut > 1 ? (last - (heads[0] ?? 0)) / (cut - 1) : 0;
+      const ahead = Array.from({ length: 12 - cut }, (_, i) => last + flow * (i + 1));
+      const perHead = last === 0 ? 0 : heldTotal(cat, cut) / last;
+      const ytd = categorySeries(cat)
+        .slice(0, cut)
+        .reduce((a, b) => a + b, 0);
+      return ytd + perHead * ahead.reduce((a, b) => a + b, 0);
+    }
+
+    // March, the cut the audit reported: -6.66% becomes +4.60%. The same size of
+    // error with the opposite sign is a compensating error, not a correction.
+    expect(errPct(extrapolated("base_salary", 3), ACTUAL_BASE)).toBeCloseTo(4.6, 1);
+
+    // Mean absolute error across every cut, per category. Worse on three of the
+    // four; better only on other deductions, a loan-repayment column that does
+    // not scale with headcount at all.
+    const measured: Partial<Record<Category, { today: number; trend: number }>> = {};
+    for (const cat of RECURRING_CATS) {
+      const actual = actualOf(cat);
+      measured[cat] = {
+        today: mean(CUTS.map((cut) => Math.abs(errPct(fullYearAt(cat, cut), actual)))),
+        trend: mean(CUTS.map((cut) => Math.abs(errPct(extrapolated(cat, cut), actual)))),
+      };
+    }
+
+    expect(measured.base_salary!.today).toBeCloseTo(3.45, 1);
+    expect(measured.base_salary!.trend).toBeCloseTo(3.92, 1);
+    expect(measured.allowance!.today).toBeCloseTo(3.28, 1);
+    expect(measured.allowance!.trend).toBeCloseTo(4.16, 1);
+    expect(measured.other_employer_cost!.today).toBeCloseTo(2.86, 1);
+    expect(measured.other_employer_cost!.trend).toBeCloseTo(4.84, 1);
+    expect(measured.other_deduction!.today).toBeCloseTo(4.02, 1);
+    expect(measured.other_deduction!.trend).toBeCloseTo(3.13, 1);
+
+    const worse = RECURRING_CATS.filter((c) => measured[c]!.trend > measured[c]!.today);
+    expect(worse).toHaveLength(3);
+  });
+
+  it("the scenario layer counts a hire once, because the forecast adds none", () => {
+    // Trap 1 of step 12. The forecast holds one roster flat, so a scenario that
+    // hires ten people from April adds exactly ten heads to each of the nine
+    // remaining slots and nothing else. If the forecast extrapolated hiring, the
+    // same scenario would pay for heads the baseline had already invented.
+    const march = summaryAt(3);
+    const grossPerHead = march.periods[2]!.gross / march.periods[2]!.headcount!;
+    const result = applyScenario(march, { headcountChange: { fromSlotIndex: 4, people: 10 } });
+
+    const moved = result.periods.filter((p) => p.scenarioGross !== p.baselineGross);
+    expect(moved).toHaveLength(9);
+    expect(result.difference.gross).toBeCloseTo(9 * 10 * grossPerHead, 1);
+
+    // And the baseline it was applied to assumes no joiners of its own: every
+    // projected slot carries the same gross.
+    const forecastGross = new Set(
+      march.periods.filter((p) => p.kind === "forecast").map((p) => p.gross),
+    );
+    expect(forecastGross.size).toBe(1);
   });
 });

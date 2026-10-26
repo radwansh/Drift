@@ -3,8 +3,9 @@
 Audit date: 2026-10-25, by the repo's own `payroll-manager` agent against `main` @ `e0666bb`.
 Plan written against `main` @ `6afd1d5`.
 
-> **Status: steps 0, 1, 2, 3, 6, 7, 8a, 8b and 11 done. Steps 4, 5, 8a-ii, 9, 10
-> and 12 outstanding.**
+> **Status: steps 0, 1, 2, 3, 6, 7, 8a, 8b and 11 done. Steps 4, 5, 8a-ii, 9 and
+> 10 outstanding. Step 12 is measured and respecified as 12a and 12b: the change
+> it asked for is an identity with the rule already in place.**
 >
 > Each step was checked against its own unfixed source — the new tests are
 > re-run with that step's files stashed, and only count as binding the
@@ -59,6 +60,21 @@ Plan written against `main` @ `6afd1d5`.
 > `RECURRING`, held at the last actual period, so it never passed through
 > `avgAll`. The error is the run rate carrying March's 141 heads forward through
 > a year that ends at 151. Nothing above touches it. See step 12.
+>
+> **Step 12 is now measured, and the change it asked for cannot be made.**
+> Holding the latest headcount — the option that step prefers — is
+> algebraically the level the engine already carries: `(total ÷ heads) × heads`,
+> max difference `0.00` across 4 recurring categories × 11 cuts. Extrapolating
+> the roster instead turns base at the March cut from −6.66% into +4.60% and is
+> worse on three of the four recurring categories, which is the compensating
+> error step 6 removed, re-introduced from the other side. The −6.7% decomposes
+> as 70.9% head-months not yet hired by March and 29.1% the July merit review,
+> so it is not an error a run rate can remove — it is one the forecast must
+> **declare**. Respecified as **12a** (state the headcount held, warn when the
+> roster makes it material, move no figure) and **12b**, a new finding found
+> while clearing trap 1: `scenario.ts` prices a hire off the latest actual
+> period, one-offs included, 46.2% over at the March cut. The measurement is
+> four tests in `packages/payroll-core/src/annual/forecast.backtest.test.ts`.
 >
 > The **`Maladie`** question from step 7 is answered, and the answer generalises
 > past that one word: where the classifier cannot tell which side of the bridge
@@ -579,42 +595,110 @@ and the UI are all already there.
 
 ### Step 12 — the recurring forecast ignores headcount
 
-**Finding:** the audit recorded base salary forecast −6.7% at the March cut, and
-step 6 did not fix it, because the cause is different. Base is `RECURRING`, held
-at the last actual period, so it never passed through the averaging path that
-step 6 replaced. The error is that the run rate carries March's **141 heads**
-forward through a year that ends at **151**: a recurring category is projected
-at last month's level regardless of how many people it has to cover.
+**Measured, not implemented.** The finding below is a correct description of the
+code. The change it prescribes is not: measured against `samples/2025` before
+anything was written, the option this step prefers is an *identity* with the
+current rule, and the option it rejects is a compensating error. The engine is
+therefore unchanged, the measurement is in
+`packages/payroll-core/src/annual/forecast.backtest.test.ts` (`describe("step
+12: headcount and the recurring forecast")`), and what should be built instead
+is specified as **12a** and **12b** below.
 
-This is now the largest remaining forecast error, and with step 6 done it no
-longer has an opposing error to hide behind — which is why gross at the March
-cut reads −11.4% rather than −1.4%.
+**Finding (confirmed):** the audit recorded base salary forecast −6.7% at the
+March cut, and step 6 did not fix it, because the cause is different. Base is
+`RECURRING`, held at the last actual period, so it never passed through the
+averaging path that step 6 replaced. The error is that the run rate carries
+March's **141 heads** forward through a year that ends at **151**: a recurring
+category is projected at last month's level regardless of how many people it
+has to cover.
 
-**Change:** project a recurring category per head and multiply by the headcount
-expected in each remaining slot, rather than carrying its total. `headcount.ts`
-already computes joiners, leavers and average headcount per slot, so the input
-exists.
+Reproduced exactly: base `−6.66%`, gross `−11.42%` at the March cut.
 
-**Two things to be careful of:**
+**Why the prescribed change cannot be made:**
 
-- **Do not double-count the scenario layer.** `scenario.ts` already models
-  "hire N from slot X" on top of a computed forecast. If the forecast itself
-  begins to extrapolate headcount, a scenario applied over it must not add the
-  same heads twice.
-- **Extrapolating a trend is not the same as holding a level.** A company that
-  grew 141 to 151 over three months has not necessarily committed to 191 by
-  December. Holding the *latest* headcount is defensible; projecting its growth
-  rate is a forecast about hiring that Clarivo has no basis for. Prefer the
-  former and say which was chosen.
+1. **Holding the latest headcount is the identity.** The level carried today is
+   the last actual period's *total*, and the headcount being held is that same
+   period's headcount, so `(total ÷ heads) × heads` is the number already
+   projected. Measured across 4 recurring categories × 11 cuts: max difference
+   `0.00`. There is no figure to improve because no figure moves.
+2. **Extrapolating the roster swaps the error's sign instead of removing it.**
+   The net flow over the actual window applied to each remaining slot turns base
+   at the March cut from `−6.66%` into `+4.60%`, and makes mean absolute error
+   across the cuts worse on three of the four recurring categories: base 3.92
+   against 3.45, allowances 4.16 against 3.28, other employer costs 4.84 against
+   2.86. Better only on other deductions (3.13 against 4.02) — a loan-repayment
+   column that does not scale with headcount at all. That is the compensating
+   error step 6 was done to remove, re-introduced from the other side.
+3. **Every intermediate was measured and is a wash or worse.** Mean per-head
+   level × held heads (base 3.61), per-head over the last 3 (3.45, a tie),
+   recent high-water heads (3.59), and the per-slot *average* headcount this
+   step names as available (4.82, and `−9.00%` at the March cut against
+   `−6.66%`).
 
-**Verification:** the base-salary error at the March cut must improve against
-the twelve-month actual, measured per category across every cut N=1..11 as in
-step 6. Gross should move back toward accuracy for the right reason this time —
-one error corrected rather than two cancelling. State the before and after for
-every variable and recurring category, so a figure that gets worse is declared
-rather than found later.
+**Why, in payroll terms.** The March shortfall decomposes on head-months and
+rate per head-month:
 
-**Data:** existing. `headcount.ts` already derives the flows.
+| Driver | Amount | Share |
+|---|---|---|
+| Headcount — head-months not yet hired by March (1,354 actual against 9 × 141 = 1,269, at March's 7,736.38) | 657,592.63 | 70.9% |
+| Rate — Apr–Dec pay per head 7,935.28 against March's 7,736.38, over 1,354 head-months (the July merit review) | 269,299.46 | 29.1% |
+| **Total shortfall** (10,744,363.26 actual Apr–Dec against 9 × 1,090,830.13 = 9,817,471.17) | **926,892.09** | **100%** |
+
+71% of the error is people who had not been hired in March. A run rate cannot
+see them, and a rule that guesses them is a hiring plan Clarivo does not have.
+The ceiling on *any* rule that holds the latest headcount is `−6.49%`: that is
+the January per-head level (7,755.78, the highest of the three months) carried
+on 141 heads, and it is cherry-picked rather than a rule. 0.17pp is the whole
+prize.
+
+**12a — declare the headcount the forecast assumed, and warn when it is
+material.** The error is unavoidable; being silent about it is not. Today
+`assumptions` at the March cut reads only `["Forecast: run rate.", "One-offs
+in … are not projected forward."]`, and the only warning is `UNCATEGORISED`.
+The 141 is on every projected row of the chart and is never stated as an
+assumption.
+
+- `buildForecast` states the headcount it projected and that it assumes no
+  joiners or leavers. Rule-based text, never labelled AI.
+- A warning — `FORECAST_HOLDS_HEADCOUNT` — when the actual window's roster has
+  moved materially (at the March cut: 132 → 141, +9 net joiners, +6.8% over
+  three periods), carrying those figures and the action: apply your own hiring
+  plan in the scenario view, which already exists for exactly this.
+- **It must not change a single projected figure**, and the step 12 tests
+  assert that it has not.
+
+**12b — the scenario layer prices a hire off a period that contains a
+one-off** (new finding, found while establishing trap 1). `scenario.ts` costs a
+marginal head at the latest actual period's gross per head. Step 6 stopped
+projecting one-offs forward, but that per-head price still includes them. At the
+March cut, whose actual period carries the annual bonus:
+
+- gross per head `14,965.13` against the recurring run rate's `10,239.12` — 46.2% over
+- `costPerHeadLatest`, which the UI displays, `16,115.80` against `11,265.63` — 43.1% over
+- "hire 10 from April" reports `1,346,861.43` where the run rate prices it at
+  `921,520.80` — `425,340.63` of overstatement on a hiring decision
+- control: at the May cut, whose actual period carries no one-off, the two agree
+  to 1.1% (`10,433.09` against `10,321.88`)
+
+The fix is to price a marginal head off the recurring projection — the forecast
+slot's own gross per head — not the last actual period's. Needs its own step,
+because it changes a figure owners make decisions on.
+
+**Not available, and the only honest route to a headcount-aware projection:**
+expected heads per *slot* from dated joiners and leavers, or last year's roster
+shape across the remaining slots. Neither is in `AnnualPeriodInput`, and
+`samples/` has one year, so neither can be measured here. A two-year fixture is
+the prerequisite, not a code change.
+
+**Verification (done):** base `−6.66%` and gross `−11.42%` reproduced at the
+March cut; the identity measured at `0.00` across 44 projections; the trend
+option measured per category across cuts N=1..11; the decomposition summing to
+`926,892.09`; and the scenario layer confirmed to count a hire once — ten hires
+from April move nine slots by exactly ten heads each, and the baseline it is
+applied to carries one roster flat (all nine projected slots at the same gross).
+Four tests, all four failing when the held level is disabled.
+
+**Data:** existing.
 
 ---
 
