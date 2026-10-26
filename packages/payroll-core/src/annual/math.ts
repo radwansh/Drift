@@ -1,3 +1,4 @@
+import { DEFAULT_MINOR_UNITS, roundToMinorUnits } from "../money";
 /**
  * Under test, a non-finite amount is a bug in the caller, not something to paper
  * over (finding C17). In production it still coerces to 0 so a single bad
@@ -7,14 +8,23 @@ const THROW_ON_NON_FINITE =
   typeof process !== "undefined" &&
   (process.env?.["VITEST"] === "true" || process.env?.["NODE_ENV"] === "test");
 
-export function roundMoney(value: number): number {
+/**
+ * `decimals` is the currency's minor units (step 8a), defaulting to 2 so every
+ * existing call site is byte-identical. The annual engine's 82 call sites are
+ * threaded in step 8a-ii; this signature is what that change needs.
+ *
+ * The `Number.EPSILON` nudge is kept: it is what makes a value like 1.005
+ * round up rather than down, and removing it would move figures the whole
+ * annual suite asserts.
+ */
+export function roundMoney(value: number, decimals: number = DEFAULT_MINOR_UNITS): number {
   if (!Number.isFinite(value)) {
     if (THROW_ON_NON_FINITE) {
       throw new Error(`roundMoney received a non-finite value: ${value}`);
     }
     return 0;
   }
-  return Math.round((value + Number.EPSILON) * 100) / 100;
+  return roundToMinorUnits(value + Number.EPSILON, decimals);
 }
 
 export function average(values: readonly number[]): number {

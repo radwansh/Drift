@@ -5,6 +5,7 @@ import { calculateDelta } from "./delta-calculator";
 import { classifyMatchedPairs } from "./classifier";
 import { detectAnomalies } from "./anomaly-detector";
 import { aggregateResults } from "./aggregator";
+import { minorUnits } from "./money";
 
 export interface ComparisonResult {
   results: ComparisonOutput[];
@@ -71,10 +72,24 @@ function rowWord(n: number): string {
   return n === 1 ? "row" : "rows";
 }
 
+export interface ComparisonOptions {
+  /**
+   * ISO 4217 code for the company's currency. Decides the minor units every
+   * figure below is rounded to and the threshold at which a movement counts
+   * as a change (step 8a). Omitted, everything behaves as two decimals, which
+   * is what it did before and is right for most currencies — but wrong for
+   * KWD, BHD, OMR, JOD, TND, IQD and LYD, where a real one-fils movement
+   * rounded away and the employee read as "unchanged".
+   */
+  currency?: string;
+}
+
 export function runComparison(
   currentEmployees: EmployeeRecord[],
   previousEmployees: EmployeeRecord[],
+  opts: ComparisonOptions = {},
 ): ComparisonResult {
+  const decimals = minorUnits(opts.currency);
   const { pairs, duplicates } = matchEmployees(currentEmployees, previousEmployees);
 
   // Before anything is classified, diffed or aggregated. Every figure below is
@@ -84,22 +99,24 @@ export function runComparison(
     throw new DuplicateEmployeeIdsError(duplicates);
   }
 
-  const classifiedPairs = classifyMatchedPairs(pairs);
+  const classifiedPairs = classifyMatchedPairs(pairs, decimals);
 
   const results: ComparisonOutput[] = classifiedPairs.map((pair) => {
     const currentComponents = pair.current?.components ?? {};
     const previousComponents = pair.previous?.components ?? {};
 
-    const componentDeltas = diffComponents(currentComponents, previousComponents);
+    const componentDeltas = diffComponents(currentComponents, previousComponents, decimals);
 
     const { absolute: grossDelta } = calculateDelta(
       pair.current?.grossSalary ?? null,
       pair.previous?.grossSalary ?? null,
+      decimals,
     );
 
     const { absolute: netDelta } = calculateDelta(
       pair.current?.netSalary ?? null,
       pair.previous?.netSalary ?? null,
+      decimals,
     );
 
     const comparisonOutput: ComparisonOutput = {
@@ -130,7 +147,7 @@ export function runComparison(
     return comparisonOutput;
   });
 
-  const summary = aggregateResults(results);
+  const summary = aggregateResults(results, decimals);
 
   return { results, summary };
 }

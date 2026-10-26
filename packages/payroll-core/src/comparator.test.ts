@@ -13,6 +13,48 @@ function emp(
   return { externalId: id, name, department: dept, components, grossSalary: gross, netSalary: net };
 }
 
+describe("runComparison - per-currency minor units", () => {
+  // The plan's case: one fils on a KWD payroll. A real movement the payslip
+  // shows, which the fixed two-decimal rounding erased.
+  const previous = [emp("E1", "Fahad", "Ops", { base: 1172.839 }, 1172.839, 1172.839)];
+  const current = [emp("E1", "Fahad", "Ops", { base: 1172.84 }, 1172.84, 1172.84)];
+
+  it("keeps a one-fils movement on a three-decimal currency", () => {
+    const { results, summary } = runComparison(current, previous, { currency: "KWD" });
+    const row = results[0]!;
+
+    expect(row.netDelta).toBeCloseTo(0.001, 6);
+    expect(row.status).toBe("increased");
+    expect(summary.totalNet.absolute).toBeCloseTo(0.001, 6);
+    expect(summary.employeesAffected.increased).toBe(1);
+  });
+
+  it("loses it without the currency, which is the old behaviour made explicit", () => {
+    // Not a defect to fix here: two decimals is right for most currencies and
+    // is the documented default. The defect was that there was no way to say
+    // otherwise, so this asserts the default rather than endorsing it for KWD.
+    const { results } = runComparison(current, previous);
+    expect(results[0]!.netDelta).toBe(0);
+    expect(results[0]!.status).toBe("unchanged");
+  });
+
+  it("treats a sub-unit movement as unchanged on a zero-decimal currency", () => {
+    const jpyPrev = [emp("E1", "Aiko", "Ops", { base: 300_000 }, 300_000, 300_000)];
+    const jpyCurr = [emp("E1", "Aiko", "Ops", { base: 300_000.4 }, 300_000.4, 300_000.4)];
+
+    const { results } = runComparison(jpyCurr, jpyPrev, { currency: "JPY" });
+    // Below one yen, which is the smallest amount yen can express.
+    expect(results[0]!.status).toBe("unchanged");
+  });
+
+  it("is byte-identical to the default for a two-decimal currency", () => {
+    const withCode = runComparison(current, previous, { currency: "USD" });
+    const without = runComparison(current, previous);
+    expect(withCode.summary).toEqual(without.summary);
+    expect(withCode.results).toEqual(without.results);
+  });
+});
+
 describe("runComparison - integration", () => {
   it("returns results and summary for matched employees", () => {
     const current: EmployeeRecord[] = [

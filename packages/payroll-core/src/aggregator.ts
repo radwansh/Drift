@@ -1,5 +1,9 @@
 import type { ComparisonOutput, AggregatedSummary, PeriodTotal } from "./types";
 import { collectAnomalies } from "./anomaly-detector";
+import { DEFAULT_MINOR_UNITS, roundToMinorUnits } from "./money";
+
+/** Rounds to the currency's minor units; see ./money. */
+type Round = (value: number) => number;
 
 const DISTRIBUTION_COLORS: Record<string, string> = {
   "decreased >10%": "#ef4444",
@@ -10,30 +14,19 @@ const DISTRIBUTION_COLORS: Record<string, string> = {
 };
 
 /**
- * Money rounding for the comparison side, in one place.
- *
- * Two decimals, which is wrong for KWD, BHD and OMR (three) and for LBP (none).
- * Step 8a of docs/PAYROLL_AUDIT_FIX_PLAN.md threads a per-currency minor unit
- * through; this is the single lever that change needs in this file.
- */
-function round2(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
-/**
  * Builds a period total from two sums.
  *
  * The percentage is null rather than 0 when the previous period is empty: a
  * movement from nothing is not a 0% change, and rendering it as one has it read
  * as "no change".
  */
-function periodTotal(previous: number, current: number): PeriodTotal {
+function periodTotal(previous: number, current: number, round: Round): PeriodTotal {
   const absolute = current - previous;
   return {
-    previous: round2(previous),
-    current: round2(current),
-    absolute: round2(absolute),
-    percentage: previous !== 0 ? round2((absolute / previous) * 100) : null,
+    previous: round(previous),
+    current: round(current),
+    absolute: round(absolute),
+    percentage: previous !== 0 ? round((absolute / previous) * 100) : null,
   };
 }
 
@@ -47,7 +40,13 @@ function periodTotal(previous: number, current: number): PeriodTotal {
  * deductions — neither of the two numbers anyone wanted, under labels saying it
  * was one of them.
  */
-export function aggregateResults(results: ComparisonOutput[]): AggregatedSummary {
+export function aggregateResults(
+  results: ComparisonOutput[],
+  decimals: number = DEFAULT_MINOR_UNITS,
+): AggregatedSummary {
+  // One rounder for the whole aggregation, built from the company's currency.
+  const round: Round = (value) => roundToMinorUnits(value, decimals);
+
   const total = results.length;
   let increased = 0;
   let decreased = 0;
@@ -83,8 +82,8 @@ export function aggregateResults(results: ComparisonOutput[]): AggregatedSummary
     }
   }
 
-  const totalNet = periodTotal(netPrevious, netCurrent);
-  const totalGross = periodTotal(grossPrevious, grossCurrent);
+  const totalNet = periodTotal(netPrevious, netCurrent, round);
+  const totalGross = periodTotal(grossPrevious, grossCurrent, round);
 
   const newEmployees = results.filter((r) => r.status === "new").length;
   const departedEmployees = results.filter((r) => r.status === "departed").length;
@@ -114,9 +113,9 @@ export function aggregateResults(results: ComparisonOutput[]): AggregatedSummary
     .sort((a, b) => (a.netDelta ?? 0) - (b.netDelta ?? 0))[0] ?? null;
 
   const distribution = computeDistribution(results);
-  const componentBreakdown = computeComponentBreakdown(results);
-  const departmentBreakdown = computeDepartmentBreakdown(results);
-  const topMovers = computeTopMovers(results);
+  const componentBreakdown = computeComponentBreakdown(results, round);
+  const departmentBreakdown = computeDepartmentBreakdown(results, round);
+  const topMovers = computeTopMovers(results, round);
   const anomalies = collectAnomalies(results);
 
   const avgAbsolute = netDeltas.length > 0 ? totalDeltaSum / netDeltas.length : 0;
@@ -140,8 +139,8 @@ export function aggregateResults(results: ComparisonOutput[]): AggregatedSummary
       ? { employeeName: largestDecrease.employeeName, department: largestDecrease.department, amount: largestDecrease.netDelta! }
       : null,
     averageChange: {
-      absolute: round2(avgAbsolute),
-      percentage: avgPct !== null ? round2(avgPct) : null,
+      absolute: round(avgAbsolute),
+      percentage: avgPct !== null ? round(avgPct) : null,
     },
     distribution,
     componentBreakdown,
@@ -211,7 +210,7 @@ function computeDistribution(results: ComparisonOutput[]) {
   }));
 }
 
-function computeComponentBreakdown(results: ComparisonOutput[]) {
+function computeComponentBreakdown(results: ComparisonOutput[], round: Round) {
   const componentMap: Record<string, { totalChange: number; employeeCount: number }> = {};
 
   for (const r of results) {
@@ -233,7 +232,7 @@ function computeComponentBreakdown(results: ComparisonOutput[]) {
   return Object.entries(componentMap)
     .map(([component, data]) => ({
       component,
-      totalChange: round2(data.totalChange),
+      totalChange: round(data.totalChange),
       employeeCount: data.employeeCount,
     }))
     .sort((a, b) => Math.abs(b.totalChange) - Math.abs(a.totalChange));
@@ -244,7 +243,7 @@ function computeComponentBreakdown(results: ComparisonOutput[]) {
  * what anyone comparing departments means. They were the component sum, so a
  * department's "total" carried its deductions as well as its pay.
  */
-function computeDepartmentBreakdown(results: ComparisonOutput[]) {
+function computeDepartmentBreakdown(results: ComparisonOutput[], round: Round) {
   const deptMap: Record<string, {
     headcountCurrent: Set<string>;
     headcountPrevious: Set<string>;
@@ -279,15 +278,15 @@ function computeDepartmentBreakdown(results: ComparisonOutput[]) {
     .map(([department, data]) => {
       const absoluteChange = data.totalCurrent - data.totalPrevious;
       const percentageChange = data.totalPrevious !== 0
-        ? round2((absoluteChange / data.totalPrevious) * 100)
+        ? round((absoluteChange / data.totalPrevious) * 100)
         : null;
       return {
         department,
         headcountCurrent: data.headcountCurrent.size,
         headcountPrevious: data.headcountPrevious.size,
-        totalCurrent: round2(data.totalCurrent),
-        totalPrevious: round2(data.totalPrevious),
-        absoluteChange: round2(absoluteChange),
+        totalCurrent: round(data.totalCurrent),
+        totalPrevious: round(data.totalPrevious),
+        absoluteChange: round(absoluteChange),
         percentageChange,
       };
     })
@@ -303,7 +302,7 @@ function computeDepartmentBreakdown(results: ComparisonOutput[]) {
  * component sum while the middle one was the real net delta, under headers
  * reading "Previous Net" and "Current Net".
  */
-function computeTopMovers(results: ComparisonOutput[]) {
+function computeTopMovers(results: ComparisonOutput[], round: Round) {
   return results
     .filter((r) => r.netDelta !== null && r.status !== "new" && r.status !== "departed")
     .map((r) => {
@@ -311,10 +310,10 @@ function computeTopMovers(results: ComparisonOutput[]) {
       return {
         employeeName: r.employeeName,
         department: r.department,
-        previousNet: round2(r.previousNet ?? 0),
-        currentNet: round2(r.currentNet ?? 0),
-        changeAmount: round2(r.netDelta!),
-        changePercentage: pct !== null ? round2(pct) : null,
+        previousNet: round(r.previousNet ?? 0),
+        currentNet: round(r.currentNet ?? 0),
+        changeAmount: round(r.netDelta!),
+        changePercentage: pct !== null ? round(pct) : null,
       };
     })
     .sort((a, b) => Math.abs(b.changeAmount) - Math.abs(a.changeAmount))

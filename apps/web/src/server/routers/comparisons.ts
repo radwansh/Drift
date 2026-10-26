@@ -97,6 +97,10 @@ export const comparisonsRouter = router({
         const { results, summary } = runComparison(
           toEmployeeRecord(currentSnapshots),
           toEmployeeRecord(previousSnapshots),
+          // Step 8a: the currency decides how many decimals every figure keeps
+          // and what counts as a change at all. Without it a KWD one-fils
+          // movement rounded to zero and read as "unchanged".
+          { currency },
         );
 
         const values = results.map((r) => ({
