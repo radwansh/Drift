@@ -3,11 +3,10 @@
 Audit date: 2026-10-25, by the repo's own `payroll-manager` agent against `main` @ `e0666bb`.
 Plan written against `main` @ `6afd1d5`.
 
-> **Status: steps 0, 1, 2, 3, 5, 6, 7, 8a, 8a-ii, 8b, 10 and 11 done. Steps 4
-> 9 and 11b outstanding; their product decisions are now made and recorded.
-> Step 12 is measured and
-> respecified as 12a and 12b: the change it asked for is an identity with the
-> rule already in place.**
+> **Status: steps 0, 1, 2, 3, 5, 6, 7, 8a, 8a-ii, 8b, 10 and 11 done.
+> Steps 4, 9 and 11b outstanding; their product decisions are now made and
+> recorded. Step 12 is measured and respecified as 12a and 12b: the change it
+> asked for is an identity with the rule already in place.**
 >
 > Each step was checked against its own unfixed source — the new tests are
 > re-run with that step's files stashed, and only count as binding the
