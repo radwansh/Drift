@@ -90,12 +90,18 @@ describe("validateRows - a duplicate employee ID is an error, not a warning", ()
     expect(result.errors[0]?.message).toBe("Missing employee ID");
   });
 
-  it("keeps a negative net as a warning, which is a different finding", () => {
-    // Pinned so promoting the duplicate check does not promote its neighbours:
-    // a negative net is step 4's business, and it still lets the upload through.
+  it("refuses a negative net, which step 4 promoted from a warning", () => {
+    // This was pinned the other way by step 2, which raised the duplicate check
+    // to an error and said a negative net was "step 4's business, and it still
+    // lets the upload through". Step 4 is check 4 of its own list — net ≥ 0 —
+    // so it is an error now. Nobody is paid a negative amount, and a register
+    // that says so is the thing to correct.
     const result = validateRows([row("E001", 5000, -100)], COLUMNS);
 
-    expect(result.valid).toBe(true);
+    expect(result.valid).toBe(false);
+    // The row number comes with it: the admin is looking at a spreadsheet.
+    expect(result.errors.map((e) => e.message)).toEqual(["E001 (row 2): net is -100.00."]);
+    // The old row-level warning is still raised beside it, unchanged.
     expect(result.warnings.map((w) => w.message)).toEqual(["Negative net salary value"]);
   });
 });

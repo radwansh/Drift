@@ -237,6 +237,37 @@ describe("computeSummary coverage and warnings", () => {
     expect(hasCode(s, "RECONCILIATION_GAP")).toBe(true);
   });
 
+  it("emits RECONCILIATION_GAP on an absolute gap the percentage trigger would miss (step 4)", () => {
+    // The defect step 4 names: the trigger was 2% of gross alone, so on a
+    // large payroll real money sat unexplained inside a green bridge. 0.01 on
+    // a 20,000,000 gross is 5e-10 of it — six orders of magnitude under the
+    // percentage, and still a cent that nobody can account for.
+    const jan = period({
+      periodStart: "2026-01-01",
+      periodEnd: "2026-01-31",
+      gross: 20_000_000,
+      net: 19_999_999.99,
+      components: [pos("Base Salary", 20_000_000)],
+    });
+    const s = summaryFor({ periods: [jan] });
+
+    expect(s.bridge.actual.balance).toBe(0.01);
+    expect(Math.abs(s.bridge.actual.balance) / 20_000_000).toBeLessThan(0.02);
+    expect(hasCode(s, "RECONCILIATION_GAP")).toBe(true);
+  });
+
+  it("keeps the floor at the currency's own minor unit, not a fixed cent", () => {
+    // A tenth of a fils is below KWD's unit, so it is residue rather than a
+     // gap; one fils is not. A fixed 0.01 floor would miss the fils entirely.
+    const fils = period({
+      periodStart: "2026-01-01",
+      periodEnd: "2026-01-31",
+      gross: 20_000_000,
+      net: 19_999_999.999,
+      components: [pos("Base Salary", 20_000_000)],
+    });
+    expect(hasCode(summaryFor({ periods: [fils], currency: "KWD" }), "RECONCILIATION_GAP")).toBe(true);
+  });
   it("does not emit RECONCILIATION_GAP when both balancing lines reconcile", () => {
     const jan = period({
       periodStart: "2026-01-01",

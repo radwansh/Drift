@@ -27,6 +27,7 @@ import {
 } from "@saas/payroll-core";
 import { generateAnnualInsights, DEFAULT_MODEL, isAiAvailable, type AnnualInsightPayload } from "@saas/ai";
 import { memberProcedure, editorProcedure, adminProcedure, router, type MemberContext } from "../trpc";
+import { parseRows } from "../parse-rows";
 import { buildAnnualWorkbook, annualWorkbookSheets } from "../export/annual-workbook";
 import { limitInsightGeneration } from "../rate-limit";
 
@@ -138,19 +139,9 @@ function toIsoTimestamp(v: string | Date): string {
   return parsed.toISOString();
 }
 
-function parseRows<T extends z.ZodTypeAny>(schema: T, rows: unknown[], label: string): z.infer<T>[] {
-  const parsed = schema.array().safeParse(rows);
-  if (!parsed.success) {
-    throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
-      message: `Unexpected ${label} row shape: ${parsed.error.issues
-        .slice(0, 3)
-        .map((i) => `${i.path.join(".")} ${i.message}`)
-        .join("; ")}`,
-    });
-  }
-  return parsed.data;
-}
+// `parseRows` moved to `server/parse-rows.ts`: step 4's check badge on the
+// periods list needs the same guarantee, and a second copy would be a second
+// thing to keep in step with the alias-and-parse rule.
 
 const numericComponentFilter = sql`(x.value #>> '{}') ~ '^-?[0-9]+(\\.[0-9]+)?$'`;
 

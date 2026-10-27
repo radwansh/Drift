@@ -50,6 +50,13 @@ interface ProcessInput {
   filename: string;
   uploadSessionId?: string;
   /**
+   * Step 4: what the admin says the register's own export totalled. Stored as
+   * given, so the period keeps the figure it was ticked against — Clarivo's own
+   * `totalGross` and `totalNet` can only ever agree with themselves.
+   */
+  controlTotalGross?: number | null;
+  controlTotalNet?: number | null;
+  /**
    * The client to write through. Defaults to the module client via
    * `requireDb()`; a caller inside tRPC passes `ctx.db` so the write is
    * testable against the PGlite harness without `DATABASE_URL` being set.
@@ -217,6 +224,14 @@ export async function processUpload(input: ProcessInput): Promise<ProcessResult>
     totalEmployees: snapshots.length,
     totalGross: String(totalGross),
     totalNet: String(totalNet),
+    controlTotalGross:
+      input.controlTotalGross === null || input.controlTotalGross === undefined
+        ? null
+        : String(input.controlTotalGross),
+    controlTotalNet:
+      input.controlTotalNet === null || input.controlTotalNet === undefined
+        ? null
+        : String(input.controlTotalNet),
     source: "upload",
   }).returning();
 

@@ -3,7 +3,16 @@ import { TRPCError } from "@trpc/server";
 import { eq, and, desc, like, sql } from "drizzle-orm";
 import { payrollPeriods, uploadSessions, users } from "@saas/db";
 import { ColumnRole } from "@saas/types";
-import { editorProcedure, protectedProcedure, router } from "../trpc";
+import {
+  classifyComponent,
+  isTotalColumn,
+  minorUnits,
+  roundToMinorUnits,
+  EARNING_CATEGORIES,
+  EMPLOYEE_DEDUCTION_CATEGORIES,
+} from "@saas/payroll-core";
+import { editorProcedure, protectedProcedure, router, type ProtectedContext } from "../trpc";
+import { parseRows } from "../parse-rows";
 import { validateRows } from "../upload/validate";
 import { processUpload } from "../upload/processor";
 
@@ -28,6 +37,13 @@ const IngestMapping = z.object({
 });
 
 const ISO_DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected a YYYY-MM-DD date");
+
+/** Step 4: one aggregate row behind the periods list's check badge. */
+const ComponentTotalRowSchema = z.object({
+  payrollPeriodId: z.string().uuid(),
+  componentKey: z.string(),
+  total: z.string(),
+});
 
 /**
  * Turns an ingest failure into something a person can act on.
@@ -84,7 +100,15 @@ export const payrollPeriodsRouter = router({
           .where(and(...filters)),
       ]);
 
-      return { data, total: Number(total[0].count), page: input.page, pageSize: input.pageSize };
+      return {
+        data,
+        total: Number(total[0].count),
+        page: input.page,
+        pageSize: input.pageSize,
+        // Step 4: the check status per period, so history is visible without
+        // re-uploading. Display only — the gate is the wizard.
+        checks: await periodChecks(ctx.db, data),
+      };
     }),
 
   getById: protectedProcedure
@@ -105,6 +129,50 @@ export const payrollPeriodsRouter = router({
   // path: it writes the rows and the aggregates before marking the period
   // ready, which is the ordering that makes a period never visible without
   // its totals.
+
+  /**
+   * Step 4: the Data check panel's contents, run server-side.
+   *
+   * The wizard's step 4 is headed "Validation Summary" and reported
+   * `errors: 0, warnings: 0` as literals — it counted rows and summed two
+   * columns and called that validation. This runs the same `validateRows` the
+   * gate runs, so what the admin reads before confirming is what will decide
+   * whether the import is allowed.
+   *
+   * Writes nothing, so it is deliberately not a `query`: tRPC puts a query's
+   * input in the URL, and a twenty-thousand-row sheet does not go in a URL.
+   */
+  checkData: editorProcedure
+    .input(z.object({
+      rows: z.array(z.record(z.string(), z.unknown())).min(1).max(20000),
+      mappings: z.array(IngestMapping).min(1),
+      currencyCode: z.string().length(3).default("USD"),
+      controlTotalGross: z.number().finite().nullish(),
+      controlTotalNet: z.number().finite().nullish(),
+    }))
+    .mutation(async ({ input }) => {
+      const validation = validateRows(input.rows, input.mappings, {
+        currencyCode: input.currencyCode,
+        controlTotals: {
+          gross: input.controlTotalGross,
+          net: input.controlTotalNet,
+        },
+      });
+
+      return {
+        valid: validation.valid,
+        totalRows: validation.totalRows,
+        employeeCount: validation.employeeCount,
+        totalGross: validation.totalGross,
+        totalNet: validation.totalNet,
+        detectedCurrency: validation.detectedCurrency,
+        errors: validation.errors,
+        warnings: validation.warnings,
+        reconciliation: validation.reconciliation,
+        controlTotals: validation.controlTotals,
+        controlTotalsMissing: validation.controlTotalsMissing,
+      };
+    }),
 
   /**
    * Ingests a parsed payroll file: validate, then write the period, the
@@ -130,6 +198,14 @@ export const payrollPeriodsRouter = router({
       currencyCode: z.string().length(3).default("USD"),
       filename: z.string().min(1).max(500),
       uploadSessionId: z.string().uuid().optional(),
+      /**
+       * Step 4: the totals printed on the export the admin uploaded, for the
+       * reconciliation to tick the computed figures against. Optional, because
+       * an upload that supplies none is still valid — the check reports "not
+       * supplied" rather than treating absence as agreement.
+       */
+      controlTotalGross: z.number().finite().nullish(),
+      controlTotalNet: z.number().finite().nullish(),
     }))
     .mutation(async ({ ctx, input }) => {
       if (input.periodEnd < input.periodStart) {
@@ -146,12 +222,21 @@ export const payrollPeriodsRouter = router({
       }
 
       // Re-validated server-side: the browser's own check is a convenience, not
-      // a guarantee, and these rows arrive from the client.
-      const validation = validateRows(input.rows, input.mappings);
+      // a guarantee, and these rows arrive from the client. Step 4's gate lives
+      // inside this call, so a register that does not reconcile never becomes a
+      // period — the throw is before `processUpload`, and nothing is written.
+      const validation = validateRows(input.rows, input.mappings, {
+        currencyCode: input.currencyCode,
+        controlTotals: {
+          gross: input.controlTotalGross,
+          net: input.controlTotalNet,
+        },
+      });
       if (!validation.valid) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: `${validation.errors.length} row(s) could not be imported. First problem: ${validation.errors[0]?.message ?? "unknown"}`,
+          message: `${validation.errors.length} problem(s) stopped the import. First: ${validation.errors[0]?.message ?? "unknown"}`,
+          cause: { errors: validation.errors },
         });
       }
 
@@ -167,9 +252,19 @@ export const payrollPeriodsRouter = router({
           currencyCode: validation.detectedCurrency ?? input.currencyCode,
           filename: input.filename,
           uploadSessionId: input.uploadSessionId,
+          controlTotalGross: input.controlTotalGross,
+          controlTotalNet: input.controlTotalNet,
         });
 
-        return { ...result, warnings: validation.warnings };
+        return {
+          ...result,
+          warnings: validation.warnings,
+          // Step 4: what the gate found, for the wizard's Data check panel.
+          // An import that got here reconciled, so this carries the figures
+          // rather than the breaches.
+          reconciliation: validation.reconciliation,
+          controlTotalsMissing: validation.controlTotalsMissing,
+        };
       } catch (cause) {
         console.error("payrollPeriods.ingest failed:", cause);
         throw new TRPCError({
@@ -237,3 +332,87 @@ export const payrollPeriodsRouter = router({
       return { uploadSessionId: session.id, fileKey };
     }),
 });
+
+/** Whether a period's two balancing lines are zero, per period id. */
+export interface PeriodCheck {
+  /** `null` when the period has no aggregates to judge from. */
+  balanced: boolean | null;
+  /** Gross minus the mapped earnings. Zero when the earnings add up. */
+  earningsBalance: number;
+  /** Gross minus net minus the mapped employee deductions. */
+  balance: number;
+}
+
+/**
+ * Step 4, the display half: the check status of periods already ingested.
+ *
+ * Every period written from now on had to reconcile to exist, but history
+ * predates the gate, so this recomputes the two balancing lines from
+ * `period_component_totals` — the same table and the same classifier the annual
+ * engine uses, so the periods list and the annual bridge cannot disagree.
+ *
+ * A period with no rows in that table gets `balanced: null`, not `true`. The
+ * annual queries fall back to aggregating `employee_snapshots` live for those,
+ * and duplicating that fallback here to render a badge would be a second query
+ * path to keep numerically identical for no gain — "not checked" is the honest
+ * answer and the one the panel already knows how to show.
+ */
+async function periodChecks(
+  db: ProtectedContext["db"],
+  periods: readonly { id: string; totalGross: string; totalNet: string; currencyCode: string }[],
+): Promise<Record<string, PeriodCheck>> {
+  const checks: Record<string, PeriodCheck> = {};
+  if (periods.length === 0) return checks;
+
+  const ids = periods.map((p) => p.id);
+  // Aliased and parsed, never cast: `component_key` read as `componentKey`
+  // would be undefined with nothing to catch it (finding C1).
+  const res = await db.execute(sql`
+    SELECT payroll_period_id AS "payrollPeriodId",
+           component_key     AS "componentKey",
+           sum(total)::text  AS "total"
+    FROM period_component_totals
+    WHERE payroll_period_id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
+    GROUP BY payroll_period_id, component_key
+  `);
+
+  const rows = parseRows(ComponentTotalRowSchema, res.rows, "period check");
+
+  const byPeriod = new Map<string, { earnings: number; deductions: number }>();
+  for (const row of rows) {
+    const sides = byPeriod.get(row.payrollPeriodId) ?? { earnings: 0, deductions: 0 };
+    const category = classifyComponent(row.componentKey);
+    if (isTotalColumn(row.componentKey)) {
+      // A total column mapped as a component is on neither side.
+    } else if ((EARNING_CATEGORIES as readonly string[]).includes(category)) {
+      sides.earnings += Number(row.total);
+    } else if (category === "uncategorised") {
+      // Unplaced money counts toward gross, as it does in the gate and in the
+      // annual engine's `other_earnings_balance`.
+      sides.earnings += Number(row.total);
+    } else if ((EMPLOYEE_DEDUCTION_CATEGORIES as readonly string[]).includes(category)) {
+      sides.deductions += Math.abs(Number(row.total));
+    }
+    byPeriod.set(row.payrollPeriodId, sides);
+  }
+
+  for (const period of periods) {
+    const sides = byPeriod.get(period.id);
+    const decimals = minorUnits(period.currencyCode);
+    if (!sides) {
+      checks[period.id] = { balanced: null, earningsBalance: 0, balance: 0 };
+      continue;
+    }
+    const gross = Number(period.totalGross);
+    const net = Number(period.totalNet);
+    const earningsBalance = roundToMinorUnits(gross - sides.earnings, decimals);
+    const balance = roundToMinorUnits(gross - net - sides.deductions, decimals);
+    checks[period.id] = {
+      balanced: earningsBalance === 0 && balance === 0,
+      earningsBalance,
+      balance,
+    };
+  }
+
+  return checks;
+}

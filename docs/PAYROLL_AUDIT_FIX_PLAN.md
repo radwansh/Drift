@@ -3,10 +3,10 @@
 Audit date: 2026-10-25, by the repo's own `payroll-manager` agent against `main` @ `e0666bb`.
 Plan written against `main` @ `6afd1d5`.
 
-> **Status: steps 0, 1, 2, 3, 5, 6, 7, 8a, 8a-ii, 8b, 9, 10 and 11 done.
-> Steps 4 and 11b outstanding; their product decisions are now made and
-> recorded. Step 12 is measured and respecified as 12a and 12b: the change it
-> asked for is an identity with the rule already in place.**
+> **Status: steps 0, 1, 2, 3, 4, 5, 6, 7, 8a, 8a-ii, 8b, 9, 10 and 11 done.
+> Step 11b outstanding; its product decision is now made and recorded. Step 12
+> is measured and respecified as 12a and 12b: the change it asked for is an
+> identity with the rule already in place.**
 >
 > Each step was checked against its own unfixed source — the new tests are
 > re-run with that step's files stashed, and only count as binding the
@@ -67,6 +67,56 @@ Plan written against `main` @ `6afd1d5`.
 >   rendered as `-KWD 0.000` — a minus sign on the reconciliation line. Fixed
 >   in `roundToMinorUnits` (`7cd5224`), which is the shared implementation, so
 >   the comparison side cannot render `-$0.00` either.
+> - **4** A reconciliation gate at upload. `payroll-core/src/reconcile.ts`
+>   states the two identities — mapped earnings sum to gross, gross minus the
+>   mapped deductions equals net — plus net ≤ gross and net ≥ 0, and
+>   `payrollPeriods.ingest` throws on a breach *before* `processUpload`, so a
+>   failing register never becomes a period rather than becoming one that is
+>   flagged. Which side a column is on comes from `classifyComponent`, not a
+>   second vocabulary, so step 3b's fix applies here too.
+>
+>   **Tolerance is the currency's own minor unit**, by rounding the difference
+>   to it and testing against zero: float residue of 1e-13 rounds away and one
+>   fils does not. `summary.ts`'s `RECONCILIATION_GAP` keeps its 2% trigger and
+>   gains that floor, tested on the **rounded** balance — the raw subtraction of
+>   two eight-digit figures carries residue of its own, so testing the raw value
+>   would let the bridge print a fils while the warning list stayed empty.
+>
+>   **Three verdicts, not two.** "Your register does not add up" blocks; "Clarivo
+>   does not know what this column is" is a warning, because `samples/2025`
+>   carries `Expense Reimbursement` deliberately and blocking on it would stop
+>   the first real upload; and an identity with nothing mapped on its side is
+>   **not checked**, because `gross − 0 = net` would demand net equal gross.
+>   The panel shows the third as neither a tick nor a cross, as it does an
+>   unsupplied control total.
+>
+>   The wizard's step 4 is the panel: it was headed "Validation Summary" and
+>   reported `errors: 0, warnings: 0` as literals, so it said "All clear" on a
+>   register that was 520.00 out. It now calls `payrollPeriods.checkData`, which
+>   runs the same `validateRows` the gate runs, and Confirm is disabled when the
+>   check fails. The control totals are asked on the mapping step, while the
+>   admin still has the export in front of them, and stored on the period.
+>   `/payroll-periods` carries a per-period badge recomputed from
+>   `period_component_totals`, for history that predates the gate — one extra
+>   round trip for a whole page, asserted.
+>
+>   **Acceptance, run against the files themselves:**
+>   `samples/payroll_july_2026.csv` fails on exactly E001, E005 and E017,
+>   totalling 520.00 — the earnings columns add up to 520.00 **more** than the
+>   Gross column claims, a direction the plan's "+520.00" did not state.
+>   `payroll_june_2026.csv` and all twelve `samples/2025` files pass. A real
+>   file with one net moved by 0.01 fails. 62 tests in `reconcile.test.ts` and
+>   `reconcile-samples.test.ts`, 13 end-to-end in
+>   `apps/web/test/reconciliation-gate.test.ts`.
+>
+>   **Three existing fixtures did not reconcile and were corrected, not
+>   exempted.** `provision-and-ingest.test.ts` computed its Income Tax as 6% of
+>   the *period* total rather than of the row, so each row was 400 out;
+>   `snapshot-dimensions.test.ts` claimed 600 of deductions it did not show.
+>   Both now balance. `upload-validate.test.ts`'s negative-net test was pinned
+>   by step 2 with the note that it was "step 4's business" — flipped, since
+>   net ≥ 0 is check 4 of this step's own list.
+>
 > - **5** The anomaly detector rebuilt around payroll exceptions (`0ba1474`).
 >   The old set produced 3,166 flags across samples/2025, none critical, 100%
 >   the zero-value rule, while a 40% base-salary rise fired nothing. Now 382

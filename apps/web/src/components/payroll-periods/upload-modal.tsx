@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useMemo } from "react";
-import { trpc } from "@/lib/trpc";
+import { trpc, type RouterOutputs } from "@/lib/trpc";
 import type { EmployeeRecord } from "@saas/payroll-core";
 import * as XLSX from "xlsx";
 import {
@@ -38,6 +38,8 @@ import {
   Brain,
   FileText,
   RefreshCw,
+  AlertCircle,
+  XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PeriodType } from "@saas/types";
@@ -55,6 +57,61 @@ interface ColumnMappingState {
   /** Step 9: what the column records when it is not a pay component. */
   snapshotField: SnapshotField | null;
   dimensionName: string | null;
+}
+
+/**
+ * Step 4: a control total the admin typed, or null when the box is empty.
+ *
+ * Empty is 'not supplied', which the check reports rather than treating as
+ * agreement. A box with something unparseable in it is also null rather than
+ * 0 — 0 would be a stated total that disagrees with every real register.
+ */
+/** A figure in the Data check panel, at the panel's own precision. */
+function formatPanelMoney(value: number): string {
+  return value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/**
+ * One line of the Data check panel.
+ *
+ * `muted` is for a check that was not run rather than one that passed — an
+ * unsupplied control total is neither a tick nor a cross, and showing it as a
+ * tick is exactly the claim this panel must not make.
+ */
+function CheckLine({
+  passed,
+  label,
+  detail,
+  muted = false,
+}: {
+  passed: boolean;
+  label: string;
+  detail?: string;
+  muted?: boolean;
+}) {
+  return (
+    <li className="flex items-center gap-2 px-3 py-2">
+      {muted ? (
+        <AlertCircle className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+      ) : passed ? (
+        <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" aria-hidden />
+      ) : (
+        <XCircle className="h-4 w-4 shrink-0 text-destructive" aria-hidden />
+      )}
+      <span className="flex-1 text-xs">{label}</span>
+      {detail && (
+        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{detail}</span>
+      )}
+      <span className="sr-only">{muted ? "not checked" : passed ? "passed" : "failed"}</span>
+    </li>
+  );
+}
+
+function parseControlTotal(text: string): number | null {
+  const trimmed = text.trim().replace(/[,s]/g, "");
+  if (trimmed === "") return null;
+  const value = Number(trimmed);
+  return Number.isFinite(value) ? value : null;
 }
 
 /** Step 9: a column recorded as a date, an FTE or a dimension is not pay. */
@@ -221,6 +278,7 @@ function parseEmployeesFromData(
 export function UploadModal({ open, onOpenChange }: UploadModalProps) {
   const utils = trpc.useUtils();
   const ingest = trpc.payrollPeriods.ingest.useMutation();
+  const checkData = trpc.payrollPeriods.checkData.useMutation();
   const [importError, setImportError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<{
     employeeCount: number;
@@ -241,14 +299,19 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
   const [mappings, setMappings] = useState<ColumnMappingState[]>([]);
   const [validating, setValidating] = useState(false);
   const [processing, setProcessing] = useState(false);
-  const [validationResult, setValidationResult] = useState<{
-    totalRows: number;
-    employeeCount: number;
-    totalGross: number;
-    totalNet: number;
-    errors: number;
-    warnings: number;
-  } | null>(null);
+  /**
+   * Step 4: the real check, from `payrollPeriods.checkData`.
+   *
+   * This used to be four counts with `errors: 0, warnings: 0` as literals, so
+   * the panel headed "Validation Summary" reported "All clear" on a register
+   * that was 520.00 out.
+   */
+  const [validationResult, setValidationResult] = useState<
+    RouterOutputs["payrollPeriods"]["checkData"] | null
+  >(null);
+  /** What the admin says the register's own export totalled. */
+  const [controlGross, setControlGross] = useState("");
+  const [controlNet, setControlNet] = useState("");
   const [dropActive, setDropActive] = useState(false);
   const [saved, setSaved] = useState(false);
   const [createComponentColumn, setCreateComponentColumn] = useState<string | null>(null);
@@ -324,6 +387,8 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
           setFileData(data);
           setMappings(simulateAiSuggestions(headers));
           setValidationResult(null);
+    setControlGross("");
+    setControlNet("");
           setStep(2);
         }
       };
@@ -374,18 +439,28 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
     }
 
     if (step === 3) {
+      // Step 4: the real check, on the server. The browser has the rows, but
+      // the gate is server-side and the panel has to show what the gate will
+      // decide — anything computed here could disagree with it.
       setValidating(true);
-      const tempEmployees = fileData ? parseEmployeesFromData(fileData, mappings) : [];
-      setValidationResult({
-        totalRows: fileData ? fileData.length - 1 : 0,
-        employeeCount: tempEmployees.length,
-        totalGross: tempEmployees.reduce((s, e) => s + e.grossSalary, 0),
-        totalNet: tempEmployees.reduce((s, e) => s + e.netSalary, 0),
-        errors: 0,
-        warnings: 0,
-      });
-      setValidating(false);
-      setStep(4);
+      setImportError(null);
+      try {
+        const result = await checkData.mutateAsync({
+          rows: fileData ? rowsFromData(fileData) : [],
+          mappings,
+          currencyCode: "USD",
+          controlTotalGross: parseControlTotal(controlGross),
+          controlTotalNet: parseControlTotal(controlNet),
+        });
+        setValidationResult(result);
+        setStep(4);
+      } catch (error) {
+        setImportError(
+          error instanceof Error ? error.message : "The data check could not be run.",
+        );
+      } finally {
+        setValidating(false);
+      }
       return;
     }
 
@@ -420,6 +495,8 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
         periodEnd: effectiveTo,
         currencyCode: "USD",
         filename: fileName ?? "unknown",
+        controlTotalGross: parseControlTotal(controlGross),
+        controlTotalNet: parseControlTotal(controlNet),
       });
 
       setImportResult({
@@ -491,6 +568,8 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
     setValidating(false);
     setProcessing(false);
     setValidationResult(null);
+    setControlGross("");
+    setControlNet("");
     setSaved(false);
     setImportError(null);
     setImportResult(null);
@@ -534,7 +613,7 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
             {step === 1 && "Upload Payroll File"}
             {step === 2 && "Period Details"}
             {step === 3 && "Column Mapping"}
-            {step === 4 && "Validation Summary"}
+            {step === 4 && "Data Check"}
             {step === 5 && "Processing"}
           </DialogTitle>
           <DialogDescription>
@@ -715,6 +794,54 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
                 />
               ))}
             </div>
+
+            {/*
+              Step 4's control total, asked here because this is the last step
+              before the check: the admin still has the export they uploaded in
+              front of them. Optional, and the next panel says "not supplied"
+              rather than ticking it, because Clarivo's own totals can only ever
+              agree with themselves.
+            */}
+            <div className="rounded-lg border bg-card p-3">
+              <p className="text-xs font-medium">
+                Control totals from your payroll export{" "}
+                <span className="font-normal text-muted-foreground">(optional)</span>
+              </p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                The figures printed on the report you exported. Clarivo ticks what it adds up from
+                the rows against them, and refuses the import if they disagree.
+              </p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label htmlFor="control-gross" className="text-[11px] text-muted-foreground">
+                    Total gross
+                  </label>
+                  <input
+                    id="control-gross"
+                    type="text"
+                    inputMode="decimal"
+                    value={controlGross}
+                    onChange={(e) => setControlGross(e.target.value)}
+                    placeholder="Leave blank to skip"
+                    className="h-9 w-full rounded-md border bg-background px-2 text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-primary/30"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label htmlFor="control-net" className="text-[11px] text-muted-foreground">
+                    Total net
+                  </label>
+                  <input
+                    id="control-net"
+                    type="text"
+                    inputMode="decimal"
+                    value={controlNet}
+                    onChange={(e) => setControlNet(e.target.value)}
+                    placeholder="Leave blank to skip"
+                    className="h-9 w-full rounded-md border bg-background px-2 text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-primary/30"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -745,35 +872,134 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
                   </div>
                 </div>
 
-                {validationResult.errors > 0 && (
+                {/*
+                  Step 4: the two identities that define a correct register.
+                  Shown as a check each, with the figures, because "520.00 of
+                  earnings is not in your Gross column" is actionable and
+                  "1 error" is not.
+                */}
+                {validationResult.reconciliation && (
+                  <div className="rounded-lg border bg-card">
+                    <p className="border-b px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Data check
+                    </p>
+                    <ul className="divide-y">
+                      <CheckLine
+                        passed={!validationResult.errors.some((e) => e.message.includes("Gross says"))}
+                        label="Earnings add up to gross"
+                        // Not a tick when nothing is mapped on that side: there
+                        // is no statement to verify, and showing a tick would
+                        // claim one.
+                        muted={!validationResult.reconciliation.coverage.earnings}
+                        detail={
+                          validationResult.reconciliation.coverage.earnings
+                            ? `${formatPanelMoney(validationResult.reconciliation.totals.earnings + validationResult.reconciliation.totals.unplaced)} against ${formatPanelMoney(validationResult.reconciliation.totals.gross)}`
+                            : "No earnings columns mapped"
+                        }
+                      />
+                      <CheckLine
+                        passed={!validationResult.errors.some((e) => e.message.includes("Net says"))}
+                        label="Gross minus deductions equals net"
+                        muted={!validationResult.reconciliation.coverage.deductions}
+                        detail={
+                          validationResult.reconciliation.coverage.deductions
+                            ? `${formatPanelMoney(validationResult.reconciliation.totals.gross - validationResult.reconciliation.totals.deductions)} against ${formatPanelMoney(validationResult.reconciliation.totals.net)}`
+                            : "No deduction columns mapped"
+                        }
+                      />
+                      <CheckLine
+                        passed={!validationResult.errors.some((e) => e.message.includes("is above gross"))}
+                        label="No net above its gross"
+                      />
+                      <CheckLine
+                        passed={!validationResult.errors.some((e) => e.message.includes("net is"))}
+                        label="No negative net"
+                      />
+                      <CheckLine
+                        passed={!validationResult.errors.some((e) => e.message.includes("Duplicate employee ID"))}
+                        label="No employee ID used twice"
+                      />
+                      <CheckLine
+                        passed={validationResult.controlTotals.length === 0}
+                        label="Control totals"
+                        detail={
+                          validationResult.controlTotalsMissing.length === 2
+                            ? "Not supplied"
+                            : validationResult.controlTotalsMissing.length === 1
+                              ? `${validationResult.controlTotalsMissing[0]} not supplied`
+                              : "Both lines agree"
+                        }
+                        muted={validationResult.controlTotalsMissing.length > 0}
+                      />
+                    </ul>
+                  </div>
+                )}
+
+                {validationResult.errors.length > 0 && (
                   <Alert variant="destructive">
                     <AlertTriangle className="h-4 w-4" />
-                    <AlertTitle>{validationResult.errors} Error(s)</AlertTitle>
+                    <AlertTitle>
+                      {validationResult.errors.length === 1
+                        ? "1 problem stops this import"
+                        : `${validationResult.errors.length} problems stop this import`}
+                    </AlertTitle>
                     <AlertDescription>
-                      Some rows have validation errors and will be skipped.
+                      <p className="mb-2">
+                        Nothing is saved until the register is corrected and re-uploaded.
+                      </p>
+                      <ul className="space-y-1">
+                        {validationResult.errors.slice(0, 8).map((e, i) => (
+                          <li key={i} className="text-[11px] leading-snug">
+                            {e.message}
+                          </li>
+                        ))}
+                      </ul>
+                      {validationResult.errors.length > 8 && (
+                        <p className="mt-2 text-[11px] opacity-80">
+                          and {validationResult.errors.length - 8} more.
+                        </p>
+                      )}
                     </AlertDescription>
                   </Alert>
                 )}
 
-                {validationResult.warnings > 0 && (
+                {validationResult.warnings.length > 0 && (
                   <Alert variant="warning">
                     <AlertTriangle className="h-4 w-4" />
-                    <AlertTitle>{validationResult.warnings} Warning(s)</AlertTitle>
+                    <AlertTitle>
+                      {validationResult.warnings.length === 1
+                        ? "1 thing worth a look"
+                        : `${validationResult.warnings.length} things worth a look`}
+                    </AlertTitle>
                     <AlertDescription>
-                      Review flagged items before confirming.
+                      <p className="mb-2">These do not stop the import.</p>
+                      <ul className="space-y-1">
+                        {validationResult.warnings.slice(0, 6).map((w, i) => (
+                          <li key={i} className="text-[11px] leading-snug">
+                            {w.message}
+                          </li>
+                        ))}
+                      </ul>
+                      {validationResult.warnings.length > 6 && (
+                        <p className="mt-2 text-[11px] opacity-80">
+                          and {validationResult.warnings.length - 6} more.
+                        </p>
+                      )}
                     </AlertDescription>
                   </Alert>
                 )}
 
-                {validationResult.errors === 0 && validationResult.warnings === 0 && (
-                  <Alert variant="info">
-                    <CheckCircle2 className="h-4 w-4" />
-                    <AlertTitle>All clear</AlertTitle>
-                    <AlertDescription>
-                      No validation issues found. Ready to import.
-                    </AlertDescription>
-                  </Alert>
-                )}
+                {validationResult.errors.length === 0 &&
+                  validationResult.warnings.length === 0 && (
+                    <Alert variant="info">
+                      <CheckCircle2 className="h-4 w-4" />
+                      <AlertTitle>The register reconciles</AlertTitle>
+                      <AlertDescription>
+                        Both totals tie out to the {validationResult.detectedCurrency ?? "currency"}&rsquo;s
+                        smallest unit. Ready to import.
+                      </AlertDescription>
+                    </Alert>
+                  )}
               </>
             )}
           </div>
@@ -920,6 +1146,7 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
                     periodType === "monthly" ? (!selectedMonth || !selectedYear) : (!dateFrom || !dateTo)
                   )) ||
                   (step === 3 && !mappings.some((m) => m.isEmployeeId || m.isEmployeeName)) ||
+                  (step === 4 && validationResult !== null && !validationResult.valid) ||
                   validating ||
                   processing
                 }

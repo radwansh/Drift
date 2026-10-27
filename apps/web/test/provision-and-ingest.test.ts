@@ -39,29 +39,35 @@ function comparisonsCaller(clerkUserId: string) {
   return comparisonsRouter.createCaller({ userId: clerkUserId, db: ctx.db } as never);
 }
 
-/** A two-employee monthly sheet in the shape the client sends. */
+/**
+ * A two-employee monthly sheet in the shape the client sends. `gross` is the
+ * period total, split evenly between the two.
+ *
+ * The rows reconcile, which step 4 now requires of any register: each one's
+ * Basic Salary is its whole gross, and its Income Tax is the 20% that takes
+ * that gross to its Net. The tax used to be 6% of the *period* total rather
+ * than of the row — so gross minus the deductions came to 4,400 against a Net
+ * of 4,000, and the sheet was 400 out per row. Nothing asserted the tax figure,
+ * and the gate refuses the sheet as written, so it is corrected here rather
+ * than exempted.
+ */
 function sheet(gross: number) {
+  const rowGross = gross / 2;
+  const rowNet = rowGross * 0.8;
+  const rowTax = -(rowGross - rowNet);
+
+  const employee = (id: string, name: string) => ({
+    "Employee ID": id,
+    "Employee Name": name,
+    Department: "Engineering",
+    "Basic Salary": String(rowGross),
+    "Income Tax": String(rowTax),
+    "Gross Salary": String(rowGross),
+    "Net Salary": String(rowNet),
+  });
+
   return {
-    rows: [
-      {
-        "Employee ID": "E1",
-        "Employee Name": "Ada",
-        Department: "Engineering",
-        "Basic Salary": String(gross / 2),
-        "Income Tax": String(-(gross * 0.06)),
-        "Gross Salary": String(gross / 2),
-        "Net Salary": String((gross / 2) * 0.8),
-      },
-      {
-        "Employee ID": "E2",
-        "Employee Name": "Grace",
-        Department: "Engineering",
-        "Basic Salary": String(gross / 2),
-        "Income Tax": String(-(gross * 0.06)),
-        "Gross Salary": String(gross / 2),
-        "Net Salary": String((gross / 2) * 0.8),
-      },
-    ],
+    rows: [employee("E1", "Ada"), employee("E2", "Grace")],
     mappings: [
       { sourceColumn: "Employee ID", mappedComponent: "", isEmployeeId: true, isEmployeeName: false, isDepartment: false, isGrossSalary: false, isNetSalary: false },
       { sourceColumn: "Employee Name", mappedComponent: "", isEmployeeId: false, isEmployeeName: true, isDepartment: false, isGrossSalary: false, isNetSalary: false },
@@ -397,10 +403,13 @@ describe("step 3: an upload reaches the database", () => {
     // The headline is net, read off the Net Salary column: 4,000 -> 4,800 per
     // employee, so +1,600 across the two.
     //
-    // This assertion used to read 1,760, which is the sum of the mapped
-    // components (Basic Salary + the negative Income Tax: 4,400 -> 5,280). That
-    // is neither net (1,600) nor gross (2,000) — this fixture is a compact
-    // demonstration of the bug, and the test asserted it as intended behaviour.
+    // This assertion used to read the sum of the mapped components (Basic
+    // Salary plus the negative Income Tax), which on this fixture is 8,000 ->
+    // 9,600 — the same as net here only because the fixture now reconciles.
+    // Before step 4 corrected its arithmetic the component sum was 1,760,
+    // which was neither net (1,600) nor gross (2,000): the fixture was a
+    // compact demonstration of the bug, and the test asserted it as intended
+    // behaviour.
     expect(result.summary.totalPayrollVariance.absolute).toBeCloseTo(1_600, 2);
     expect(result.summary.totalNet.absolute).toBeCloseTo(1_600, 2);
     expect(result.summary.totalNet.previous).toBeCloseTo(8_000, 2);

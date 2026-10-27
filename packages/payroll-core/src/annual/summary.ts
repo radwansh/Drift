@@ -20,7 +20,7 @@ import { splitCoverage } from "./slots";
 import * as warn from "./warnings";
 import type { AnnualWarning } from "./warnings";
 import { average, pct, roundMoney } from "./math";
-import { minorUnits } from "../money";
+import { minorUnits, smallestUnit } from "../money";
 
 export interface DepartmentTotalsInput {
   department: string;
@@ -275,13 +275,36 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
   const actualEarningsBalance = ytdGross - actualEarnings;
 
   // RECONCILIATION_GAP now covers both balancing lines (step 19).
+  //
+  // Step 4 adds the absolute floor beside the percentage. The percentage alone
+  // let 403,335.64 sit unexplained inside a green bridge on a 20M payroll:
+  // 2% of gross is money, not noise. The floor is the currency's own minor
+  // unit, so anything that survives `roundMoney` is reported and float residue
+  // is not — at three decimals a KWD fils counts and a tenth of one does not.
+  //
+  // The percentage trigger stays, because it is what the *severity* of a gap is
+  // judged on and the plan asks for both.
   if (actual.length > 0 && ytdGross > 0) {
-    if (Math.abs(actualBalance) / ytdGross > 0.02) {
+    const floor = smallestUnit(decimals);
+    /**
+     * Tested on the **rounded** balance, which is the figure `round()` puts in
+     * the bridge a few lines down. The raw subtraction of two eight-digit
+     * figures carries residue of its own — 20,000,000 − 19,999,999.999 is
+     * 0.000999998 as doubles — so testing the raw value would let the bridge
+     * print a fils while the warning list stayed empty. Rounding first makes
+     * the two agree by construction.
+     */
+    const gapped = (amount: number) => {
+      const rounded = Math.abs(round(amount));
+      return rounded >= floor || rounded / ytdGross > 0.02;
+    };
+
+    if (gapped(actualBalance)) {
       warnings.push(
         warn.reconciliationGap("unreconciled_deductions", actualBalance, pct(Math.abs(actualBalance), ytdGross)),
       );
     }
-    if (Math.abs(actualEarningsBalance) / ytdGross > 0.02) {
+    if (gapped(actualEarningsBalance)) {
       warnings.push(
         warn.reconciliationGap("other_earnings_balance", actualEarningsBalance, pct(Math.abs(actualEarningsBalance), ytdGross)),
       );

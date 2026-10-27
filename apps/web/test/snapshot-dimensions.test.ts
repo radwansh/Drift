@@ -88,6 +88,7 @@ function register(rows: Record<string, unknown>[]) {
     mappings: [
       ...identityMappings(),
       { ...COMPONENT_BASE, sourceColumn: "Basic Salary", mappedComponent: "Basic Salary" },
+      { ...COMPONENT_BASE, sourceColumn: "Income Tax", mappedComponent: "Income Tax" },
       { ...COMPONENT_BASE, sourceColumn: "Hire Date", snapshotField: "hire_date" as const },
       { ...COMPONENT_BASE, sourceColumn: "Leaving Date", snapshotField: "termination_date" as const },
       { ...COMPONENT_BASE, sourceColumn: "FTE", snapshotField: "fte" as const },
@@ -102,12 +103,20 @@ function register(rows: Record<string, unknown>[]) {
   };
 }
 
+/**
+ * A row that reconciles, which step 4's gate now requires: Basic Salary is the
+ * whole gross, and Income Tax is the 600 that takes it to the net. Without the
+ * tax column the register claimed 600 of deductions it did not show, and the
+ * gate refuses that — correctly, so the fixture is corrected rather than
+ * exempted.
+ */
 function employee(id: string, extra: Record<string, unknown>) {
   return {
     "Employee ID": id,
     "Employee Name": `Person ${id}`,
     Department: "Engineering",
     "Basic Salary": "3000",
+    "Income Tax": "600",
     "Gross Salary": "3000",
     "Net Salary": "2400",
     ...extra,
@@ -159,7 +168,7 @@ describe("an upload writes the step 9 columns", () => {
     // component. Before step 9 part 2 every one of these columns did, and a
     // date string was then summed as money.
     for (const row of rows) {
-      expect(Object.keys(row.components)).toEqual(["Basic Salary"]);
+      expect(Object.keys(row.components).sort()).toEqual(["Basic Salary", "Income Tax"]);
     }
   });
 
@@ -262,6 +271,7 @@ describe("an upload writes the step 9 columns", () => {
           "Employee Name": "Ada",
           Department: "Engineering",
           "Basic Salary": "3000",
+          "Income Tax": "600",
           "Gross Salary": "3000",
           "Net Salary": "2400",
         },
@@ -269,6 +279,7 @@ describe("an upload writes the step 9 columns", () => {
       mappings: [
         ...identityMappings(),
         { ...COMPONENT_BASE, sourceColumn: "Basic Salary", mappedComponent: "Basic Salary" },
+        { ...COMPONENT_BASE, sourceColumn: "Income Tax", mappedComponent: "Income Tax" },
       ],
       periodType: "monthly",
       periodStart: "2026-06-01",
@@ -283,7 +294,7 @@ describe("an upload writes the step 9 columns", () => {
     expect(rows[0]!.terminationDate).toBeNull();
     expect(rows[0]!.fte).toBeNull();
     expect(rows[0]!.dimensions).toEqual({});
-    expect(Object.keys(rows[0]!.components)).toEqual(["Basic Salary"]);
+    expect(Object.keys(rows[0]!.components).sort()).toEqual(["Basic Salary", "Income Tax"]);
     expect(result.columnIssues).toEqual([]);
   });
 
