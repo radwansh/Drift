@@ -22,8 +22,11 @@ export const periodComponentTotals = pgTable(
       .references(() => payrollPeriods.id, { onDelete: "cascade" }),
     department: varchar("department", { length: 200 }).notNull(),
     componentKey: varchar("component_key", { length: 200 }).notNull(),
-    /** Wide enough for an LBP-scale company total, like annual_budgets.amount. */
-    total: numeric("total", { precision: 20, scale: 2 }).notNull(),
+    /**
+     * Wide enough for an LBP-scale company total, and scale 3 so a KWD fils
+     * survives storage — see the note on `employee_snapshots.gross_salary`.
+     */
+    total: numeric("total", { precision: 20, scale: 3 }).notNull(),
     /** Row counts per sign, so MIXED_SIGN can still be detected (finding C1). */
     negRows: integer("neg_rows").notNull().default(0),
     posRows: integer("pos_rows").notNull().default(0),

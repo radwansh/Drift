@@ -10,7 +10,7 @@ export const annualBudgets = pgTable(
     currency: varchar("currency", { length: 3 }).notNull(),
     // numeric(14,2) topped out near 1e12, so a 1,000-person LBP payroll (~1.2e12
     // a year) failed with "numeric field overflow" (finding B4).
-    amount: numeric("amount", { precision: 20, scale: 2 }).notNull(),
+    amount: numeric("amount", { precision: 20, scale: 3 }).notNull(),
     // What the budget is measured against: gross, total employment cost, or net.
     basis: varchar("basis", { length: 20 }).default("gross").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -26,7 +26,7 @@ export const annualBudgetPhasing = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     budgetId: uuid("budget_id").notNull().references(() => annualBudgets.id, { onDelete: "cascade" }),
     month: integer("month").notNull(),
-    amount: numeric("amount", { precision: 20, scale: 2 }).notNull(),
+    amount: numeric("amount", { precision: 20, scale: 3 }).notNull(),
   },
   (t) => [unique().on(t.budgetId, t.month)],
 );

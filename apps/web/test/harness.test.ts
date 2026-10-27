@@ -168,3 +168,42 @@ describe("annual indexes (step 27)", () => {
     expect(text).toContain("employee_snapshots_period_employee_idx");
   });
 });
+
+/**
+ * Step 9: the journal and the folder must agree.
+ *
+ * `applyMigrations` above globs the migrations folder, but `pnpm db:migrate` is
+ * `drizzle-kit migrate`, which reads `meta/_journal.json` and runs only what is
+ * listed there. So a migration file with no journal entry passes every test in
+ * this file and then never runs on production — and one listed with no file
+ * makes drizzle-kit fail outright. Neither is detectable from the globbing side,
+ * which is why this asserts the two sides match.
+ */
+describe("migration journal (step 9)", () => {
+  interface JournalEntry {
+    idx: number;
+    tag: string;
+  }
+
+  it("lists every migration file, in order, and nothing else", async () => {
+    const { readdir, readFile } = await import("node:fs/promises");
+    const { default: path } = await import("node:path");
+
+    const dir = path.resolve(import.meta.dirname, "../../../packages/db/src/migrations");
+    const files = (await readdir(dir))
+      .filter((f) => f.endsWith(".sql"))
+      .map((f) => f.replace(/\.sql$/, ""))
+      .sort();
+
+    const journal = JSON.parse(
+      await readFile(path.join(dir, "meta", "_journal.json"), "utf8"),
+    ) as { entries: JournalEntry[] };
+
+    expect(journal.entries.map((e) => e.tag)).toEqual(files);
+    // `idx` is what drizzle-kit orders by, so it has to match the file's own
+    // numeric prefix rather than merely being unique.
+    expect(journal.entries.map((e) => e.idx)).toEqual(
+      files.map((f) => Number(f.slice(0, 4))),
+    );
+  });
+});
