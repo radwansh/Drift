@@ -4,7 +4,8 @@ Audit date: 2026-10-25, by the repo's own `payroll-manager` agent against `main`
 Plan written against `main` @ `6afd1d5`.
 
 > **Status: steps 0, 1, 2, 3, 5, 6, 7, 8a, 8a-ii, 8b, 10 and 11 done. Steps 4
-> and 9 outstanding, both needing a product decision. Step 12 is measured and
+> 9 and 11b outstanding; their product decisions are now made and recorded.
+> Step 12 is measured and
 > respecified as 12a and 12b: the change it asked for is an identity with the
 > rule already in place.**
 >
@@ -271,8 +272,19 @@ warnings, and nothing compares net to gross. The repository's own
 three rows, and Clarivo ingests it, builds a dashboard on it and writes an AI
 narrative about it without a word.
 
-**Change:** a `Data check` panel on `/payroll-periods` that must pass before a
-period becomes `ready`. Per row:
+**Placement, decided.** Not a new screen: `upload-modal.tsx` is already a
+three-step wizard — file, mapping, confirm — and step 3 already holds
+`validating` and `validationResult` state. The Data check panel **is** step 3,
+filled in. The checks extend the validation that already runs there, and the
+period cannot be written until they pass, which is what "before a period
+becomes `ready`" requires: a failing register never becomes a period at all,
+rather than becoming one that is flagged afterwards.
+
+For periods already ingested, the row on `/payroll-periods` carries the check
+status, so history is visible without re-uploading. That is display only — the
+gate is the wizard.
+
+**Change:** per row, in that panel:
 
 1. mapped earnings sum to the `Gross` column
 2. gross minus mapped deductions equals the `Net` column
@@ -442,10 +454,30 @@ because they share one migration.
 - **`fte`** — cost per employee counts a half-timer as one head, so unit cost is
   not comparable.
 - **Dimensions beyond department** — cost centre, location, grade, job title,
-  contract type. `department` is a single column today. A dimensions JSON plus a
-  dimension picker generalises the existing department views; the aggregate table
-  already keys on department, so the shape carries.
+  contract type. `department` is a single column today.
 - **A period control total** — see step 4.
+
+**Shape, decided: typed columns for the three universal fields, `jsonb` for the
+open-ended ones.**
+
+`hire_date`, `termination_date` and `fte` become real columns on
+`employee_snapshots`. They are universal, they are what rules filter and compare
+on (step 5's leaver and joiner checks, step 12a's roster warning, cost per FTE),
+and a date inside `jsonb` is a string that has to be parsed at every use — which
+is the class of bug finding C1 already was.
+
+Everything else goes in one `dimensions jsonb` column, mirroring `components
+jsonb` on the same table. Companies do not agree on what dimensions they have,
+so a typed column per dimension would be a migration per customer. The
+aggregate table already keys on `department`, so generalising that key to a
+dimension name carries the existing department views rather than rewriting
+them.
+
+`department` itself stays where it is rather than moving into the JSON: it is
+referenced across the engine, the UI and `periodComponentTotals`, and moving it
+would be a wide rename for no gain. The dimension picker treats it as one
+dimension among several, reading the column for that one and the JSON for the
+rest.
 
 **Data:** new. One migration, written to the repo's idempotency rule.
 
@@ -615,6 +647,39 @@ guessing and pose the question:
 
 **Data:** existing. No schema change — the override table, the summary option
 and the UI are all already there.
+
+### Step 11b — ask at upload, not on the annual dashboard
+
+**Radwan's decision, and it is a change rather than a confirmation.** Step 11
+put the question where the engine computes: `AMBIGUOUS_COMPONENT` is raised by
+`computeSummary` and surfaces on the annual dashboard, routing to the category
+manager. The upload path never classifies at all — `grep` for
+`classifyComponent` across `server/upload/` and the periods router returns
+nothing.
+
+So today a `Maladie` column is ingested first and queried about later, which is
+the wrong order: the ambiguity is already in the data by the time anyone sees
+the question, every annual view carries the gap in its balancing lines until
+somebody answers, and the person who knows the answer — the admin who just
+exported the register — has moved on.
+
+**Ask in step 2 of the upload wizard**, the mapping step. `mapping-row.tsx`
+already renders a `Select` per column, so an ambiguous column is flagged there
+with its candidates and the admin chooses before the file is committed. The
+answer persists in `company_column_mappings`, which already exists and is
+already keyed per company, so it is asked once.
+
+This lands beside step 4, deliberately: step 2 of the wizard resolves what the
+columns *mean*, step 3 checks that the numbers *tie*, and only then does a
+period exist. Both decisions put the work at the moment the register is
+uploaded rather than the moment a dashboard is read.
+
+The annual-side warning stays as a backstop, for registers ingested before this
+and for a company whose answer was never saved. It should not be the only place
+the question appears.
+
+**Data:** existing. `company_column_mappings` and `component_categories` both
+already hold a per-company answer.
 
 ---
 
