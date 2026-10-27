@@ -2,8 +2,12 @@ import {
   reconcileRegister,
   checkControlTotals,
   describeBreach,
+  openQuestionsFor,
   minorUnits,
   isSnapshotField,
+  CATEGORY_LABELS,
+  type Category,
+  type OpenQuestion,
   type ReconcileRow,
   type ReconciliationReport,
   type ControlTotals,
@@ -49,6 +53,12 @@ interface ValidationResult {
   controlTotals: ControlTotalCheck[];
   /** Which control lines the admin left blank. Absence is not agreement. */
   controlTotalsMissing: ("gross" | "net")[];
+  /**
+   * Step 11b: columns the classifier cannot place and nobody has answered. Each
+   * is also an error, so the import is blocked until one is chosen — the
+   * question has to be answered *before* the data carries the ambiguity.
+   */
+  openQuestions: OpenQuestion[];
 }
 
 export interface ValidateOptions {
@@ -56,6 +66,16 @@ export interface ValidateOptions {
   currencyCode?: string | null;
   /** What the admin says the register's own export totalled. */
   controlTotals?: ControlTotals;
+  /**
+   * Step 11b: categories already decided for this company, from
+   * `component_categories` plus whatever the admin just chose in the wizard. A
+   * decided column is not asked about again.
+   *
+   * Passed in rather than read here, because this function is pure and sync and
+   * the saved answers live in Postgres. The router that has `ctx.db` merges the
+   * two before calling.
+   */
+  answeredCategories?: Readonly<Record<string, Category>>;
 }
 
 export function validateRows(
@@ -200,6 +220,10 @@ export function validateRows(
           rows: reconcileRows(rows, mappings, grossMapping, netMapping),
           decimals,
           rowNumbers: employeeIdRows,
+          // Step 11b: an answered column sits on the side the admin said, here
+          // as on the dashboard. Without this the gate would keep reading a
+          // just-answered column as unplaced.
+          answeredCategories: options.answeredCategories,
         })
       : null;
 
@@ -256,6 +280,34 @@ export function validateRows(
     });
   }
 
+  /**
+   * Step 11b: the question goes here, not on the annual dashboard.
+   *
+   * It was raised by `computeSummary` and surfaced after the fact, which is the
+   * wrong order — the ambiguity was already in the data, every annual view
+   * carried the gap in its balancing lines until somebody answered, and the
+   * person who knew the answer had moved on. An **error**, so the column is
+   * decided before the register is committed rather than after.
+   *
+   * Only the money columns are asked about: a date or a dimension is not a
+   * component and never reaches the classifier.
+   */
+  const openQuestions = openQuestionsFor(
+    componentKeysOf(mappings),
+    options.answeredCategories ?? {},
+  );
+
+  for (const question of openQuestions) {
+    errors.push({
+      column: question.componentKey,
+      message:
+        `${question.componentKey} ${question.question} ` +
+        `Choose ${question.candidates.map((c) => CATEGORY_LABELS[c]).join(" or ")} ` +
+        `for this column before importing.`,
+      severity: "error",
+    });
+  }
+
   return {
     valid: errors.length === 0,
     totalRows: rows.length,
@@ -268,7 +320,32 @@ export function validateRows(
     reconciliation,
     controlTotals,
     controlTotalsMissing,
+    openQuestions,
   };
+}
+
+/**
+ * The component keys a mapping set actually writes.
+ *
+ * Step 9's record roles are excluded for the same reason they are excluded from
+ * `components`: a hire date is not a pay component and has no category to
+ * choose. So is an ignored column — the admin has said it is not pay.
+ */
+export function componentKeysOf(mappings: readonly Mapping[]): string[] {
+  return mappings
+    .filter(
+      (m) =>
+        !m.isEmployeeId &&
+        !m.isEmployeeName &&
+        !m.isDepartment &&
+        !m.isGrossSalary &&
+        !m.isNetSalary &&
+        !isSnapshotField(m.snapshotField) &&
+        !(m.dimensionName && m.dimensionName.trim().length > 0) &&
+        m.mappedComponent !== "" &&
+        m.mappedComponent !== "ignore",
+    )
+    .map((m) => m.mappedComponent);
 }
 
 /**

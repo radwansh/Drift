@@ -5,6 +5,7 @@ import { sql } from "drizzle-orm";
 import { createTestDb, type TestDb } from "./pglite-neon";
 import { ensureUser } from "@/server/ensure-user";
 import { payrollPeriodsRouter } from "@/server/routers/payroll-periods";
+import type { Category } from "@saas/payroll-core";
 
 /**
  * Step 4's gate, end to end: a register that does not reconcile must never
@@ -414,5 +415,204 @@ describe("the check status on the periods list", () => {
     // user lookup, then the page and its count in parallel, then one aggregate
     // query for every period on the page — not one per period.
     expect(ctx.roundTrips()).toBeLessThanOrEqual(4);
+  });
+});
+
+/**
+ * Step 11b: the question is asked at upload, not on the annual dashboard.
+ *
+ * `AMBIGUOUS_COMPONENT` was raised by `computeSummary` and surfaced afterwards,
+ * which is the wrong order — the ambiguity was already in the data, every
+ * annual view carried the gap in its balancing lines until somebody answered,
+ * and the admin who knew the answer had moved on. These pin that an unanswered
+ * column refuses the import, that an answer is accepted and saved, and that a
+ * company is asked once.
+ */
+describe("an ambiguous column must be decided before the register is committed", () => {
+  /**
+   * A one-row register carrying , which the classifier will not
+   * place. It reconciles either way — see the note on the column — so the
+   * open question is the only thing standing between it and an import, which
+   * is what makes these tests say one thing each.
+   */
+  function maladieSheet(resolvedCategory?: Category) {
+    const componentBase = { ...BASE };
+    return {
+      rows: [
+        {
+          "Employee ID": "E1",
+          "Full Name": "Ada",
+          Department: "Engineering",
+          "Base Salary": "3000",
+          // Zero on purpose, so the open question is the *only* thing wrong
+          // with this register. With a value, an unanswered `Maladie` is read
+          // as earnings and gross looks short — a second fault that would make
+          // these tests pass for the wrong reason. The interaction itself is
+          // covered in `payroll-core/src/reconcile.test.ts`, on a register with
+          // a real 100 in it.
+          Maladie: "0",
+          "Gross Salary": "3000",
+          "Net Salary": "3000",
+        },
+      ],
+      mappings: [
+        { ...componentBase, sourceColumn: "Employee ID", isEmployeeId: true },
+        { ...componentBase, sourceColumn: "Full Name", isEmployeeName: true },
+        { ...componentBase, sourceColumn: "Department", isDepartment: true },
+        { ...componentBase, sourceColumn: "Gross Salary", isGrossSalary: true },
+        { ...componentBase, sourceColumn: "Net Salary", isNetSalary: true },
+        { ...componentBase, sourceColumn: "Base Salary", mappedComponent: "Base Salary" },
+        {
+          ...componentBase,
+          sourceColumn: "Maladie",
+          mappedComponent: "Maladie",
+          ...(resolvedCategory ? { resolvedCategory } : {}),
+        },
+      ],
+      periodType: "monthly" as const,
+      periodStart: "2026-03-01",
+      periodEnd: "2026-03-31",
+      currencyCode: "USD",
+      filename: "maladie.csv",
+    };
+  }
+
+  async function savedCategory(companyId: string, key: string): Promise<string | null> {
+    const res = await ctx.db.execute(sql`
+      SELECT category FROM component_categories
+      WHERE company_id = ${companyId} AND component_key = ${key}
+    `);
+    return (res.rows[0] as { category: string } | undefined)?.category ?? null;
+  }
+
+  it("refuses the import, naming the column and the choice", async () => {
+    const user = await ensureUser(ctx.db, "clerk_q_refuse", { email: "q-refuse@gate.test" });
+
+    const before = await rowCounts();
+    await expect(caller("clerk_q_refuse").ingest(maladieSheet())).rejects.toThrow(
+      /stopped the import/i,
+    );
+
+    // Nothing written, so the ambiguity never entered the data.
+    expect(await rowCounts()).toEqual(before);
+    expect(await periodCount(user.companyId)).toBe(0);
+  });
+
+  it("puts the question and the candidates, not a code", async () => {
+    await ensureUser(ctx.db, "clerk_q_text", { email: "q-text@gate.test" });
+
+    const check = await caller("clerk_q_text").checkData({
+      rows: maladieSheet().rows,
+      mappings: maladieSheet().mappings,
+      currencyCode: "USD",
+    });
+
+    expect(check.valid).toBe(false);
+    expect(check.openQuestions).toHaveLength(1);
+    expect(check.openQuestions[0]).toMatchObject({
+      componentKey: "Maladie",
+      candidates: ["absence_deduction", "other_deduction"],
+    });
+
+    const message = check.errors.find((e) => e.column === "Maladie")?.message ?? "";
+    expect(message).toContain("sick-leave");
+    expect(message).toContain("Absence or Other deductions");
+  });
+
+  it("accepts the import once the admin answers, and saves the answer", async () => {
+    const user = await ensureUser(ctx.db, "clerk_q_answer", { email: "q-answer@gate.test" });
+
+    const result = await caller("clerk_q_answer").ingest(maladieSheet("absence_deduction"));
+
+    expect(await periodCount(user.companyId)).toBe(1);
+    expect(result.reconciliation?.balanced).toBe(true);
+
+    // Saved to `component_categories` — the table the annual engine reads as
+    // `savedCategories`, so the dashboard stops asking too.
+    expect(await savedCategory(user.companyId, "Maladie")).toBe("absence_deduction");
+  });
+
+  it("does not ask again on the next upload", async () => {
+    const user = await ensureUser(ctx.db, "clerk_q_once", { email: "q-once@gate.test" });
+
+    await caller("clerk_q_once").ingest(maladieSheet("other_deduction"));
+
+    // The second upload carries no answer at all, and must still import.
+    const second = await caller("clerk_q_once").ingest({
+      ...maladieSheet(),
+      periodStart: "2026-04-01",
+      periodEnd: "2026-04-30",
+    });
+
+    expect(await periodCount(user.companyId)).toBe(2);
+    expect(second.reconciliation?.balanced).toBe(true);
+
+    const check = await caller("clerk_q_once").checkData({
+      rows: maladieSheet().rows,
+      mappings: maladieSheet().mappings,
+      currencyCode: "USD",
+    });
+    expect(check.openQuestions).toEqual([]);
+    expect(check.valid).toBe(true);
+  });
+
+  it("records who answered, and that it came from the wizard", async () => {
+    const user = await ensureUser(ctx.db, "clerk_q_audit", { email: "q-audit@gate.test" });
+
+    await caller("clerk_q_audit").ingest(maladieSheet("absence_deduction"));
+
+    const res = await ctx.db.execute(sql`
+      SELECT entity, entity_key AS "entityKey", new_value AS "newValue", user_id AS "userId"
+      FROM annual_audit_log
+      WHERE company_id = ${user.companyId}
+    `);
+    const row = res.rows[0] as {
+      entity: string;
+      entityKey: string;
+      newValue: { category: string; source: string };
+      userId: string;
+    };
+
+    expect(row.entity).toBe("component_category");
+    expect(row.entityKey).toBe("Maladie");
+    expect(row.newValue).toEqual({ category: "absence_deduction", source: "upload_wizard" });
+    expect(row.userId).toBe(user.id);
+  });
+
+  it("saves nothing when the import fails for another reason", async () => {
+    const user = await ensureUser(ctx.db, "clerk_q_failed", { email: "q-failed@gate.test" });
+
+    // Answered, but the register is 50 out — the gate refuses it, and an answer
+    // about a register nobody accepted must not be kept.
+    const sheet = maladieSheet("absence_deduction");
+    await expect(
+      caller("clerk_q_failed").ingest({
+        ...sheet,
+        rows: [{ ...sheet.rows[0]!, "Net Salary": "2950" }],
+      }),
+    ).rejects.toThrow();
+
+    expect(await savedCategory(user.companyId, "Maladie")).toBeNull();
+  });
+
+  it("asks nothing about a column that is not a pay component", async () => {
+    const user = await ensureUser(ctx.db, "clerk_q_role", { email: "q-role@gate.test" });
+
+    // The same header, recorded as a dimension. A dimension has no category to
+    // choose and never reaches the classifier.
+    const sheet = maladieSheet();
+    const result = await caller("clerk_q_role").ingest({
+      ...sheet,
+      rows: [{ ...sheet.rows[0]!, Maladie: "Site A" }],
+      mappings: sheet.mappings.map((m) =>
+        m.sourceColumn === "Maladie"
+          ? { ...m, mappedComponent: "Maladie", dimensionName: "Location" }
+          : m,
+      ),
+    });
+
+    expect(await periodCount(user.companyId)).toBe(1);
+    expect(result.reconciliation?.balanced).toBe(true);
+    expect(await savedCategory(user.companyId, "Maladie")).toBeNull();
   });
 });

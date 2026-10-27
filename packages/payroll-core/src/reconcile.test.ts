@@ -487,3 +487,59 @@ describe("an identity with nothing mapped on its side", () => {
     });
   });
 });
+
+describe("a category the company has answered", () => {
+  /**
+   * Step 11b. The same override `summary.ts` resolves through `resolveFor`:
+   * without it the gate would keep reading a just-answered column as unplaced,
+   * so the gate and the annual bridge would put the same money on different
+   * sides.
+   */
+  const row = (gross: number, net: number): ReconcileRow => ({
+    employeeId: "E1",
+    gross,
+    net,
+    components: { "Base Salary": 3000, Maladie: 100 },
+  });
+
+  it("moves an answered column from the earnings side to the deduction side", () => {
+    // Unanswered: `Maladie` is unplaced, so it is read as earnings and gross
+    // appears 100 short. Both of its candidates are deductions, so this is not
+    // avoidable — it is the argument for asking at upload.
+    const unanswered = reconcileRegister({ rows: [row(3000, 2900)] });
+    expect(unanswered.unplacedColumns.map((c) => c.componentKey)).toEqual(["Maladie"]);
+    expect(unanswered.breaches.map((b) => b.code)).toEqual(["earnings_not_gross"]);
+
+    // Answered: earnings are 3,000 and the 100 reduces net. Both identities tie.
+    const answered = reconcileRegister({
+      rows: [row(3000, 2900)],
+      answeredCategories: { Maladie: "absence_deduction" },
+    });
+    expect(answered.balanced).toBe(true);
+    expect(answered.unplacedColumns).toEqual([]);
+    expect(answered.totals.earnings).toBe(3000);
+    expect(answered.totals.deductions).toBe(100);
+  });
+
+  it("honours an answer that overrides a category the classifier was sure of", () => {
+    // `Housing Allowance` classifies as an allowance. A company that says it is
+    // an employer cost takes it off both identity lines.
+    const rows: ReconcileRow[] = [
+      { employeeId: "E1", gross: 1000, net: 1000, components: { "Base Salary": 1000, "Housing Allowance": 200 } },
+    ];
+
+    expect(reconcileRegister({ rows }).breaches.map((b) => b.code)).toEqual(["earnings_not_gross"]);
+    expect(
+      reconcileRegister({ rows, answeredCategories: { "Housing Allowance": "other_employer_cost" } })
+        .balanced,
+    ).toBe(true);
+  });
+
+  it("ignores an answer for a column the register does not have", () => {
+    const report = reconcileRegister({
+      rows: [balanced("E1")],
+      answeredCategories: { Maladie: "absence_deduction" },
+    });
+    expect(report.balanced).toBe(true);
+  });
+});

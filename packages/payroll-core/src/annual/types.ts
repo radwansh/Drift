@@ -49,6 +49,33 @@ export const MONEY_CATEGORIES: readonly Category[] = [
   ...EMPLOYER_COST_CATEGORIES,
 ];
 
+/**
+ * Every category, as a tuple, so a caller can build a zod enum from it.
+ *
+ * The list was written out by hand in `routers/annual.ts` as `CategoryEnum`;
+ * step 11b needs the same enum in a second router, and a second copy is a
+ * second thing to keep in step with the union. `CATEGORY_LABELS` below is
+ * `Record<Category, string>`, so a test comparing this against its keys catches
+ * a category added to the union and not to this tuple.
+ */
+export const ALL_CATEGORIES = [
+  "base_salary",
+  "allowance",
+  "bonus_commission",
+  "overtime",
+  "other_earning",
+  "income_tax",
+  "social_security_employee",
+  "other_deduction",
+  "absence_deduction",
+  "social_security_employer",
+  "other_employer_cost",
+  "absence_days",
+  "other_quantity",
+  "ignore",
+  "uncategorised",
+] as const satisfies readonly Category[];
+
 export type Money = number;
 
 export const CATEGORY_LABELS: Record<Category, string> = {

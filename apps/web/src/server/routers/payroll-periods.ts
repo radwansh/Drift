@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { eq, and, desc, like, sql } from "drizzle-orm";
-import { payrollPeriods, uploadSessions, users } from "@saas/db";
+import { annualAuditLog, componentCategories, payrollPeriods, uploadSessions, users } from "@saas/db";
 import { ColumnRole } from "@saas/types";
 import {
   classifyComponent,
@@ -10,9 +10,18 @@ import {
   roundToMinorUnits,
   EARNING_CATEGORIES,
   EMPLOYEE_DEDUCTION_CATEGORIES,
+  type Category,
 } from "@saas/payroll-core";
-import { editorProcedure, protectedProcedure, router, type ProtectedContext } from "../trpc";
+import {
+  editorProcedure,
+  memberProcedure,
+  protectedProcedure,
+  router,
+  type MemberContext,
+  type ProtectedContext,
+} from "../trpc";
 import { parseRows } from "../parse-rows";
+import { CategoryEnum } from "../categories";
 import { validateRows } from "../upload/validate";
 import { processUpload } from "../upload/processor";
 
@@ -34,6 +43,13 @@ const IngestMapping = z.object({
    * would otherwise drop the column silently.
    */
   ...ColumnRole,
+  /**
+   * Step 11b: the category the admin chose for a column the classifier could
+   * not place. Nullish, so a client that has nothing to answer still ingests;
+   * the gate refuses an *unanswered* ambiguous column rather than a missing
+   * field.
+   */
+  resolvedCategory: CategoryEnum.nullish(),
 });
 
 const ISO_DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected a YYYY-MM-DD date");
@@ -131,6 +147,31 @@ export const payrollPeriodsRouter = router({
   // its totals.
 
   /**
+   * Step 11b: the component keys this company has already decided.
+   *
+   * The wizard needs these on the mapping step, before `checkData` runs, so a
+   * column whose question was answered on a previous upload is not asked about
+   * again. `annual.listComponentCategories` cannot serve it: that procedure
+   * derives a year from the company's periods and returns nothing when there
+   * are none, which is precisely the first-upload case this has to work for.
+   *
+   * One indexed select on the unique key, returning keys and categories only.
+   */
+  answeredComponents: memberProcedure.query(async ({ ctx }) => {
+    const rows = await ctx.db
+      .select({
+        componentKey: componentCategories.componentKey,
+        category: componentCategories.category,
+      })
+      .from(componentCategories)
+      .where(eq(componentCategories.companyId, ctx.companyId));
+
+    const answers: Record<string, string> = {};
+    for (const row of rows) answers[row.componentKey] = row.category;
+    return answers;
+  }),
+
+  /**
    * Step 4: the Data check panel's contents, run server-side.
    *
    * The wizard's step 4 is headed "Validation Summary" and reported
@@ -150,13 +191,14 @@ export const payrollPeriodsRouter = router({
       controlTotalGross: z.number().finite().nullish(),
       controlTotalNet: z.number().finite().nullish(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       const validation = validateRows(input.rows, input.mappings, {
         currencyCode: input.currencyCode,
         controlTotals: {
           gross: input.controlTotalGross,
           net: input.controlTotalNet,
         },
+        answeredCategories: await answeredCategories(ctx.db, ctx.companyId, input.mappings),
       });
 
       return {
@@ -171,6 +213,7 @@ export const payrollPeriodsRouter = router({
         reconciliation: validation.reconciliation,
         controlTotals: validation.controlTotals,
         controlTotalsMissing: validation.controlTotalsMissing,
+        openQuestions: validation.openQuestions,
       };
     }),
 
@@ -231,6 +274,7 @@ export const payrollPeriodsRouter = router({
           gross: input.controlTotalGross,
           net: input.controlTotalNet,
         },
+        answeredCategories: await answeredCategories(ctx.db, ctx.companyId, input.mappings),
       });
       if (!validation.valid) {
         throw new TRPCError({
@@ -255,6 +299,11 @@ export const payrollPeriodsRouter = router({
           controlTotalGross: input.controlTotalGross,
           controlTotalNet: input.controlTotalNet,
         });
+
+        // Step 11b: after the period exists, not before. A choice saved for an
+        // import that then failed would answer a question about a register
+        // nobody accepted.
+        await saveResolvedCategories(ctx, input.mappings);
 
         return {
           ...result,
@@ -415,4 +464,105 @@ async function periodChecks(
   }
 
   return checks;
+}
+
+/**
+ * Step 11b: the categories already decided for this company, plus whatever the
+ * admin just chose in the wizard.
+ *
+ * Reads `component_categories` — the same table the annual engine reads as
+ * `savedCategories`, deliberately. The plan names both that table and
+ * `company_column_mappings` as places a per-company answer could live, and this
+ * is the one that settles the question for the engine: an answer written to the
+ * mappings table would leave `ambiguityFor` still firing on the dashboard, which
+ * is exactly the after-the-fact question step 11b exists to remove.
+ *
+ * The request's answers win over the saved ones, so an admin correcting a column
+ * on this upload is not told their own choice is already decided otherwise.
+ */
+async function answeredCategories(
+  db: ProtectedContext["db"],
+  companyId: string,
+  mappings: readonly { mappedComponent: string; resolvedCategory?: Category | null }[],
+): Promise<Record<string, Category>> {
+  const saved = await db
+    .select({
+      componentKey: componentCategories.componentKey,
+      category: componentCategories.category,
+    })
+    .from(componentCategories)
+    .where(eq(componentCategories.companyId, companyId));
+
+  const answers: Record<string, Category> = {};
+  for (const row of saved) answers[row.componentKey] = row.category as Category;
+  for (const m of mappings) {
+    if (m.resolvedCategory) answers[m.mappedComponent] = m.resolvedCategory;
+  }
+  return answers;
+}
+
+/**
+ * Step 11b: persists the answers given in the wizard, so the question is asked
+ * once per company per column.
+ *
+ * Upserts, like `annual.setComponentCategories`, and writes the same audit row:
+ * a category chosen at upload is the same decision as one chosen in the
+ * category manager, and the log should not be able to tell which screen it came
+ * from while missing one of them entirely.
+ *
+ * Called after the period is written, not before: a choice saved for an import
+ * that then failed would answer a question about a register nobody accepted.
+ */
+async function saveResolvedCategories(
+  ctx: MemberContext & { currentUser: { id: string } },
+  mappings: readonly { mappedComponent: string; resolvedCategory?: Category | null }[],
+): Promise<void> {
+  const entries = mappings
+    .filter((m) => m.resolvedCategory)
+    .map((m) => ({ componentKey: m.mappedComponent, category: m.resolvedCategory as Category }));
+  if (entries.length === 0) return;
+
+  const existing = await ctx.db
+    .select()
+    .from(componentCategories)
+    .where(eq(componentCategories.companyId, ctx.companyId));
+  const before = new Map(existing.map((e) => [e.componentKey, e.category]));
+
+  const now = new Date();
+  await ctx.db
+    .insert(componentCategories)
+    .values(
+      entries.map((e) => ({
+        companyId: ctx.companyId,
+        componentKey: e.componentKey,
+        category: e.category,
+        updatedBy: ctx.currentUser.id,
+        updatedAt: now,
+      })),
+    )
+    .onConflictDoUpdate({
+      target: [componentCategories.companyId, componentCategories.componentKey],
+      set: {
+        category: sql`excluded.category`,
+        updatedBy: sql`excluded.updated_by`,
+        updatedAt: now,
+      },
+    });
+
+  const changed = entries.filter((e) => before.get(e.componentKey) !== e.category);
+  if (changed.length === 0) return;
+
+  await ctx.db.insert(annualAuditLog).values(
+    changed.map((e) => ({
+      companyId: ctx.companyId,
+      userId: ctx.currentUser.id,
+      entity: "component_category",
+      entityKey: e.componentKey,
+      oldValue: { category: before.get(e.componentKey) ?? null },
+      // `source` so the log can tell an answer given at upload from one given
+      // in the category manager; the existing writer omits it, which reads as
+      // the manager.
+      newValue: { category: e.category, source: "upload_wizard" },
+    })),
+  );
 }

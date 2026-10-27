@@ -361,6 +361,37 @@ export function ambiguityFor(key: string): AmbiguityNote | undefined {
   return undefined;
 }
 
+/** One column still waiting for an answer, with the question to put. */
+export interface OpenQuestion extends AmbiguityNote {
+  componentKey: string;
+}
+
+/**
+ * Step 11b: which of these columns raise a question nobody has answered.
+ *
+ * `answered` is the company's saved categories — the same `component_categories`
+ * rows the annual engine reads as `savedCategories`. A saved category *is* the
+ * answer, so a column that has one is never asked about again, which is the
+ * suppression `ambiguityOfFor` applies in `summary.ts`. The rule lives here so
+ * the upload wizard and the annual dashboard cannot ask different questions, or
+ * one keep asking after the other was answered.
+ */
+export function openQuestionsFor(
+  keys: readonly string[],
+  answered: Readonly<Record<string, Category>> = {},
+): OpenQuestion[] {
+  const seen = new Set<string>();
+  const questions: OpenQuestion[] = [];
+  for (const key of keys) {
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (answered[key]) continue;
+    const note = ambiguityFor(key);
+    if (note) questions.push({ componentKey: key, ...note });
+  }
+  return questions;
+}
+
 export interface ClassificationReason {
   category: Category;
   /** Which rule fired, surfaced in the category manager (step 40). */

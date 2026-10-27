@@ -28,29 +28,16 @@ import {
 import { generateAnnualInsights, DEFAULT_MODEL, isAiAvailable, type AnnualInsightPayload } from "@saas/ai";
 import { memberProcedure, editorProcedure, adminProcedure, router, type MemberContext } from "../trpc";
 import { parseRows } from "../parse-rows";
+import { CategoryEnum } from "../categories";
 import { buildAnnualWorkbook, annualWorkbookSheets } from "../export/annual-workbook";
 import { limitInsightGeneration } from "../rate-limit";
 
 const PeriodTypeSchema = z.enum(["monthly", "weekly", "bi_monthly", "bi_weekly"]);
 const ForecastMethodSchema = z.enum(["run_rate", "average", "prior_year"]);
 const BudgetBasisSchema = z.enum(["gross", "employer_cost", "net"]);
-const CategoryEnum = z.enum([
-  "base_salary",
-  "allowance",
-  "bonus_commission",
-  "overtime",
-  "other_earning",
-  "income_tax",
-  "social_security_employee",
-  "other_deduction",
-  "absence_deduction",
-  "social_security_employer",
-  "other_employer_cost",
-  "absence_days",
-  "other_quantity",
-  "ignore",
-  "uncategorised",
-]);
+// `CategoryEnum` moved to `server/categories.ts`, where it is built from
+// `ALL_CATEGORIES`: step 11b needs the same enum in the periods router, and a
+// second hand-written copy is a second thing to keep in step with the union.
 
 /**
  * ISO 4217 is three upper-case letters. The budget endpoint accepted "lbp" and

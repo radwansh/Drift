@@ -40,10 +40,16 @@ import {
   RefreshCw,
   AlertCircle,
   XCircle,
+  HelpCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PeriodType } from "@saas/types";
-import { suggestColumnRole, type SnapshotField } from "@saas/payroll-core";
+import {
+  ambiguityFor,
+  suggestColumnRole,
+  type Category,
+  type SnapshotField,
+} from "@saas/payroll-core";
 import { PERIOD_TYPE_LABELS } from "@/lib/constants";
 
 interface ColumnMappingState {
@@ -57,6 +63,8 @@ interface ColumnMappingState {
   /** Step 9: what the column records when it is not a pay component. */
   snapshotField: SnapshotField | null;
   dimensionName: string | null;
+  /** Step 11b: the category chosen for a column the classifier cannot place. */
+  resolvedCategory: Category | null;
 }
 
 /**
@@ -279,6 +287,10 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
   const utils = trpc.useUtils();
   const ingest = trpc.payrollPeriods.ingest.useMutation();
   const checkData = trpc.payrollPeriods.checkData.useMutation();
+  // Step 11b: so a column answered on a previous upload is not asked again.
+  const answeredQuery = trpc.payrollPeriods.answeredComponents.useQuery(undefined, {
+    enabled: open,
+  });
   const [importError, setImportError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<{
     employeeCount: number;
@@ -347,6 +359,7 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
         isNetSalary: ident.isNetSalary ?? false,
         snapshotField,
         dimensionName,
+        resolvedCategory: null,
       };
     });
 
@@ -531,6 +544,28 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
     });
     return Array.from(comps);
   }, [mappings]);
+
+  /**
+   * Step 11b: columns whose question nobody has answered yet.
+   *
+   * Computed from the same `ambiguityFor` the server uses, suppressed by the
+   * same saved answers, so Next is disabled for exactly the columns the gate
+   * would refuse — the admin is not sent to a Data check that tells them to
+   * come back here.
+   */
+  const unansweredQuestions = useMemo(() => {
+    const answered = answeredQuery.data ?? {};
+    return mappings.filter((m) => {
+      if (hasRecordRole(m)) return false;
+      if (m.isEmployeeId || m.isEmployeeName || m.isDepartment || m.isGrossSalary || m.isNetSalary) {
+        return false;
+      }
+      if (!m.mappedComponent || m.mappedComponent === "ignore") return false;
+      if (m.resolvedCategory !== null) return false;
+      if (answered[m.mappedComponent] !== undefined) return false;
+      return ambiguityFor(m.mappedComponent) !== undefined;
+    });
+  }, [mappings, answeredQuery.data]);
 
   const handleCreateComponent = (sourceColumn: string) => {
     setCreateComponentColumn(sourceColumn);
@@ -783,6 +818,9 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
                   key={mapping.sourceColumn}
                   {...mapping}
                   availableComponents={availableComponents}
+                  alreadyAnswered={
+                    answeredQuery.data?.[mapping.mappedComponent] !== undefined
+                  }
                   aiConfidence={0.75 + (idx % 3) * 0.08}
                   onChange={(updated) =>
                     setMappings((prev) =>
@@ -794,6 +832,27 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
                 />
               ))}
             </div>
+
+            {/*
+              Step 11b: why Next is disabled, said once rather than only on the
+              rows. The rows carry the question; this is the count.
+            */}
+            {unansweredQuestions.length > 0 && (
+              <Alert variant="warning">
+                <HelpCircle className="h-4 w-4" />
+                <AlertTitle>
+                  {unansweredQuestions.length === 1
+                    ? "1 column needs a decision"
+                    : `${unansweredQuestions.length} columns need a decision`}
+                </AlertTitle>
+                <AlertDescription>
+                  Clarivo cannot tell which category{" "}
+                  {unansweredQuestions.map((m) => m.mappedComponent).join(", ")} belongs to, and the
+                  answer changes which report it appears in. Choose above. Your answer is saved for
+                  this company, so you will not be asked again.
+                </AlertDescription>
+              </Alert>
+            )}
 
             {/*
               Step 4's control total, asked here because this is the last step
@@ -918,6 +977,15 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
                       <CheckLine
                         passed={!validationResult.errors.some((e) => e.message.includes("Duplicate employee ID"))}
                         label="No employee ID used twice"
+                      />
+                      <CheckLine
+                        passed={validationResult.openQuestions.length === 0}
+                        label="Every component has a category"
+                        detail={
+                          validationResult.openQuestions.length === 0
+                            ? undefined
+                            : validationResult.openQuestions.map((q) => q.componentKey).join(", ")
+                        }
                       />
                       <CheckLine
                         passed={validationResult.controlTotals.length === 0}
@@ -1146,6 +1214,7 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
                     periodType === "monthly" ? (!selectedMonth || !selectedYear) : (!dateFrom || !dateTo)
                   )) ||
                   (step === 3 && !mappings.some((m) => m.isEmployeeId || m.isEmployeeName)) ||
+                  (step === 3 && unansweredQuestions.length > 0) ||
                   (step === 4 && validationResult !== null && !validationResult.valid) ||
                   validating ||
                   processing

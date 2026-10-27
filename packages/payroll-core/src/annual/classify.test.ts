@@ -1,7 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { ambiguityFor, classifyComponent, classifyComponentWithReason, isTotalColumn } from "./classify";
+import {
+  ambiguityFor,
+  classifyComponent,
+  classifyComponentWithReason,
+  isTotalColumn,
+  openQuestionsFor,
+} from "./classify";
 import type { Category } from "./types";
 import {
+  ALL_CATEGORIES,
+  CATEGORY_LABELS,
   EARNING_CATEGORIES,
   EMPLOYEE_DEDUCTION_CATEGORIES,
   EMPLOYER_COST_CATEGORIES,
@@ -443,6 +451,56 @@ describe("classifyComponent - the AI column mapper's schema names", () => {
     for (const name of ["employer_social_security", "employer_insurance", "employer_levy"]) {
       expect(EMPLOYEE_DEDUCTION_CATEGORIES).not.toContain(classifyComponent(name));
       expect(EMPLOYER_COST_CATEGORIES).toContain(classifyComponent(name));
+    }
+  });
+});
+
+describe("openQuestionsFor — step 11b", () => {
+  it("asks about an ambiguous column", () => {
+    const open = openQuestionsFor(["Base Salary", "Maladie", "Income Tax"]);
+
+    expect(open).toHaveLength(1);
+    expect(open[0]?.componentKey).toBe("Maladie");
+    expect(open[0]?.candidates).toEqual(["absence_deduction", "other_deduction"]);
+    expect(open[0]?.question).toContain("sick-leave");
+  });
+
+  it("stops asking once the company has saved an answer", () => {
+    // A saved category is the answer. This is the suppression `summary.ts`
+    // applies on the dashboard; sharing it is what keeps the wizard and the
+    // dashboard from asking different questions, or one asking after the other
+    // was answered.
+    expect(openQuestionsFor(["Maladie"], { Maladie: "absence_deduction" })).toEqual([]);
+  });
+
+  it("does not ask about a header the vocabulary can place", () => {
+    expect(openQuestionsFor(["Assurance Maladie"])).toEqual([]);
+    expect(openQuestionsFor(["Maladie Jours"])).toEqual([]);
+    expect(openQuestionsFor(["Base Salary", "Income Tax", "Housing Allowance"])).toEqual([]);
+  });
+
+  it("asks once for a key that appears twice", () => {
+    expect(openQuestionsFor(["Maladie", "Maladie"])).toHaveLength(1);
+  });
+
+  it("ignores an answer saved against a different column", () => {
+    expect(openQuestionsFor(["Maladie"], { "Base Salary": "base_salary" })).toHaveLength(1);
+  });
+});
+
+describe("ALL_CATEGORIES", () => {
+  it("covers the Category union exactly", () => {
+    // `CATEGORY_LABELS` is `Record<Category, string>`, so its keys are the
+    // union. A category added to the union and not to the tuple would make the
+    // zod enum built from it reject a value the engine produces.
+    expect([...ALL_CATEGORIES].sort()).toEqual(Object.keys(CATEGORY_LABELS).sort());
+  });
+
+  it("is a superset of the side-specific sets", () => {
+    for (const set of [EARNING_CATEGORIES, EMPLOYEE_DEDUCTION_CATEGORIES, EMPLOYER_COST_CATEGORIES]) {
+      for (const category of set) {
+        expect(ALL_CATEGORIES).toContain(category);
+      }
     }
   });
 });

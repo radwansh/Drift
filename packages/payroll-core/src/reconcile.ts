@@ -166,6 +166,15 @@ export interface ReconcileInput {
   decimals?: number;
   /** File row per employee id, so a breach can name the line to look at. */
   rowNumbers?: ReadonlyMap<string, number>;
+  /**
+   * Step 11b: categories the company has decided, overriding the classifier.
+   *
+   * The same `savedCategories` the annual engine resolves through
+   * `resolveFor`, and for the same reason: without it a column the admin has
+   * just answered would still be read as `uncategorised` here, so the gate and
+   * the dashboard would put the same money on different sides of the bridge.
+   */
+  answeredCategories?: Readonly<Record<string, Category>>;
 }
 
 const EARNINGS = new Set<Category>(EARNING_CATEGORIES);
@@ -198,8 +207,12 @@ type Side = "earning" | "deduction" | "unplaced" | "excluded";
  * is really a deduction leaves identity 2 out by its amount, so the two
  * together still catch it.
  */
-function sideOf(key: string): { category: Category; side: Side } {
-  const category = classifyComponent(key);
+function sideOf(
+  key: string,
+  answered: Readonly<Record<string, Category>>,
+): { category: Category; side: Side } {
+  // The company's answer wins over the vocabulary, as it does in `summary.ts`.
+  const category = answered[key] ?? classifyComponent(key);
   if (isTotalColumn(key)) return { category, side: "excluded" };
   if (EARNINGS.has(category)) return { category, side: "earning" };
   if (DEDUCTIONS.has(category)) return { category, side: "deduction" };
@@ -218,8 +231,9 @@ export function reconcileRegister(input: ReconcileInput): ReconciliationReport {
   const decimals = input.decimals ?? DEFAULT_MINOR_UNITS;
   const round = (v: number) => roundToMinorUnits(v, decimals);
 
+  const answered = input.answeredCategories ?? {};
   const sides = new Map<string, ReturnType<typeof sideOf>>();
-  for (const key of keysOf(input.rows)) sides.set(key, sideOf(key));
+  for (const key of keysOf(input.rows)) sides.set(key, sideOf(key, answered));
 
   // Deduction sign conventions, inferred per column across every row — the
   // same column-at-a-time reading `ingest.ts` uses for dates.

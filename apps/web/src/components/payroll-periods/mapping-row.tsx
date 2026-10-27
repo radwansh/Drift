@@ -7,8 +7,14 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-import { AlertCircle, CheckCircle2, XCircle, Brain } from "lucide-react";
-import { SNAPSHOT_FIELDS, type SnapshotField } from "@saas/payroll-core";
+import { AlertCircle, CheckCircle2, XCircle, Brain, HelpCircle } from "lucide-react";
+import {
+  SNAPSHOT_FIELDS,
+  ambiguityFor,
+  CATEGORY_LABELS,
+  type Category,
+  type SnapshotField,
+} from "@saas/payroll-core";
 import { cn, formatComponentName } from "@/lib/utils";
 
 /**
@@ -39,6 +45,10 @@ interface MappingRowProps {
   isNetSalary: boolean;
   snapshotField?: SnapshotField | null;
   dimensionName?: string | null;
+  /** Step 11b: the category the admin chose for a column nobody can place. */
+  resolvedCategory?: Category | null;
+  /** Already decided for this company, so the question is not asked again. */
+  alreadyAnswered?: boolean;
   availableComponents: string[];
   onChange: (mapping: {
     sourceColumn: string;
@@ -50,6 +60,7 @@ interface MappingRowProps {
     isNetSalary: boolean;
     snapshotField: SnapshotField | null;
     dimensionName: string | null;
+    resolvedCategory: Category | null;
   }) => void;
 }
 
@@ -64,6 +75,8 @@ export function MappingRow({
   isNetSalary,
   snapshotField = null,
   dimensionName = null,
+  resolvedCategory = null,
+  alreadyAnswered = false,
   availableComponents,
   onChange,
 }: MappingRowProps) {
@@ -72,15 +85,25 @@ export function MappingRow({
   // else below is the rule that was already here.
   const hasRecordRole = snapshotField !== null || dimensionName !== null;
 
+  const isIdentifier =
+    isEmployeeId || isEmployeeName || isDepartment || isGrossSalary || isNetSalary;
+
   const isRequiredMissing =
-    !hasRecordRole &&
-    (!mappedComponent ||
-      mappedComponent === "ignore" ||
-      (!isEmployeeId &&
-        !isEmployeeName &&
-        !isDepartment &&
-        !isGrossSalary &&
-        !isNetSalary));
+    !hasRecordRole && (!mappedComponent || mappedComponent === "ignore" || !isIdentifier);
+
+  /**
+   * Step 11b: the question, asked here rather than on the annual dashboard.
+   *
+   * It is keyed on the component the column is mapped *to*, because that is
+   * what the classifier sees and what the answer is saved against — renaming
+   * `Maladie` to `Sick Leave` in the dropdown is itself an answer. Nothing to
+   * ask when the column is not a pay component at all.
+   */
+  const ambiguity =
+    hasRecordRole || isIdentifier || mappedComponent === "" || mappedComponent === "ignore"
+      ? undefined
+      : ambiguityFor(mappedComponent);
+  const needsAnswer = ambiguity !== undefined && !alreadyAnswered && resolvedCategory === null;
 
   const update = (partial: Partial<{
     mappedComponent: string;
@@ -91,6 +114,7 @@ export function MappingRow({
     isNetSalary: boolean;
     snapshotField: SnapshotField | null;
     dimensionName: string | null;
+    resolvedCategory: Category | null;
   }>) => {
     onChange({
       sourceColumn,
@@ -102,6 +126,7 @@ export function MappingRow({
       isNetSalary,
       snapshotField,
       dimensionName,
+      resolvedCategory,
       ...partial,
     });
   };
@@ -149,6 +174,9 @@ export function MappingRow({
     <div className={cn(
       "rounded-lg border bg-card px-3 py-2.5 transition-colors space-y-2",
       isRequiredMissing && "border-destructive/30 bg-destructive/[0.02]",
+      // Step 11b: an unanswered question blocks the import, so the row has to
+      // look like something that needs doing.
+      needsAnswer && "border-amber-300/70 dark:border-amber-900/60",
     )}>
       <div className="flex items-center gap-2">
         <div className="flex w-36 items-center gap-2">
@@ -177,7 +205,10 @@ export function MappingRow({
             value={mappedComponent || ""}
             disabled={hasRecordRole}
             onValueChange={(val) => {
-              update({ mappedComponent: val });
+              // Step 11b: the answer was given for the old component name, so
+              // it does not carry to a new one. Mapping `Maladie` to
+              // `Sick Leave` is itself an answer and raises no question.
+              update({ mappedComponent: val, resolvedCategory: null });
             }}
           >
             <SelectTrigger
@@ -210,6 +241,65 @@ export function MappingRow({
           )}
         </div>
       </div>
+
+      {/*
+        Step 11b. The question goes here, where the mapping is made, not on the
+        annual dashboard: the admin who just exported this register knows the
+        answer, and asking afterwards means the ambiguity is already in the data
+        and every annual view carries the gap until somebody replies.
+      */}
+      {ambiguity && (
+        <div
+          className={cn(
+            "rounded-md border px-2.5 py-2",
+            needsAnswer
+              ? "border-amber-300 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/30"
+              : "border-border bg-muted/40",
+          )}
+        >
+          <p className="flex items-start gap-1.5 text-[11px] leading-snug">
+            <HelpCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span>
+              <span className="font-medium">{mappedComponent}</span> {ambiguity.question}
+            </span>
+          </p>
+          {alreadyAnswered ? (
+            <p className="mt-1.5 pl-5 text-[11px] text-muted-foreground">
+              Already answered for this company, in Settings → Categories.
+            </p>
+          ) : (
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-5">
+              {ambiguity.candidates.map((candidate) => (
+                <button
+                  key={candidate}
+                  type="button"
+                  aria-pressed={resolvedCategory === candidate}
+                  onClick={() =>
+                    update({
+                      // Clicking the chosen one again clears it, so a
+                      // misclick is undoable without reloading the file.
+                      resolvedCategory: resolvedCategory === candidate ? null : candidate,
+                    })
+                  }
+                  className={cn(
+                    "rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                    resolvedCategory === candidate
+                      ? "bg-primary text-primary-foreground"
+                      : "border bg-background hover:bg-muted",
+                  )}
+                >
+                  {CATEGORY_LABELS[candidate]}
+                </button>
+              ))}
+              {needsAnswer && (
+                <span className="text-[11px] text-amber-800 dark:text-amber-300">
+                  Required before importing.
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/*
         Step 9. A column can record a hire date, a termination date, an FTE or

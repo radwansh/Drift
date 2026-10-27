@@ -3,10 +3,10 @@
 Audit date: 2026-10-25, by the repo's own `payroll-manager` agent against `main` @ `e0666bb`.
 Plan written against `main` @ `6afd1d5`.
 
-> **Status: steps 0, 1, 2, 3, 4, 5, 6, 7, 8a, 8a-ii, 8b, 9, 10 and 11 done.
-> Step 11b outstanding; its product decision is now made and recorded. Step 12
-> is measured and respecified as 12a and 12b: the change it asked for is an
-> identity with the rule already in place.**
+> **Status: steps 0, 1, 2, 3, 4, 5, 6, 7, 8a, 8a-ii, 8b, 9, 10, 11 and 11b
+> done. Step 12 is measured and respecified as 12a and 12b, which are the only
+> work left: the change step 12 asked for is an identity with the rule already
+> in place.**
 >
 > Each step was checked against its own unfixed source — the new tests are
 > re-run with that step's files stashed, and only count as binding the
@@ -167,6 +167,39 @@ Plan written against `main` @ `6afd1d5`.
 >   risk rating is gone, replaced by a data-quality statement. The column
 >   mapper has an employer side, and all 14 of its schema names are asserted
 >   against the classifier.
+>
+> - **11b** The question is asked in the wizard's mapping step, not on the
+>   annual dashboard. `openQuestionsFor` in `classify.ts` is the one rule both
+>   screens use, suppressed by the same saved answers, so they cannot ask
+>   different questions or one keep asking after the other was answered. An
+>   unanswered column is an **error** in `validateRows`, so it is decided
+>   before the register is committed rather than after — and `reconcileRegister`
+>   now takes `answeredCategories` too, because without it the gate would keep
+>   reading a just-answered column as unplaced and put the same money on the
+>   other side of the bridge from the dashboard.
+>
+>   **The answer goes to `component_categories`, not `company_column_mappings`.**
+>   The step names both as possible homes; only that one is what the annual
+>   engine reads as `savedCategories`, so an answer written to the mappings
+>   table would leave `ambiguityFor` still firing on the dashboard — exactly the
+>   after-the-fact question this step removes. It is upserted with the same
+>   audit row `annual.setComponentCategories` writes, plus
+>   `source: "upload_wizard"` so the log can tell the two screens apart, and
+>   written *after* the period exists: a choice saved for an import that then
+>   failed would answer a question about a register nobody accepted.
+>
+>   The annual-side `AMBIGUOUS_COMPONENT` warning is untouched, as the backstop
+>   the step asks for.
+>
+>   **A fixture note worth keeping.** Both of `Maladie`'s candidates are
+>   employee deductions, so an *unanswered* column with a value in it is read as
+>   earnings and the register looks short — a second fault. The end-to-end
+>   fixture therefore carries a zero, so the open question is the only thing
+>   standing between it and an import; the interaction itself is covered on a
+>   register with a real 100 in `reconcile.test.ts`. Measured: with the question
+>   not asked at upload, 2 of the 7 tests fail; with the answer not persisted, 3
+>   others do. The first fixture I wrote failed for both reasons at once and
+>   only 1 of 7 caught the change.
 >
 > **The base-salary figure is a separate defect and needs its own step.** The
 > audit's −6.7% at the March cut is *not* the smearing step 6 fixed: base is
