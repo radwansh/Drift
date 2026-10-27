@@ -3,9 +3,10 @@
 Audit date: 2026-10-25, by the repo's own `payroll-manager` agent against `main` @ `e0666bb`.
 Plan written against `main` @ `6afd1d5`.
 
-> **Status: steps 0, 1, 2, 3, 6, 7, 8a, 8b and 11 done. Steps 4, 5, 8a-ii, 9 and
-> 10 outstanding. Step 12 is measured and respecified as 12a and 12b: the change
-> it asked for is an identity with the rule already in place.**
+> **Status: steps 0, 1, 2, 3, 5, 6, 7, 8a, 8a-ii, 8b, 10 and 11 done. Steps 4
+> and 9 outstanding, both needing a product decision. Step 12 is measured and
+> respecified as 12a and 12b: the change it asked for is an identity with the
+> rule already in place.**
 >
 > Each step was checked against its own unfixed source — the new tests are
 > re-run with that step's files stashed, and only count as binding the
@@ -54,6 +55,30 @@ Plan written against `main` @ `6afd1d5`.
 >   are seasonal rather than one-off.
 > - **8b** The comparison feature labels money with the company's currency
 >   (`8d00c88`), `currencyDisplay: "code"` throughout, matching the annual side.
+> - **8a-ii** Minor units threaded through the annual engine (`9eb426c`). 79 of
+>   82 call sites; the three left at two decimals are absence days, average
+>   headcount and department absence days, which are not money. No existing
+>   test file was touched at all, so every USD assertion is byte-identical by
+>   construction. The `Number.EPSILON` nudge was measured over 56,000 half-fils
+>   midpoints and cannot move a payroll-scale figure, so it stays.
+>
+>   It also found a defect it was scoped out of fixing and pinned instead: the
+>   bridge `balance` came back as a negative zero at three decimals and
+>   rendered as `-KWD 0.000` — a minus sign on the reconciliation line. Fixed
+>   in `roundToMinorUnits` (`7cd5224`), which is the shared implementation, so
+>   the comparison side cannot render `-$0.00` either.
+> - **5** The anomaly detector rebuilt around payroll exceptions (`0ba1474`).
+>   The old set produced 3,166 flags across samples/2025, none critical, 100%
+>   the zero-value rule, while a 40% base-salary rise fired nothing. Now 382
+>   flags, measured in `anomaly-noise.test.ts`. Tolerances are per company in
+>   `companies.settings`.
+> - **10** The AI layer no longer claims more than the engine knows
+>   (`a826692`). Refinement may reword a finding, not add, remove or re-rate
+>   one — the old code returned the model's array *in place of* the engine's,
+>   so a model that omitted a finding deleted it. The "Compliance Assessment"
+>   risk rating is gone, replaced by a data-quality statement. The column
+>   mapper has an employer side, and all 14 of its schema names are asserted
+>   against the classifier.
 >
 > **The base-salary figure is a separate defect and needs its own step.** The
 > audit's −6.7% at the March cut is *not* the smearing step 6 fixed: base is
