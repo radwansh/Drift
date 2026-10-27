@@ -8,7 +8,25 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { AlertCircle, CheckCircle2, XCircle, Brain } from "lucide-react";
+import { SNAPSHOT_FIELDS, type SnapshotField } from "@saas/payroll-core";
 import { cn, formatComponentName } from "@/lib/utils";
+
+/**
+ * Step 9: what a column records, beyond the five identifier flags.
+ *
+ * One select rather than a checkbox each, because these roles are mutually
+ * exclusive and the database says so — `company_column_mappings_one_role`
+ * rejects a column that is both a typed field and a dimension. A checkbox grid
+ * would let the UI offer a combination the write then refuses.
+ */
+const RECORD_AS_COMPONENT = "component";
+const RECORD_AS_DIMENSION = "dimension";
+
+const SNAPSHOT_FIELD_LABELS: Record<SnapshotField, string> = {
+  hire_date: "Hire date",
+  termination_date: "Termination date",
+  fte: "FTE",
+};
 
 interface MappingRowProps {
   sourceColumn: string;
@@ -19,6 +37,8 @@ interface MappingRowProps {
   isDepartment: boolean;
   isGrossSalary: boolean;
   isNetSalary: boolean;
+  snapshotField?: SnapshotField | null;
+  dimensionName?: string | null;
   availableComponents: string[];
   onChange: (mapping: {
     sourceColumn: string;
@@ -28,6 +48,8 @@ interface MappingRowProps {
     isDepartment: boolean;
     isGrossSalary: boolean;
     isNetSalary: boolean;
+    snapshotField: SnapshotField | null;
+    dimensionName: string | null;
   }) => void;
 }
 
@@ -40,17 +62,25 @@ export function MappingRow({
   isDepartment,
   isGrossSalary,
   isNetSalary,
+  snapshotField = null,
+  dimensionName = null,
   availableComponents,
   onChange,
 }: MappingRowProps) {
+  // Step 9: a column recorded as a date, an FTE or a dimension needs no pay
+  // component, so the "pick a mapping" prompt does not apply to it. Everything
+  // else below is the rule that was already here.
+  const hasRecordRole = snapshotField !== null || dimensionName !== null;
+
   const isRequiredMissing =
-    !mappedComponent ||
-    mappedComponent === "ignore" ||
-    (!isEmployeeId &&
-      !isEmployeeName &&
-      !isDepartment &&
-      !isGrossSalary &&
-      !isNetSalary);
+    !hasRecordRole &&
+    (!mappedComponent ||
+      mappedComponent === "ignore" ||
+      (!isEmployeeId &&
+        !isEmployeeName &&
+        !isDepartment &&
+        !isGrossSalary &&
+        !isNetSalary));
 
   const update = (partial: Partial<{
     mappedComponent: string;
@@ -59,6 +89,8 @@ export function MappingRow({
     isDepartment: boolean;
     isGrossSalary: boolean;
     isNetSalary: boolean;
+    snapshotField: SnapshotField | null;
+    dimensionName: string | null;
   }>) => {
     onChange({
       sourceColumn,
@@ -68,8 +100,38 @@ export function MappingRow({
       isDepartment,
       isGrossSalary,
       isNetSalary,
+      snapshotField,
+      dimensionName,
       ...partial,
     });
+  };
+
+  const recordAs = snapshotField ?? (dimensionName !== null ? RECORD_AS_DIMENSION : RECORD_AS_COMPONENT);
+
+  /**
+   * A column is one thing. Taking a record role clears the identifier flags and
+   * the component, so the UI cannot offer a combination the write would refuse
+   * — the processor skips a record-role column when collecting components, and
+   * `company_column_mappings_one_role` rejects two roles at once.
+   */
+  const setRecordRole = (partial: {
+    snapshotField: SnapshotField | null;
+    dimensionName: string | null;
+  }) => {
+    const clearing = partial.snapshotField === null && partial.dimensionName === null;
+    update(
+      clearing
+        ? partial
+        : {
+            ...partial,
+            mappedComponent: "",
+            isEmployeeId: false,
+            isEmployeeName: false,
+            isDepartment: false,
+            isGrossSalary: false,
+            isNetSalary: false,
+          },
+    );
   };
 
   const identifierFields: Array<{
@@ -113,6 +175,7 @@ export function MappingRow({
         <div className="flex-1">
           <Select
             value={mappedComponent || ""}
+            disabled={hasRecordRole}
             onValueChange={(val) => {
               update({ mappedComponent: val });
             }}
@@ -148,7 +211,66 @@ export function MappingRow({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-1">
+      {/*
+        Step 9. A column can record a hire date, a termination date, an FTE or
+        a reporting dimension instead of a pay component. Without this the
+        upload had no way to populate those columns, so a hire date was
+        classified and summed as money.
+      */}
+      <div className="flex items-center gap-2">
+        <span className="w-20 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Records
+        </span>
+        <Select
+          value={recordAs}
+          onValueChange={(val) => {
+            if (val === RECORD_AS_DIMENSION) {
+              // Seed the name from the column header: it is right most of the
+              // time, and an empty box reads as a required field.
+              setRecordRole({ snapshotField: null, dimensionName: dimensionName ?? sourceColumn });
+            } else if (val === RECORD_AS_COMPONENT) {
+              setRecordRole({ snapshotField: null, dimensionName: null });
+            } else {
+              setRecordRole({ snapshotField: val as SnapshotField, dimensionName: null });
+            }
+          }}
+        >
+          <SelectTrigger className="h-8 w-44 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={RECORD_AS_COMPONENT}>Pay component</SelectItem>
+            {SNAPSHOT_FIELDS.map((field) => (
+              <SelectItem key={field} value={field}>
+                {SNAPSHOT_FIELD_LABELS[field]}
+              </SelectItem>
+            ))}
+            <SelectItem value={RECORD_AS_DIMENSION}>Reporting dimension</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {dimensionName !== null && (
+          <input
+            type="text"
+            value={dimensionName}
+            maxLength={100}
+            placeholder="Dimension name"
+            aria-label={`Dimension name for ${sourceColumn}`}
+            onChange={(e) => update({ dimensionName: e.target.value })}
+            className="h-8 flex-1 rounded-md border bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary/30"
+          />
+        )}
+
+        {snapshotField !== null && (
+          <span className="text-[11px] text-muted-foreground">
+            {snapshotField === "fte"
+              ? "A fraction of a full post: 0.5 or 50%."
+              : "Dates are read per column; an ambiguous column is reported, not guessed."}
+          </span>
+        )}
+      </div>
+
+      <div className={cn("flex flex-wrap items-center gap-1", hasRecordRole && "hidden")}>
         <span className="w-full text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Identifiers</span>
         {identifierFields.map(({ key, label }) => {
           const checked = (() => {

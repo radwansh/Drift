@@ -41,6 +41,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PeriodType } from "@saas/types";
+import { suggestColumnRole, type SnapshotField } from "@saas/payroll-core";
 import { PERIOD_TYPE_LABELS } from "@/lib/constants";
 
 interface ColumnMappingState {
@@ -51,7 +52,32 @@ interface ColumnMappingState {
   isDepartment: boolean;
   isGrossSalary: boolean;
   isNetSalary: boolean;
+  /** Step 9: what the column records when it is not a pay component. */
+  snapshotField: SnapshotField | null;
+  dimensionName: string | null;
 }
+
+/** Step 9: a column recorded as a date, an FTE or a dimension is not pay. */
+function hasRecordRole(m: ColumnMappingState): boolean {
+  return m.snapshotField !== null || m.dimensionName !== null;
+}
+
+/**
+ * Step 9: what to tell the admin about a column the reader refused.
+ *
+ * Each says what to change in the file, not what the code decided — "mixed
+ * formats" is actionable and "ambiguous_date_order" is not.
+ */
+const COLUMN_ISSUE_MESSAGES: Record<string, string> = {
+  ambiguous_date_order:
+    "every date reads both ways, so none was imported. Use YYYY-MM-DD, or include one date past the 12th.",
+  inconsistent_date_order:
+    "the column mixes day-first and month-first dates, so none was imported. Use YYYY-MM-DD.",
+  unreadable_values: "some values could not be read and were left out.",
+  fte_looks_like_percent:
+    "the values look like percentages, so none was imported. Use 0.5 for a half-timer, or add a % sign.",
+  fte_out_of_range: "some values were not positive and were left out.",
+};
 
 interface UploadModalProps {
   open: boolean;
@@ -158,7 +184,10 @@ function parseEmployeesFromData(
       !m.isEmployeeName &&
       !m.isDepartment &&
       !m.isGrossSalary &&
-      !m.isNetSalary,
+      !m.isNetSalary &&
+      // Step 9: matches the server's filter, so the preview shows the same
+      // components the import will write.
+      !hasRecordRole(m),
   );
 
   let rowCounter = 0;
@@ -198,6 +227,8 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
     totalGross: number;
     totalNet: number;
     warnings: number;
+    /** Step 9: columns that were mapped but could not be read. */
+    columnIssues: { sourceColumn: string; target: string; problem: { code: string; samples: string[] } }[];
   } | null>(null);
   const [step, setStep] = useState(1);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -238,14 +269,21 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
       const trimmed = header.trim();
       const ident = identifierHeaders[trimmed] ?? {};
       const isIdent = !!(ident.isEmployeeId || ident.isEmployeeName || ident.isDepartment || ident.isGrossSalary || ident.isNetSalary);
+      // Step 9: an identifier header wins, then a record role, then pay. The
+      // admin confirms whatever this picks in the mapping step.
+      const role = isIdent ? null : suggestColumnRole(trimmed);
+      const snapshotField = role?.kind === "snapshotField" ? role.field : null;
+      const dimensionName = role?.kind === "dimension" ? role.name : null;
       return {
         sourceColumn: trimmed,
-        mappedComponent: isIdent ? "" : trimmed,
+        mappedComponent: isIdent || role !== null ? "" : trimmed,
         isEmployeeId: ident.isEmployeeId ?? false,
         isEmployeeName: ident.isEmployeeName ?? false,
         isDepartment: ident.isDepartment ?? false,
         isGrossSalary: ident.isGrossSalary ?? false,
         isNetSalary: ident.isNetSalary ?? false,
+        snapshotField,
+        dimensionName,
       };
     });
 
@@ -389,6 +427,7 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
         totalGross: result.totalGross,
         totalNet: result.totalNet,
         warnings: result.warnings.length,
+        columnIssues: result.columnIssues,
       });
 
       await utils.payrollPeriods.list.invalidate();
@@ -406,6 +445,8 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
     const comps = new Set<string>();
     mappings.forEach((m) => {
       if (m.isEmployeeId || m.isEmployeeName || m.isDepartment || m.isGrossSalary || m.isNetSalary) return;
+      // Step 9: a hire date is not a component anyone should be able to pick.
+      if (hasRecordRole(m)) return;
       comps.add(m.sourceColumn);
       if (m.mappedComponent && m.mappedComponent !== "ignore" && m.mappedComponent !== "__create__") {
         comps.add(m.mappedComponent);
@@ -778,6 +819,33 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
                   <p className="mt-1 text-xs text-muted-foreground">
                     Your payroll period has been saved.
                   </p>
+                )}
+
+                {/*
+                  Step 9. A column the reader refused leaves its field empty,
+                  and an empty field looks like a register that did not carry
+                  the data. Saying which column and why is the difference
+                  between "your file has no hire dates" and "fix the format".
+                */}
+                {importResult && importResult.columnIssues.length > 0 && (
+                  <div className="mt-4 w-full max-w-md rounded-lg border border-amber-200 bg-amber-50 p-3 text-left dark:border-amber-900/50 dark:bg-amber-950/30">
+                    <p className="flex items-center gap-1.5 text-xs font-medium text-amber-900 dark:text-amber-200">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      The pay imported. These columns did not.
+                    </p>
+                    <ul className="mt-2 space-y-1.5">
+                      {importResult.columnIssues.map((issue, i) => (
+                        <li key={`${issue.sourceColumn}-${i}`} className="text-[11px] text-amber-900/90 dark:text-amber-200/90">
+                          <span className="font-medium">{issue.sourceColumn}</span>
+                          {" — "}
+                          {COLUMN_ISSUE_MESSAGES[issue.problem.code] ?? "could not be read."}
+                          {issue.problem.samples.length > 0 && (
+                            <span className="opacity-80"> e.g. {issue.problem.samples.join(", ")}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </>
             )}

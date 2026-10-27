@@ -71,6 +71,13 @@
       "when": 1791932323845,
       "tag": "0009_snapshot_dimensions_and_minor_units",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792018723845,
+      "tag": "0010_mapping_column_roles",
+      "breakpoints": true
     }
   ]
 }

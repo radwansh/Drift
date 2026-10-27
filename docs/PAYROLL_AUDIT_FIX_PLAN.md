@@ -3,8 +3,8 @@
 Audit date: 2026-10-25, by the repo's own `payroll-manager` agent against `main` @ `e0666bb`.
 Plan written against `main` @ `6afd1d5`.
 
-> **Status: steps 0, 1, 2, 3, 5, 6, 7, 8a, 8a-ii, 8b, 10 and 11 done.
-> Steps 4, 9 and 11b outstanding; their product decisions are now made and
+> **Status: steps 0, 1, 2, 3, 5, 6, 7, 8a, 8a-ii, 8b, 9, 10 and 11 done.
+> Steps 4 and 11b outstanding; their product decisions are now made and
 > recorded. Step 12 is measured and respecified as 12a and 12b: the change it
 > asked for is an identity with the rule already in place.**
 >
@@ -72,6 +72,44 @@ Plan written against `main` @ `6afd1d5`.
 >   the zero-value rule, while a 40% base-salary rise fired nothing. Now 382
 >   flags, measured in `anomaly-noise.test.ts`. Tolerances are per company in
 >   `companies.settings`.
+> - **9** The snapshot carries `hire_date`, `termination_date`, `fte` and a
+>   `dimensions` jsonb, `payroll_periods` carries the control totals step 4
+>   needs, and the upload path writes all of them. Two migrations: 0009 for the
+>   columns, 0010 for the two mapping roles — `snapshot_field` (the closed set)
+>   and `dimension_name` (the open one) — because the mapping could previously
+>   say only one of five things about a column and anything else became a pay
+>   component, so a hire date would have been classified and summed as money.
+>
+>   **A defect found while writing it, which silently defeated steps 8a and
+>   8a-ii.** Every money column was `numeric(_, 2)` and Postgres rounds to the
+>   declared scale on insert, so a KWD 3,703.701 was stored as 3,703.70: the
+>   fils were gone before the engine saw the row, and the engine tests passed
+>   only because they build their inputs directly and never round-trip through
+>   a table. All nine money columns are `numeric(20,3)` now — precision had to
+>   move too, since holding 15 while taking scale to 3 would cut the integer
+>   part from 13 digits to 12, which an LBP payroll exceeds. Reproduced against
+>   real Postgres in `apps/web/test/money-precision.test.ts`.
+>
+>   **`readDateColumn` infers the order per column, never per cell.**
+>   `03/04/2026` is the 3rd of April on a French register and the 4th of March
+>   on an American one, and a wrong hire date is worse than a missing one — it
+>   makes step 5's joiner check fire on the wrong people. One `25/12/2025` in
+>   the column settles every other value in it; a column nothing settles is
+>   reported and **not written**, the same rule step 11 applies to an
+>   unclassifiable component. 3 of the 23 date tests fail against the naive
+>   per-cell guess, and 4 of the 6 end-to-end tests fail against the
+>   pre-step-9 processor.
+>
+>   **Also found in passing:** `columnMappings.delete` matched on `id` alone,
+>   so any signed-in user could delete another tenant's mapping given its UUID
+>   — the same shape as finding 4a. Scoped, with two tests in
+>   `tenant-scoping.test.ts`; the refusal test fails if the scope is removed.
+>
+>   `harness.test.ts` gained a journal guard at the same time: `applyMigrations`
+>   globs the migrations folder but `pnpm db:migrate` reads `meta/_journal.json`,
+>   so a migration with no journal entry passed every test and would then never
+>   have run on production.
+>
 > - **10** The AI layer no longer claims more than the engine knows
 >   (`a826692`). Refinement may reword a finding, not add, remove or re-rate
 >   one — the old code returned the model's array *in place of* the engine's,

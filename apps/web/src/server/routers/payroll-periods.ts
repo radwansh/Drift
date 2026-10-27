@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { eq, and, desc, like, sql } from "drizzle-orm";
 import { payrollPeriods, uploadSessions, users } from "@saas/db";
+import { ColumnRole } from "@saas/types";
 import { editorProcedure, protectedProcedure, router } from "../trpc";
 import { validateRows } from "../upload/validate";
 import { processUpload } from "../upload/processor";
@@ -17,6 +18,13 @@ const IngestMapping = z.object({
   isDepartment: z.boolean(),
   isGrossSalary: z.boolean(),
   isNetSalary: z.boolean(),
+  /**
+   * Step 9: the same two roles a saved mapping carries. Both nullish, so a
+   * client built before step 9 still ingests, and the enum rejects a snapshot
+   * field the processor does not know — it switches on this value, and a typo
+   * would otherwise drop the column silently.
+   */
+  ...ColumnRole,
 });
 
 const ISO_DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected a YYYY-MM-DD date");
