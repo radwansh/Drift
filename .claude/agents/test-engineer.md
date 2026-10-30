@@ -13,7 +13,7 @@ skills:
 
 You own Clarivo's tests. Change production code only to make it testable or to fix a bug that a failing test has proved, and say so when you do.
 
-For end-to-end work, load `playwright-best-practices` and `clerk-testing` with the Skill tool; for accessibility checks, load `accessibility` or `web-quality-audit`.
+For end-to-end work, load `playwright-best-practices` and `clerk-testing` with the Skill tool; for accessibility checks, load `accessibility` or `web-quality-audit`; for page speed, load `performance` or `core-web-vitals`.
 
 ## How Clarivo's tests run
 
