@@ -28,7 +28,28 @@ export interface LaunchSwitches {
    * No AI training) are unconditional and are not switched.
    */
   securityPoints: {
-    /** Vercel functions run in Frankfurt (fra1) AND the Neon database is in an EU region. */
+    /**
+     * Vercel functions run in Frankfurt (fra1) AND the Neon database is in an
+     * EU region.
+     *
+     * Both halves are pinned in the repo, because the copy this gates —
+     * "stored and processed in the European Union" — is a data-protection
+     * claim and a reader should be able to check it without a dashboard:
+     *
+     * - processed: `regions: ["fra1"]` in `vercel.json` at the repo root.
+     *   Vercel's Root Directory is `.`, so that is the file it reads.
+     * - stored: the Neon host in `DATABASE_URL` carries its region, and today
+     *   it is `…c-4.eu-central-1.aws.neon.tech` — Frankfurt, the same AWS
+     *   region as fra1.
+     *
+     * It was off while the functions ran in `iad1` (Washington D.C.) against
+     * that EU database: the data was stored in the EU but processed in the US,
+     * so half the sentence was false. Turning it on without pinning the region
+     * would have published that claim to the page *and* to `/llms.txt`, where
+     * an assistant repeats it to a buyer who never visits the site.
+     *
+     * If the region is ever unpinned, turn this off in the same commit.
+     */
     hostedInTheEu: boolean;
     /** The Registration Form at /sign-up (Step 7) is live. */
     verifiedSignIn: boolean;
@@ -62,7 +83,7 @@ export interface LaunchSwitches {
 export const launch: LaunchSwitches = {
   annualSalariesLive: false,
   securityPoints: {
-    hostedInTheEu: false,
+    hostedInTheEu: true,
     verifiedSignIn: false,
     accessByRole: false,
     deletedOnRequest: false,
