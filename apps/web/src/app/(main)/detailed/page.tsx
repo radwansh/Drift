@@ -62,12 +62,16 @@ export default function DetailedViewPage() {
   const [results, setResults] = useState<ComparisonOutput[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState<string>("all");
+  // Step 8b: the company currency, so the table labels its figures with the
+  // right code instead of defaulting every cell to USD.
+  const [currency, setCurrency] = useState("USD");
 
   const [columnConfig, setColumnConfig] = useState<ColumnConfig[]>([]);
 
   const comparison = trpc.comparisons.run.useMutation({
     onSuccess: (result) => {
       setResults(result.results);
+      setCurrency(result.currency);
       setColumnConfig(buildColumnConfig(result.results, componentVisibility));
     },
     onError: () => {
@@ -179,6 +183,7 @@ export default function DetailedViewPage() {
             data={filteredResults}
             columnConfig={columnConfig}
             loading={false}
+            currency={currency}
           />
         </>
       )}

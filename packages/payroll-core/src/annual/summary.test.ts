@@ -82,6 +82,93 @@ describe("computeSummary sign conventions and quantities", () => {
   });
 });
 
+describe("computeSummary ambiguous components", () => {
+  const withMaladie = () =>
+    period({
+      periodStart: "2026-01-01",
+      periodEnd: "2026-01-31",
+      gross: 1000,
+      net: 880,
+      components: [pos("Base Salary", 1000), pos("Maladie", 120)],
+    });
+
+  it("asks about a column it cannot place, and names the question", () => {
+    const s = summaryFor({ periods: [withMaladie()] });
+
+    expect(hasCode(s, "AMBIGUOUS_COMPONENT")).toBe(true);
+    const w = s.warnings.find((x) => x.code === "AMBIGUOUS_COMPONENT")!;
+    // The question travels with the column, so the choice can be made from
+    // the warning rather than guessed at in the categoriser.
+    expect(w.items[0]).toMatch(/^Maladie — .*sick-leave deduction or a health-insurance/i);
+    expect(w.action).toEqual({ type: "open_categoriser", keys: ["Maladie"] });
+
+    // Uncategorised in the interim, so the money is visibly unreconciled
+    // rather than booked confidently to the wrong report.
+    expect(s.categories.byKey["Maladie"]!.category).toBe("uncategorised");
+    expect(s.categories.ambiguousKeys.map((a) => a.key)).toEqual(["Maladie"]);
+
+    // Not also in the generic notice: one column, one explanation.
+    expect(hasCode(s, "UNCATEGORISED")).toBe(false);
+  });
+
+  it("stops asking once the user has answered", () => {
+    const s = summaryFor({
+      periods: [withMaladie()],
+      savedCategories: { Maladie: "absence_deduction" },
+    });
+
+    expect(hasCode(s, "AMBIGUOUS_COMPONENT")).toBe(false);
+    expect(s.categories.ambiguousKeys).toEqual([]);
+    expect(s.categories.byKey["Maladie"]!.category).toBe("absence_deduction");
+    expect(s.categories.byCategory.absence_deduction).toBe(120);
+  });
+
+  it("keeps the generic notice for a column that simply matched nothing", () => {
+    const s = summaryFor({
+      periods: [
+        period({
+          periodStart: "2026-01-01",
+          periodEnd: "2026-01-31",
+          gross: 1000,
+          net: 900,
+          components: [pos("Base Salary", 1000), pos("Mystery X", 100)],
+        }),
+      ],
+    });
+
+    expect(hasCode(s, "UNCATEGORISED")).toBe(true);
+    expect(hasCode(s, "AMBIGUOUS_COMPONENT")).toBe(false);
+  });
+});
+
+describe("computeSummary category byKey", () => {
+  it("sums each component across periods instead of keeping only the last", () => {
+    const months = [
+      period({ periodStart: "2026-01-01", periodEnd: "2026-01-31", gross: 1000, net: 800, components: [pos("Base Salary", 1000), pos("Income Tax", 200)] }),
+      period({ periodStart: "2026-02-01", periodEnd: "2026-02-28", gross: 1000, net: 800, components: [pos("Base Salary", 1000), pos("Income Tax", 200)] }),
+      period({ periodStart: "2026-03-01", periodEnd: "2026-03-31", gross: 1000, net: 800, components: [pos("Base Salary", 1000), pos("Income Tax", 200)] }),
+    ];
+
+    const s = summaryFor({ periods: months });
+
+    // byKey used `acc[k] = v` inside a reduce over every period, so it held
+    // March alone: one month's figure under a year's label, on screen and in
+    // the Excel Components sheet headed "Total to date".
+    expect(s.categories.byKey["Base Salary"]!.total).toBe(3000);
+    expect(s.categories.byKey["Income Tax"]!.total).toBe(600);
+
+    // The invariant worth holding onto: a category's children must sum to the
+    // category row. It was three times out.
+    const childrenOf = (category: string) =>
+      Object.values(s.categories.byKey)
+        .filter((v) => v.category === category)
+        .reduce((a, v) => a + v.total, 0);
+
+    expect(childrenOf("base_salary")).toBe(s.categories.byCategory.base_salary);
+    expect(childrenOf("income_tax")).toBe(s.categories.byCategory.income_tax);
+  });
+});
+
 describe("computeSummary coverage and warnings", () => {
   it("flags a missing June and counts duplicates once", () => {
     const months = [1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12];
@@ -150,6 +237,37 @@ describe("computeSummary coverage and warnings", () => {
     expect(hasCode(s, "RECONCILIATION_GAP")).toBe(true);
   });
 
+  it("emits RECONCILIATION_GAP on an absolute gap the percentage trigger would miss (step 4)", () => {
+    // The defect step 4 names: the trigger was 2% of gross alone, so on a
+    // large payroll real money sat unexplained inside a green bridge. 0.01 on
+    // a 20,000,000 gross is 5e-10 of it — six orders of magnitude under the
+    // percentage, and still a cent that nobody can account for.
+    const jan = period({
+      periodStart: "2026-01-01",
+      periodEnd: "2026-01-31",
+      gross: 20_000_000,
+      net: 19_999_999.99,
+      components: [pos("Base Salary", 20_000_000)],
+    });
+    const s = summaryFor({ periods: [jan] });
+
+    expect(s.bridge.actual.balance).toBe(0.01);
+    expect(Math.abs(s.bridge.actual.balance) / 20_000_000).toBeLessThan(0.02);
+    expect(hasCode(s, "RECONCILIATION_GAP")).toBe(true);
+  });
+
+  it("keeps the floor at the currency's own minor unit, not a fixed cent", () => {
+    // A tenth of a fils is below KWD's unit, so it is residue rather than a
+     // gap; one fils is not. A fixed 0.01 floor would miss the fils entirely.
+    const fils = period({
+      periodStart: "2026-01-01",
+      periodEnd: "2026-01-31",
+      gross: 20_000_000,
+      net: 19_999_999.999,
+      components: [pos("Base Salary", 20_000_000)],
+    });
+    expect(hasCode(summaryFor({ periods: [fils], currency: "KWD" }), "RECONCILIATION_GAP")).toBe(true);
+  });
   it("does not emit RECONCILIATION_GAP when both balancing lines reconcile", () => {
     const jan = period({
       periodStart: "2026-01-01",
@@ -468,5 +586,107 @@ describe("computeYoY", () => {
 
   it("returns unavailable when a side has no data", () => {
     expect(computeYoY({ current: [], previous: [] }).available).toBe(false);
+  });
+});
+
+/**
+ * Step 12a's threshold, which the `samples/2025` backtest cannot exercise: that
+ * fixture's roster only ever grows past the bar, so the cases where the warning
+ * must stay quiet need their own periods.
+ *
+ * The bar is a disclosure threshold, not an estimate of the forecast's error —
+ * at the March cut the roster moved 132 → 141 and the year in fact closed at
+ * 151, so any single number offered as "how wrong this is" would be one Clarivo
+ * cannot know. A roster that has not moved needs no warning either, because
+ * holding it is then the best available assumption; the assumption itself is
+ * stated regardless.
+ */
+describe("FORECAST_HOLDS_HEADCOUNT (step 12a)", () => {
+  const months = (heads: readonly number[]) =>
+    heads.map((headcount, i) =>
+      period({
+        periodStart: `2026-${String(i + 1).padStart(2, "0")}-01`,
+        periodEnd: new Date(Date.UTC(2026, i + 1, 0)).toISOString().slice(0, 10),
+        gross: 1000 * headcount,
+        net: 800 * headcount,
+        headcount,
+        components: [pos("Base Salary", 1000 * headcount)],
+      }),
+    );
+
+  const summaryOf = (heads: readonly number[]) => summaryFor({ periods: months(heads) });
+  const has = (heads: readonly number[]) =>
+    hasCode(summaryOf(heads), "FORECAST_HOLDS_HEADCOUNT");
+
+  it("fires when the roster has grown past the bar", () => {
+    // 100 -> 110 is +10, a tenth of the opening roster.
+    expect(has([100, 105, 110])).toBe(true);
+  });
+
+  it("fires on a shrinking roster too, and says so", () => {
+    const s = summaryOf([100, 95, 90]);
+    const w = s.warnings.find((x) => x.code === "FORECAST_HOLDS_HEADCOUNT")!;
+
+    expect(w.detail).toContain("shrunk");
+    expect(w.items).toEqual(["100 → 90 over 3 periods (-10, -10.0%)"]);
+    expect(w.title).toBe("Forecast holds 90 employees for the rest of the year");
+  });
+
+  it("stays quiet on a roster that has not moved", () => {
+    expect(has([100, 100, 100])).toBe(false);
+    // And the assumption is still stated, because the roster is still held.
+    expect(summaryOf([100, 100, 100]).assumptions).toContain(
+      "Headcount held at 100 for the remaining 9 periods: no joiners or leavers are assumed.",
+    );
+  });
+
+  it("stays quiet below the share, however many people that is", () => {
+    // 1,000 -> 1,020 is 20 people and 2% of the roster. Holding it flat for the
+    // rest of the year is not the headline on a company that size.
+    expect(has([1000, 1010, 1020])).toBe(false);
+  });
+
+  it("stays quiet below two people, however large the share", () => {
+    // 10 -> 11 is 10% of the roster and one person. A one-person move on a
+    // ten-person company is not an assumption worth a warning.
+    expect(has([10, 11])).toBe(false);
+    expect(has([10, 12])).toBe(true);
+  });
+
+  it("measures first to last, not the largest swing in between", () => {
+    // A roster that went up and came back is where it started. Holding it is
+    // then right, and the peak is not a reason to warn.
+    expect(has([100, 130, 100])).toBe(false);
+  });
+
+  it("needs two periods, because one has no movement to measure", () => {
+    const s = summaryOf([100]);
+    expect(hasCode(s, "FORECAST_HOLDS_HEADCOUNT")).toBe(false);
+    expect(s.heldHeadcount).toMatchObject({ held: 100, periods: 1, material: false });
+  });
+
+  it("says nothing when there is nothing left to forecast", () => {
+    const whole = Array.from({ length: 12 }, (_, i) => 100 + i * 5);
+    const s = summaryOf(whole);
+
+    expect(s.heldHeadcount).toBeNull();
+    expect(hasCode(s, "FORECAST_HOLDS_HEADCOUNT")).toBe(false);
+    expect(s.assumptions.some((a) => a.includes("Headcount held"))).toBe(false);
+  });
+
+  it("moves no projected figure either way", () => {
+    // The same roster, read with the warning on and off by crossing the bar.
+    // Gross per head is identical in both, so the projection is comparable: the
+    // only difference is whether the assumption is disclosed.
+    const quiet = summaryOf([100, 100, 100]);
+    const loud = summaryOf([100, 105, 110]);
+
+    // Each projects its own last period's gross across nine slots.
+    expect(quiet.bridge.forecast.gross).toBeCloseTo(9 * 100_000, 2);
+    expect(loud.bridge.forecast.gross).toBeCloseTo(9 * 110_000, 2);
+
+    // And the warning is the only thing that differs in kind.
+    expect(hasCode(quiet, "FORECAST_HOLDS_HEADCOUNT")).toBe(false);
+    expect(hasCode(loud, "FORECAST_HOLDS_HEADCOUNT")).toBe(true);
   });
 });

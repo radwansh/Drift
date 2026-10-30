@@ -7,12 +7,18 @@ import type {
   Money,
   PeriodType,
 } from "./types";
-import { EMPLOYEE_DEDUCTION_CATEGORIES, EARNING_CATEGORIES, EMPLOYER_COST_CATEGORIES } from "./types";
+import {
+  CATEGORY_LABELS,
+  EMPLOYEE_DEDUCTION_CATEGORIES,
+  EARNING_CATEGORIES,
+  EMPLOYER_COST_CATEGORIES,
+} from "./types";
 import { buildCategoryTotals } from "./categoryTotals";
 import { generateExpectedPeriods } from "./periods";
 import { groupBySlot } from "./slots";
 import { clamp } from "./dates";
-import { average, roundMoney } from "./math";
+import { average, median, roundMoney, sum } from "./math";
+import { DEFAULT_MINOR_UNITS } from "../money";
 
 const RECURRING: readonly Category[] = [
   "base_salary",
@@ -32,6 +38,65 @@ const STATUTORY: readonly Category[] = [
   "social_security_employer",
 ];
 
+/**
+ * A period's amount is a one-off when it exceeds this multiple of the median of
+ * the *other* periods (step 6).
+ *
+ * The comparison is leave-one-out rather than against the median of the whole
+ * series, because when a large share of the window is spiky the median sits
+ * between the spikes and nothing clears the bar. At the four-month cut of
+ * samples/2025, March and April both carry launch overtime: the median of all
+ * four is 32,352.09, 3x of which is 97,056.27, and neither 57,739.36 nor
+ * 64,942.33 reaches it — so the whole launch spike projected into every
+ * remaining month (+108.8% against the run rate). Leave-one-out catches both.
+ */
+const ONE_OFF_SPIKE_MULTIPLE = 3;
+
+/** Below three periods a spike cannot be told from a level, so none is called. */
+const ONE_OFF_MIN_PERIODS = 3;
+
+export interface RunRateSplit {
+  /** The per-period recurring level, projected into each remaining slot. */
+  recurring: number;
+  /** Signed excess over `recurring` per actual period; 0 where there is none. */
+  excess: number[];
+  /** Sum of `excess` — what the forecast deliberately does not repeat. */
+  oneOffTotal: number;
+}
+
+/**
+ * Split a variable category's actual periods into a recurring floor and the
+ * one-offs sitting on top of it (step 6 of docs/PAYROLL_AUDIT_FIX_PLAN.md).
+ *
+ * v1 projected `avgAll` — the year-to-date mean — for every category that was
+ * neither statutory nor recurring, so a March annual bonus was smeared across
+ * every remaining month. The error hid: at the March cut of samples/2025 the
+ * fictional bonus (+33.0%) cancelled the understated base (-6.7%) and the gross
+ * headline read 1.4% low, so a manager was told "gross is on plan" while the
+ * bonus line was a third over and the base line 7% under.
+ *
+ * Magnitudes, not signed values, decide what is a spike, so a large negative
+ * adjustment is treated the same way as a large payment. A median of zero — a
+ * category that is normally nil, which is what retro pay and severance look
+ * like — makes any non-zero period a one-off, which is the intended reading.
+ */
+export function splitRunRate(values: readonly number[]): RunRateSplit {
+  if (values.length === 0) return { recurring: 0, excess: [], oneOffTotal: 0 };
+  if (values.length < ONE_OFF_MIN_PERIODS) {
+    return { recurring: median(values), excess: values.map(() => 0), oneOffTotal: 0 };
+  }
+
+  const isOneOff = values.map((value, i) => {
+    const others = values.filter((_, j) => j !== i);
+    return Math.abs(value) > Math.abs(median(others)) * ONE_OFF_SPIKE_MULTIPLE;
+  });
+
+  const ordinary = values.filter((_, i) => !isOneOff[i]);
+  const recurring = ordinary.length > 0 ? average(ordinary) : median(values);
+  const excess = values.map((value, i) => (isOneOff[i] ? value - recurring : 0));
+  return { recurring, excess, oneOffTotal: sum(excess) };
+}
+
 export interface ForecastOptions {
   year: number;
   periodType: PeriodType;
@@ -47,6 +112,16 @@ export interface ForecastOptions {
   resolve: (key: string) => Category;
   /** First month of the fiscal year (step 45); 1 = calendar year. */
   fiscalStartMonth?: number;
+  /**
+   * The currency's minor units (step 8a-ii). Defaults to 2, so a caller that
+   * does not know its currency behaves exactly as this engine did before.
+   *
+   * Every projected figure is derived — a per-slot forecast is rounded and then
+   * summed into the full year — so rounding the slots to a coarser quantum than
+   * the actuals loses money twice: once in each slot, and again in the total it
+   * is supposed to tie to.
+   */
+  decimals?: number;
 }
 
 export interface PreviousYearForecast {
@@ -67,6 +142,17 @@ export interface ForecastPeriod {
   categories: Partial<Record<Category, number>>;
 }
 
+/**
+ * One-offs found in the actual periods that the forecast does not repeat
+ * (step 6). The amounts are already inside the actual category totals; this is
+ * what was withheld from the projection, reported so the exclusion is visible
+ * rather than implied.
+ */
+export interface OneOffsExcluded {
+  byCategory: Partial<Record<Category, number>>;
+  total: Money;
+}
+
 export interface ForecastTotals {
   totals: Partial<Record<Category, Money>>;
   gross: Money;
@@ -77,16 +163,56 @@ export interface ForecastTotals {
   net: Money;
 }
 
+/**
+ * Step 12a: the roster the projection held, and how it moved getting there.
+ *
+ * Reported, never acted on. The projection is unchanged by this — holding the
+ * latest headcount is an identity with the level already carried, and
+ * extrapolating the roster was measured and is worse (see
+ * `warnings.forecastHoldsHeadcount` and `forecast.backtest.test.ts`). What was
+ * missing was any statement that 141 heads were being carried through a year
+ * that closes at 151.
+ */
+export interface HeldHeadcount {
+  /** The headcount projected across every remaining slot. */
+  held: number;
+  /** The first and last headcount in the actual window. */
+  first: number;
+  last: number;
+  /** How many actual periods the movement is measured over. */
+  periods: number;
+  /** How many slots the held figure is carried across. */
+  remainingSlots: number;
+  /** `last - first`. */
+  net: number;
+  /** `net` as a percentage of `first`, 0 when `first` is 0. */
+  pct: number;
+  /**
+   * True when the movement is large enough to be worth disclosing: at least 2
+   * people and at least 5% of the opening roster, with something still to
+   * forecast.
+   *
+   * A disclosure threshold, not an error estimate. A roster that has not moved
+   * needs no warning, because holding it is then the best available assumption
+   * and the assumption itself is always stated.
+   */
+  material: boolean;
+}
+
 export interface ForecastResult extends ForecastTotals {
   method: ForecastMethod;
   methodsAvailable: ForecastMethod[];
   assumptions: string[];
+  /** Step 12a. `null` when there is nothing to forecast. */
+  heldHeadcount: HeldHeadcount | null;
   perPeriod: ForecastPeriod[];
   /** Estimated past slots, and their totals, kept separate from the forecast. */
   perEstimated: ForecastPeriod[];
   estimated: ForecastTotals;
   /** True when no earnings component is mapped, so gross/net are projected directly. */
   directGrossNet: boolean;
+  /** One-offs held out of the projection (step 6). Empty when nothing was held out. */
+  oneOffs: OneOffsExcluded;
 }
 
 const METHOD_NAMES: Record<ForecastMethod, string> = {
@@ -150,20 +276,23 @@ function emptyTotals(): ForecastTotals {
   };
 }
 
-function totalsOf(periods: readonly ForecastPeriod[]): ForecastTotals {
+function totalsOf(periods: readonly ForecastPeriod[], decimals: number): ForecastTotals {
+  const round = (value: number) => roundMoney(value, decimals);
   return {
     totals: sumRows(periods.map((p) => p.categories)),
-    gross: roundMoney(periods.reduce((a, p) => a + p.gross, 0)),
-    employeeDeductions: roundMoney(periods.reduce((a, p) => a + p.employeeDeductions, 0)),
-    employerCosts: roundMoney(periods.reduce((a, p) => a + p.employerCosts, 0)),
-    earningsBalance: roundMoney(periods.reduce((a, p) => a + p.earningsBalance, 0)),
-    balance: roundMoney(periods.reduce((a, p) => a + p.balance, 0)),
-    net: roundMoney(periods.reduce((a, p) => a + p.net, 0)),
+    gross: round(periods.reduce((a, p) => a + p.gross, 0)),
+    employeeDeductions: round(periods.reduce((a, p) => a + p.employeeDeductions, 0)),
+    employerCosts: round(periods.reduce((a, p) => a + p.employerCosts, 0)),
+    earningsBalance: round(periods.reduce((a, p) => a + p.earningsBalance, 0)),
+    balance: round(periods.reduce((a, p) => a + p.balance, 0)),
+    net: round(periods.reduce((a, p) => a + p.net, 0)),
   };
 }
 
 export function buildForecast(opts: ForecastOptions): ForecastResult {
   const { actual, remaining, resolve } = opts;
+  const decimals = opts.decimals ?? DEFAULT_MINOR_UNITS;
+  const round = (value: number) => roundMoney(value, decimals);
   const missingPast = opts.missingPast ?? [];
 
   const rows = actual.map((p) => buildCategoryTotals(p.components, resolve).byCategory);
@@ -245,6 +374,15 @@ export function buildForecast(opts: ForecastOptions): ForecastResult {
   const avgAll = (cat: Category) => (rows.length > 0 ? (ytdByCategory[cat] ?? 0) / rows.length : 0);
   const lastActual = (cat: Category) => (rows.length > 0 ? rows[rows.length - 1]?.[cat] ?? 0 : 0);
 
+  // Step 6: a run rate is the level that recurs, so each variable category is
+  // split into a floor and the one-offs above it. `VARIABLE` was declared and
+  // exported here from the start and never read, which is why nothing
+  // distinguished a bonus from rent.
+  const variableSplits: Partial<Record<Category, RunRateSplit>> = {};
+  for (const cat of VARIABLE) {
+    variableSplits[cat] = splitRunRate(rows.map((r) => r[cat] ?? 0));
+  }
+
   const windowRows = rows.slice(-3);
   const avgWindow = (cat: Category) =>
     windowRows.length > 0 ? average(windowRows.map((r) => r[cat] ?? 0)) : 0;
@@ -279,6 +417,9 @@ export function buildForecast(opts: ForecastOptions): ForecastResult {
       }
       if (STATUTORY.includes(cat)) return ytdRate(cat);
       if (RECURRING.includes(cat)) return lastActual(cat);
+      // A variable category projects its recurring floor, never the smeared
+      // average that carried a one-off into every remaining period (step 6).
+      if (VARIABLE.includes(cat)) return variableSplits[cat]?.recurring ?? avgAll(cat);
       return avgAll(cat);
     };
 
@@ -309,20 +450,20 @@ export function buildForecast(opts: ForecastOptions): ForecastResult {
       gross = EARNING_CATEGORIES.reduce((acc, c) => acc + (categories[c] ?? 0), 0) + earningsBalance;
     }
 
-    gross = roundMoney(gross);
-    earningsBalance = roundMoney(earningsBalance);
+    gross = round(gross);
+    earningsBalance = round(earningsBalance);
 
     // --- deductions and employer costs ---
     for (const cat of STATUTORY) {
       categories[cat] =
-        method === "run_rate" ? roundMoney(ytdRate(cat) * gross) : roundMoney(amountFor(cat));
+        method === "run_rate" ? round(ytdRate(cat) * gross) : round(amountFor(cat));
     }
-    categories.other_deduction = roundMoney(amountFor("other_deduction"));
-    categories.absence_deduction = roundMoney(amountFor("absence_deduction"));
-    categories.other_employer_cost = roundMoney(amountFor("other_employer_cost"));
+    categories.other_deduction = round(amountFor("other_deduction"));
+    categories.absence_deduction = round(amountFor("absence_deduction"));
+    categories.other_employer_cost = round(amountFor("other_employer_cost"));
 
-    const employeeDeductions = roundMoney(employeeDeductionTotal(categories));
-    const employerCosts = roundMoney(
+    const employeeDeductions = round(employeeDeductionTotal(categories));
+    const employerCosts = round(
       (categories.social_security_employer ?? 0) + (categories.other_employer_cost ?? 0),
     );
 
@@ -336,18 +477,18 @@ export function buildForecast(opts: ForecastOptions): ForecastResult {
         const prevAvg = average([...prevNetBySlot.values()]);
         net = (typeof fromSlot === "number" ? fromSlot : prevAvg) * growth;
       } else net = lastNet;
-      net = roundMoney(net);
+      net = round(net);
       // Keep the bridge self-consistent: whatever gross minus net is, it is the
       // unreconciled balance.
-      balance = roundMoney(gross - net - employeeDeductions);
+      balance = round(gross - net - employeeDeductions);
     } else {
-      if (method === "average") balance = roundMoney(windowBalance);
+      if (method === "average") balance = round(windowBalance);
       else if (method === "prior_year") {
         const fromSlot = prevBalanceBySlot.get(slot.index);
         const prevAvg = average([...prevBalanceBySlot.values()]);
-        balance = roundMoney((typeof fromSlot === "number" ? fromSlot : prevAvg) * growth);
-      } else balance = roundMoney(runRateBalance);
-      net = roundMoney(gross - employeeDeductions - balance);
+        balance = round((typeof fromSlot === "number" ? fromSlot : prevAvg) * growth);
+      } else balance = round(runRateBalance);
+      net = round(gross - employeeDeductions - balance);
     }
 
     return { slot, gross, employeeDeductions, employerCosts, earningsBalance, balance, net, categories };
@@ -356,15 +497,61 @@ export function buildForecast(opts: ForecastOptions): ForecastResult {
   const perPeriod = remaining.map(projectSlot);
   const perEstimated = missingPast.map(projectSlot);
 
+  // Only the run-rate method holds one-offs back, so it is the only one that has
+  // an exclusion to declare. `average` is the average of the last three periods
+  // and `prior_year` aligns last year's figures by slot — both say what they do,
+  // and a slot-aligned prior-year bonus belongs in the month it was paid.
+  // Reporting an exclusion that was not applied would be a wrong number of its
+  // own, so the line stays empty for them, and empty when nothing was projected.
+  const oneOffs: OneOffsExcluded = { byCategory: {}, total: 0 };
+  if (method === "run_rate" && perPeriod.length + perEstimated.length > 0) {
+    for (const cat of VARIABLE) {
+      const excluded = round(variableSplits[cat]?.oneOffTotal ?? 0);
+      if (excluded === 0) continue;
+      oneOffs.byCategory[cat] = excluded;
+      oneOffs.total = round(oneOffs.total + excluded);
+    }
+  }
+  if (oneOffs.total !== 0) {
+    // No figure in the prose: payroll-core has no currency, and an unlabelled
+    // amount on screen is the bug step 8 is about. The amount travels in
+    // `oneOffs` for the UI to format.
+    const names = Object.keys(oneOffs.byCategory)
+      .map((c) => CATEGORY_LABELS[c as Category].toLowerCase())
+      .join(", ");
+    assumptions.push(
+      `One-offs in ${names} are counted in the period they were paid and are not projected forward.`,
+    );
+  }
+
+  /**
+   * Step 12a: state the roster the projection assumed.
+   *
+   * Last, not an average: the recurring level carried forward is the last
+   * actual period's total, so the headcount that level covers is that same
+   * period's. Pushed after the one-off note so the forecast's own method and
+   * exclusions read first, and the roster assumption last.
+   */
+  const heldHeadcount = measureHeldHeadcount(actual, remaining.length);
+  if (heldHeadcount) {
+    assumptions.push(
+      `Headcount held at ${heldHeadcount.held} for the remaining ` +
+        `${heldHeadcount.remainingSlots} ${heldHeadcount.remainingSlots === 1 ? "period" : "periods"}: ` +
+        `no joiners or leavers are assumed.`,
+    );
+  }
+
   return {
     method,
     methodsAvailable,
     assumptions,
+    heldHeadcount,
     perPeriod,
     perEstimated,
-    estimated: perEstimated.length > 0 ? totalsOf(perEstimated) : emptyTotals(),
+    estimated: perEstimated.length > 0 ? totalsOf(perEstimated, decimals) : emptyTotals(),
     directGrossNet,
-    ...(perPeriod.length > 0 ? totalsOf(perPeriod) : emptyTotals()),
+    oneOffs,
+    ...(perPeriod.length > 0 ? totalsOf(perPeriod, decimals) : emptyTotals()),
   };
 }
 
@@ -379,3 +566,46 @@ export function sumRows(rows: readonly Partial<Record<Category, number>>[]): Par
 }
 
 export { EARNING_CATEGORIES, EMPLOYER_COST_CATEGORIES, VARIABLE as VARIABLE_CATEGORIES };
+
+/** Step 12a: at least this many people, and this share of the opening roster. */
+const MATERIAL_HEADS = 2;
+const MATERIAL_SHARE = 0.05;
+
+/**
+ * Step 12a: the roster the projection held, and how it moved.
+ *
+ * `null` when there is nothing to forecast or no actual period to hold — there
+ * is then no assumption to state.
+ *
+ * The movement is first-to-last across the actual window, which is a fact about
+ * the uploaded periods. Deliberately not a projection of it: the net flow
+ * applied forward was measured and is worse than holding (see
+ * `forecast.backtest.test.ts`), so presenting it as "how far out the forecast
+ * is" would be asserting the rule this step rejected.
+ */
+export function measureHeldHeadcount(
+  actual: readonly AnnualPeriodInput[],
+  remainingSlots: number,
+): HeldHeadcount | null {
+  if (actual.length === 0 || remainingSlots === 0) return null;
+
+  const first = actual[0]?.headcount ?? 0;
+  const last = actual[actual.length - 1]?.headcount ?? 0;
+  const net = last - first;
+  const pct = first > 0 ? (net / first) * 100 : 0;
+
+  return {
+    held: last,
+    first,
+    last,
+    periods: actual.length,
+    remainingSlots,
+    net,
+    pct,
+    material:
+      actual.length >= 2 &&
+      Math.abs(net) >= MATERIAL_HEADS &&
+      first > 0 &&
+      Math.abs(net) / first >= MATERIAL_SHARE,
+  };
+}

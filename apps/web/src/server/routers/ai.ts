@@ -33,6 +33,8 @@ export const aiRouter = router({
         company?.name ?? "Unknown",
         currentPeriod ? `${currentPeriod.periodStart} - ${currentPeriod.periodEnd}` : "Current",
         previousPeriod ? `${previousPeriod.periodStart} - ${previousPeriod.periodEnd}` : "Previous",
+        // Step 8b: the narrative states amounts, so it needs the code they are in.
+        company?.currencyCode ?? "USD",
       );
 
       if (!run.aiNarrative) {
@@ -109,6 +111,8 @@ export const aiRouter = router({
         companyName: company?.name ?? "Unknown",
         currentPeriod: currentPeriod ? `${currentPeriod.periodStart} - ${currentPeriod.periodEnd}` : "Current",
         previousPeriod: previousPeriod ? `${previousPeriod.periodStart} - ${previousPeriod.periodEnd}` : "Previous",
+        // Step 8b: four `$` signs were hardcoded in the rule-based summary.
+        currency: company?.currencyCode ?? "USD",
       });
 
       return audit;

@@ -2,13 +2,19 @@ import type { AiNarrative } from "@saas/types";
 import type { AggregatedSummary } from "@saas/payroll-core";
 import { callClaude, isAiAvailable } from "./client";
 import { NARRATIVE_SYSTEM_PROMPT } from "./narrative/prompts";
+import { formatMoney } from "./money";
 
 function ruleBasedNarrative(
   summary: AggregatedSummary,
   companyName: string,
   currentPeriod: string,
   previousPeriod: string,
+  currency: string,
 ): AiNarrative {
+  // Step 8b: every amount here was written as `$${n.toFixed(2)}` and the
+  // function took no currency at all, so a Lebanese or Kuwaiti payroll was
+  // narrated in dollars.
+  const money = (amount: number) => formatMoney(amount, currency);
   const variance = summary.totalPayrollVariance;
   const affected = summary.employeesAffected;
   const direction = variance.absolute >= 0 ? "increase" : "decrease";
@@ -17,9 +23,12 @@ function ruleBasedNarrative(
     ? ` (${variance.percentage.toFixed(1)}%)`
     : "";
 
+  // "net pay", not "total payroll": the figure is net. It was the sum of every
+  // mapped component — gross plus deductions on a register with positive
+  // deduction columns — described as total payroll.
   let summaryText =
     `For ${companyName}, comparing ${currentPeriod} to ${previousPeriod}, ` +
-    `total payroll saw a ${direction} of $${absVariance.toFixed(2)}${pctText}. `;
+    `net pay saw a ${direction} of ${money(absVariance)}${pctText}. `;
 
   summaryText +=
     `${affected.total} employees were compared: ` +
@@ -43,18 +52,18 @@ function ruleBasedNarrative(
   const highlights: string[] = [];
   if (summary.largestIncrease) {
     highlights.push(
-      `${summary.largestIncrease.employeeName} had the largest increase at $${summary.largestIncrease.amount.toFixed(2)}`,
+      `${summary.largestIncrease.employeeName} had the largest increase at ${money(summary.largestIncrease.amount)}`,
     );
   }
   if (summary.largestDecrease) {
     highlights.push(
-      `${summary.largestDecrease.employeeName} had the largest decrease at $${Math.abs(summary.largestDecrease.amount).toFixed(2)}`,
+      `${summary.largestDecrease.employeeName} had the largest decrease at ${money(Math.abs(summary.largestDecrease.amount))}`,
     );
   }
   if (summary.averageChange.absolute !== 0) {
     const avgDir = summary.averageChange.absolute >= 0 ? "increase" : "decrease";
     highlights.push(
-      `Average change per employee was an ${avgDir} of $${Math.abs(summary.averageChange.absolute).toFixed(2)}`,
+      `Average change per employee was an ${avgDir} of ${money(Math.abs(summary.averageChange.absolute))}`,
     );
   }
 
@@ -85,27 +94,35 @@ function ruleBasedNarrative(
   };
 }
 
+/**
+ * `currency` is required rather than defaulted (step 8b). A default is what let
+ * every caller omit it and every figure print in dollars; a required argument
+ * makes the compiler find the next caller that forgets.
+ */
 export async function generateNarrative(
   summary: AggregatedSummary,
   companyName: string,
   currentPeriod: string,
   previousPeriod: string,
+  currency: string,
 ): Promise<AiNarrative> {
   if (!isAiAvailable) {
-    return ruleBasedNarrative(summary, companyName, currentPeriod, previousPeriod);
+    return ruleBasedNarrative(summary, companyName, currentPeriod, previousPeriod, currency);
   }
 
+  // The currency goes to the model too, so it can name it rather than guess.
   const userMessage = JSON.stringify({
     companyName,
     currentPeriod,
     previousPeriod,
+    currency,
     summary,
   });
 
   const { text: claudeRaw } = await callClaude(NARRATIVE_SYSTEM_PROMPT, userMessage);
 
   if (!claudeRaw) {
-    return ruleBasedNarrative(summary, companyName, currentPeriod, previousPeriod);
+    return ruleBasedNarrative(summary, companyName, currentPeriod, previousPeriod, currency);
   }
 
   try {
@@ -117,6 +134,6 @@ export async function generateNarrative(
       severity: parsed.severity ?? "routine",
     };
   } catch {
-    return ruleBasedNarrative(summary, companyName, currentPeriod, previousPeriod);
+    return ruleBasedNarrative(summary, companyName, currentPeriod, previousPeriod, currency);
   }
 }

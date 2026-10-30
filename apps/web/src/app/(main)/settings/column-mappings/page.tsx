@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { useColumnMappings } from "@/hooks/use-column-mappings";
 import { Plus, Trash2, Save, Download, Upload, TestTube, Check, X, Edit3, Eye, EyeOff } from "lucide-react";
-import type { ColumnMapping } from "@saas/types";
+import { isSnapshotField, type ColumnMapping, type SnapshotField } from "@saas/types";
 import { usePayrollStore } from "@/lib/payroll-store";
 
 interface EditableMapping {
@@ -20,6 +20,14 @@ interface EditableMapping {
   isDepartment: boolean;
   isGrossSalary: boolean;
   isNetSalary: boolean;
+  /**
+   * Step 9. Carried through, not edited here: the upload wizard's mapping step
+   * is where a column's role is chosen. Dropping them on the way through would
+   * silently wipe an admin's date and dimension mappings the first time they
+   * renamed anything on this page.
+   */
+  snapshotField: SnapshotField | null;
+  dimensionName: string | null;
   isAiSuggested: boolean;
 }
 
@@ -41,6 +49,10 @@ export default function ColumnMappingsPage() {
         isDepartment: m.isDepartment,
         isGrossSalary: m.isGrossSalary,
         isNetSalary: m.isNetSalary,
+        // The row comes back from Postgres as plain text, so narrow it rather
+        // than casting: a value outside the set is not one this page can keep.
+        snapshotField: isSnapshotField(m.snapshotField) ? m.snapshotField : null,
+        dimensionName: m.dimensionName ?? null,
         isAiSuggested: m.isAiSuggested,
       })),
     );
@@ -62,7 +74,7 @@ export default function ColumnMappingsPage() {
   const addMapping = () => {
     setLocalMappings((prev) => [
       ...prev,
-      { sourceColumn: "", mappedComponent: "", isEmployeeId: false, isEmployeeName: false, isDepartment: false, isGrossSalary: false, isNetSalary: false, isAiSuggested: false },
+      { sourceColumn: "", mappedComponent: "", isEmployeeId: false, isEmployeeName: false, isDepartment: false, isGrossSalary: false, isNetSalary: false, snapshotField: null, dimensionName: null, isAiSuggested: false },
     ]);
     setEditIndex(localMappings.length);
   };

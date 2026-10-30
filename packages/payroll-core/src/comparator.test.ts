@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { runComparison } from "./comparator";
-import type { EmployeeRecord } from "./types";
+import { runComparison, DuplicateEmployeeIdsError } from "./comparator";
+import type { EmployeeRecord, AggregatedSummary } from "./types";
 
 function emp(
   id: string,
@@ -12,6 +12,48 @@ function emp(
 ): EmployeeRecord {
   return { externalId: id, name, department: dept, components, grossSalary: gross, netSalary: net };
 }
+
+describe("runComparison - per-currency minor units", () => {
+  // The plan's case: one fils on a KWD payroll. A real movement the payslip
+  // shows, which the fixed two-decimal rounding erased.
+  const previous = [emp("E1", "Fahad", "Ops", { base: 1172.839 }, 1172.839, 1172.839)];
+  const current = [emp("E1", "Fahad", "Ops", { base: 1172.84 }, 1172.84, 1172.84)];
+
+  it("keeps a one-fils movement on a three-decimal currency", () => {
+    const { results, summary } = runComparison(current, previous, { currency: "KWD" });
+    const row = results[0]!;
+
+    expect(row.netDelta).toBeCloseTo(0.001, 6);
+    expect(row.status).toBe("increased");
+    expect(summary.totalNet.absolute).toBeCloseTo(0.001, 6);
+    expect(summary.employeesAffected.increased).toBe(1);
+  });
+
+  it("loses it without the currency, which is the old behaviour made explicit", () => {
+    // Not a defect to fix here: two decimals is right for most currencies and
+    // is the documented default. The defect was that there was no way to say
+    // otherwise, so this asserts the default rather than endorsing it for KWD.
+    const { results } = runComparison(current, previous);
+    expect(results[0]!.netDelta).toBe(0);
+    expect(results[0]!.status).toBe("unchanged");
+  });
+
+  it("treats a sub-unit movement as unchanged on a zero-decimal currency", () => {
+    const jpyPrev = [emp("E1", "Aiko", "Ops", { base: 300_000 }, 300_000, 300_000)];
+    const jpyCurr = [emp("E1", "Aiko", "Ops", { base: 300_000.4 }, 300_000.4, 300_000.4)];
+
+    const { results } = runComparison(jpyCurr, jpyPrev, { currency: "JPY" });
+    // Below one yen, which is the smallest amount yen can express.
+    expect(results[0]!.status).toBe("unchanged");
+  });
+
+  it("is byte-identical to the default for a two-decimal currency", () => {
+    const withCode = runComparison(current, previous, { currency: "USD" });
+    const without = runComparison(current, previous);
+    expect(withCode.summary).toEqual(without.summary);
+    expect(withCode.results).toEqual(without.results);
+  });
+});
 
 describe("runComparison - integration", () => {
   it("returns results and summary for matched employees", () => {
@@ -109,7 +151,16 @@ describe("runComparison - integration", () => {
     expect(summary.largestIncrease?.employeeName).toBe("Alice");
     expect(summary.largestDecrease).toBeNull();
 
-    expect(summary.totalPayrollVariance.absolute).toBe(3700);
+    // Net: 17,500 -> 20,700, excluding departed Dave from the current side and
+    // new Eve from the previous side.
+    expect(summary.totalPayrollVariance.absolute).toBe(3200);
+    expect(summary.totalNet).toEqual({ previous: 17_500, current: 20_700, absolute: 3200, percentage: 18.29 });
+
+    // Gross: 19,800 -> 23,500. This assertion used to read 3,700 under the
+    // name "totalPayrollVariance" — the component sum, which in this fixture
+    // equals gross exactly, because there are no deduction columns in it. The
+    // headline was reporting gross while being read as net.
+    expect(summary.totalGross).toEqual({ previous: 19_800, current: 23_500, absolute: 3700, percentage: 18.69 });
 
     expect(summary.distribution).toHaveLength(5);
   });
@@ -136,6 +187,139 @@ describe("runComparison - integration", () => {
 
     const bob = results.find((r) => r.employeeExternalId === "2")!;
     expect(bob.anomalyFlags).not.toBeNull();
-    expect(bob.anomalyFlags!.some((f) => f.type === "zero_salary_component")).toBe(true);
+    const types = bob.anomalyFlags!.map((f) => f.type);
+
+    // This asserted `zero_salary_component`, retired in step 5: it fired on any
+    // component equal to zero and produced 3,166 flags across samples/2025,
+    // none critical. Bob's pay going from 5,000 to nothing is a real exception,
+    // and the rules that replaced it say so in terms a payroll manager can act
+    // on rather than noting that a cell contains zero.
+    expect(types).toContain("base_rate_change");
+    expect(types).toContain("net_change_beyond_tolerance");
+
+    const net = bob.anomalyFlags!.find((f) => f.type === "net_change_beyond_tolerance")!;
+    expect(net.description).toMatch(/fell 100\.0%/);
+    expect(net.description).toMatch(/salary/i);
+
+    // Alice's net rose 4,000 -> 5,000 with no component movement at all, which
+    // is the gross-or-net-disagrees-with-the-columns case.
+    const alice = results.find((r) => r.employeeExternalId === "1")!;
+    const aliceNet = alice.anomalyFlags!.find((f) => f.type === "net_change_beyond_tolerance")!;
+    expect(aliceNet.description).toMatch(/no component movement to explain it/);
+  });
+});
+
+/**
+ * Step 2 of docs/PAYROLL_AUDIT_FIX_PLAN.md — a duplicate employee ID blocks.
+ *
+ * `matchEmployees` keeps the first row per ID and `runComparison` used to throw
+ * the duplicate list away, so a second payment vanished: measured on the
+ * fixture below, 5,000.00 paid twice reported `totalPayrollVariance 0.00`,
+ * `totalNet {previous: 5000, current: 5000, absolute: 0}` and an empty
+ * `anomalies` array. No flag of any kind, under a headline saying nothing moved.
+ *
+ * The comparison now refuses. Summing the rows instead would guess at intent:
+ * two rows for one ID may be a genuine off-cycle second payment (sum is right),
+ * a duplicated export (sum double-counts) or a reused ID for two people (sum
+ * merges two people's pay), and nothing in the register says which.
+ */
+describe("runComparison - a duplicate employee ID refuses the comparison", () => {
+  const one = (gross: number, net: number) =>
+    emp("E001", "A. One", "Ops", { base_salary: gross }, gross, net);
+
+  /**
+   * Runs the comparison and returns the refusal.
+   *
+   * A returned summary is reported first, and with its figures, because the
+   * defect this pins is not "no error was thrown" but "a wrong total was
+   * reported": the measured behaviour was `totalNet {previous: 5000, current:
+   * 5000, absolute: 0}` with an empty `anomalies` array while 5,000.00 of real
+   * money had been paid.
+   */
+  function refusalFrom(current: EmployeeRecord[], previous: EmployeeRecord[]) {
+    let caught: unknown;
+    let leaked: AggregatedSummary | null = null;
+    try {
+      leaked = runComparison(current, previous).summary;
+    } catch (e) {
+      caught = e;
+    }
+
+    if (leaked) {
+      throw new Error(
+        "runComparison reported on a register carrying a duplicate employee ID " +
+          "instead of refusing it: " +
+          `totalNet=${JSON.stringify(leaked.totalNet)} ` +
+          `totalGross=${JSON.stringify(leaked.totalGross)} ` +
+          `anomalies=${leaked.anomalies.length}`,
+      );
+    }
+    expect(caught).toBeInstanceOf(DuplicateEmployeeIdsError);
+    return caught as DuplicateEmployeeIdsError;
+  }
+
+  it("refuses a duplicate in the current period, naming the ID and its rows", () => {
+    const err = refusalFrom([one(5000, 5000), one(5000, 5000)], [one(5000, 5000)]);
+
+    expect(err.duplicates).toEqual([
+      { externalId: "E001", currentRows: 2, previousRows: 1 },
+    ]);
+    expect(err.message).toContain("E001");
+    expect(err.message).toContain("2 rows in the current register, 1 in the previous");
+  });
+
+  it("refuses a duplicate in the previous period only", () => {
+    const err = refusalFrom([one(5000, 5000)], [one(5000, 5000), one(5000, 5000)]);
+
+    expect(err.duplicates).toEqual([
+      { externalId: "E001", currentRows: 1, previousRows: 2 },
+    ]);
+    expect(err.message).toContain("1 row in the current register, 2 in the previous");
+  });
+
+  it("counts all three rows when the same ID appears three times", () => {
+    const err = refusalFrom(
+      [one(5000, 5000), one(5000, 5000), one(5000, 5000)],
+      [one(5000, 5000)],
+    );
+
+    expect(err.duplicates).toEqual([
+      { externalId: "E001", currentRows: 3, previousRows: 1 },
+    ]);
+    expect(err.message).toContain("3 rows in the current register");
+  });
+
+  it("names every duplicated ID, in ID order", () => {
+    const dup = (id: string) => emp(id, id, "Ops", { base_salary: 1000 }, 1000, 900);
+    const err = refusalFrom(
+      [dup("E009"), dup("E009"), dup("E002"), dup("E002")],
+      [dup("E009"), dup("E002")],
+    );
+
+    expect(err.duplicates.map((d) => d.externalId)).toEqual(["E002", "E009"]);
+    expect(err.message).toContain("2 employee IDs appear more than once");
+  });
+
+  it("reports +5,000.00 once the register is corrected, which is what the refusal protects", () => {
+    // The payroll manager's own fix: one row for E001 carrying both payments.
+    // 10,000 paid this period against 5,000 last = +5,000.00. That is the
+    // figure the plan measured as 0.00, and it is reachable the moment the
+    // register says what it means.
+    const { summary } = runComparison([one(10_000, 10_000)], [one(5000, 5000)]);
+
+    expect(summary.totalNet).toEqual({
+      previous: 5000, current: 10_000, absolute: 5000, percentage: 100,
+    });
+    expect(summary.totalGross.absolute).toBe(5000);
+    expect(summary.totalPayrollVariance.absolute).toBe(5000);
+  });
+
+  it("still compares a register whose IDs are unique", () => {
+    const { summary } = runComparison(
+      [one(5000, 5000), emp("E002", "B. Two", "Ops", { base_salary: 3000 }, 3000, 2700)],
+      [one(5000, 5000), emp("E002", "B. Two", "Ops", { base_salary: 3000 }, 3000, 2700)],
+    );
+    expect(summary.totalNet.absolute).toBe(0);
+    expect(summary.employeesAffected.total).toBe(2);
   });
 });

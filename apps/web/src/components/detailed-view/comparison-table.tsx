@@ -31,6 +31,12 @@ interface ComparisonTableProps {
   data: ComparisonOutput[];
   columnConfig: ColumnConfig[];
   loading: boolean;
+  /**
+   * The company currency (step 8b). It is in the `columns` memo's dependency
+   * list because the cell renderers close over it: without that, changing
+   * company would leave every figure labelled in the previous one's code.
+   */
+  currency: string;
 }
 
 const STATUS_BADGE: Record<string, { label: string; variant: "success" | "warning" | "info" | "secondary" | "default" }> = {
@@ -41,15 +47,15 @@ const STATUS_BADGE: Record<string, { label: string; variant: "success" | "warnin
   departed: { label: "Departed", variant: "default" },
 };
 
-function DeltaCell({ delta }: { delta: ComponentDelta }) {
+function DeltaCell({ delta, currency }: { delta: ComponentDelta; currency: string }) {
   return (
     <div className="flex items-center gap-3">
       <span className="w-24 text-right tabular-nums text-muted-foreground">
-        {delta.previousValue !== null ? formatCurrency(delta.previousValue) : "\u2014"}
+        {delta.previousValue !== null ? formatCurrency(delta.previousValue, currency) : "\u2014"}
       </span>
       <span className="text-xs text-muted-foreground/50">&rarr;</span>
       <span className="w-24 text-right tabular-nums">
-        {delta.currentValue !== null ? formatCurrency(delta.currentValue) : "\u2014"}
+        {delta.currentValue !== null ? formatCurrency(delta.currentValue, currency) : "\u2014"}
       </span>
       <span
         className={`w-20 text-right tabular-nums text-xs font-medium ${
@@ -63,30 +69,30 @@ function DeltaCell({ delta }: { delta: ComponentDelta }) {
         }`}
       >
         {delta.absoluteDiff !== null
-          ? `${delta.absoluteDiff > 0 ? "+" : ""}${formatCurrency(delta.absoluteDiff)}`
+          ? `${delta.absoluteDiff > 0 ? "+" : ""}${formatCurrency(delta.absoluteDiff, currency)}`
           : "\u2014"}
       </span>
     </div>
   );
 }
 
-function CurrentOnlyCell({ delta }: { delta: ComponentDelta }) {
+function CurrentOnlyCell({ delta, currency }: { delta: ComponentDelta; currency: string }) {
   return (
     <span className="tabular-nums">
-      {delta.currentValue !== null ? formatCurrency(delta.currentValue) : "\u2014"}
+      {delta.currentValue !== null ? formatCurrency(delta.currentValue, currency) : "\u2014"}
     </span>
   );
 }
 
-function PreviousOnlyCell({ delta }: { delta: ComponentDelta }) {
+function PreviousOnlyCell({ delta, currency }: { delta: ComponentDelta; currency: string }) {
   return (
     <span className="tabular-nums">
-      {delta.previousValue !== null ? formatCurrency(delta.previousValue) : "\u2014"}
+      {delta.previousValue !== null ? formatCurrency(delta.previousValue, currency) : "\u2014"}
     </span>
   );
 }
 
-function DeltaOnlyCell({ delta }: { delta: ComponentDelta }) {
+function DeltaOnlyCell({ delta, currency }: { delta: ComponentDelta; currency: string }) {
   return (
     <span
       className={`tabular-nums ${
@@ -100,7 +106,7 @@ function DeltaOnlyCell({ delta }: { delta: ComponentDelta }) {
       }`}
     >
       {delta.absoluteDiff !== null
-        ? `${delta.absoluteDiff > 0 ? "+" : ""}${formatCurrency(delta.absoluteDiff)}`
+        ? `${delta.absoluteDiff > 0 ? "+" : ""}${formatCurrency(delta.absoluteDiff, currency)}`
         : "\u2014"}
     </span>
   );
@@ -128,7 +134,7 @@ function getComponentDelta(row: ComparisonOutput, component: string): ComponentD
   return row.componentDeltas.find((d) => d.component === component);
 }
 
-export function ComparisonTable({ data, columnConfig, loading }: ComparisonTableProps) {
+export function ComparisonTable({ data, columnConfig, loading, currency }: ComparisonTableProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [expanded, setExpanded] = useState<ExpandedState>({});
 
@@ -208,7 +214,7 @@ export function ComparisonTable({ data, columnConfig, loading }: ComparisonTable
           return (
             <span className="tabular-nums">
               {val !== null && val !== undefined
-                ? formatCurrency(val)
+                ? formatCurrency(val, currency)
                 : "\u2014"}
             </span>
           );
@@ -216,13 +222,13 @@ export function ComparisonTable({ data, columnConfig, loading }: ComparisonTable
         const mode = componentModes[component] ?? "side_by_side";
         switch (mode) {
           case "current":
-            return <CurrentOnlyCell delta={delta} />;
+            return <CurrentOnlyCell delta={delta} currency={currency} />;
           case "previous":
-            return <PreviousOnlyCell delta={delta} />;
+            return <PreviousOnlyCell delta={delta} currency={currency} />;
           case "delta_only":
-            return <DeltaOnlyCell delta={delta} />;
+            return <DeltaOnlyCell delta={delta} currency={currency} />;
           default:
-            return <DeltaCell delta={delta} />;
+            return <DeltaCell delta={delta} currency={currency} />;
         }
       },
       sortingFn: (a, b) => {
@@ -231,7 +237,7 @@ export function ComparisonTable({ data, columnConfig, loading }: ComparisonTable
         return aDelta - bDelta;
       },
     })),
-  ], [visibleComponents, componentModes]);
+  ], [visibleComponents, componentModes, currency]);
 
   const table = useReactTable({
     data,
@@ -337,7 +343,7 @@ export function ComparisonTable({ data, columnConfig, loading }: ComparisonTable
                 key={`expanded-${row.id}`}
                 className="border-b bg-muted/20 last:border-0"
               >
-                <EmployeeDetailRow data={row.original} />
+                <EmployeeDetailRow data={row.original} currency={currency} />
               </div>
             ),
         )}

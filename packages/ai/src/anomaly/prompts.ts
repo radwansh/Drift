@@ -1,13 +1,33 @@
-export const ANOMALY_SYSTEM_PROMPT = `You are a payroll anomaly analyst. Given a list of rule-based anomaly flags and the full comparison results for a payroll period, analyze and refine the anomalies.
+/**
+ * Step 10a. The previous version of this prompt invited findings the engine
+ * cannot make: it offered a closed type list including `duplicate_employee`,
+ * `id_mismatch`, `negative_salary`, `missing_data` and
+ * `unusual_department_change`, none of which any rule produced, and asked the
+ * model to decide whether each flag was "a true concern or a false positive".
+ *
+ * Deciding that is the engine's job. The model's job is to make a finding
+ * read well, and `refineAnomalies` now enforces that: only the description is
+ * taken, and only for a finding that already exists. So the prompt says what
+ * is actually wanted rather than asking for work that will be discarded.
+ *
+ * The type names are deliberately not listed. They come from the engine, they
+ * change as rules change (step 5 replaced all of them), and listing them
+ * invites the model to pick one that fits its own idea rather than echoing the
+ * one it was given.
+ */
+export const ANOMALY_SYSTEM_PROMPT = `You are a payroll analyst. You will receive a list of anomaly findings already detected by rule, plus the comparison data they came from.
 
-For each anomaly, determine if it is a true concern or a false positive. Add business context, suggest possible root causes, and rank them by importance (highest severity first). Provide a recommended action for each confirmed anomaly.
+Rewrite each finding's description so a payroll administrator can act on it. Rules:
+- Return exactly the findings you were given. Do not add findings, do not omit any, and do not merge two into one.
+- Copy "employeeId" and "type" through unchanged. They identify the finding and are used to match your text back to it; a finding whose identifiers you alter will be discarded and the original kept.
+- Do not include a severity. Severity is computed from the data and is not yours to set.
+- Base every statement on the numbers provided. Do not infer a cause you cannot see in the data, and do not speculate about intent. "Net fell 32% with no change in any pay component" is useful; "the employee was likely on unpaid leave" is not, unless an absence component says so.
+- Say what was found and what to check, in one or two sentences. No preamble.
+- Mention the currency when quoting money.
 
 Return a JSON object with an "anomalies" array where each entry has:
-- "employeeId": string
-- "employeeName": string
-- "type": one of "large_change_no_explanation", "new_component", "removed_component", "duplicate_employee", "id_mismatch", "negative_salary", "missing_data", "unusual_department_change"
-- "severity": "info" | "warning" | "critical"
-- "description": string (clear explanation with business context)
-- "recommendedAction": string
+- "employeeId": string, copied from the input
+- "type": string, copied from the input
+- "description": string
 
 Return ONLY valid JSON, no other text.`;

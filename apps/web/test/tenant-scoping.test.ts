@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { createTestDb, type TestDb } from "./pglite-neon";
 import { employeesRouter } from "@/server/routers/employees";
 import { exportsRouter } from "@/server/routers/exports";
+import { columnMappingsRouter } from "@/server/routers/column-mappings";
 
 /**
  * Tenant isolation for the employees and exports routers.
@@ -193,5 +194,54 @@ describe("exports router is scoped to the caller's company", () => {
     const res = await exportsCaller(globex, "admin").list({});
     expect(res.data.length).toBeGreaterThan(0);
     for (const row of res.data) expect(row.companyId).toBe(globex.companyId);
+  });
+});
+
+/**
+ * Found while wiring step 9 through this router: `columnMappings.delete`
+ * matched on `id` alone, so any signed-in user could delete another tenant's
+ * mapping given its UUID — the same shape as finding 4a on
+ * `payrollPeriods.delete`.
+ *
+ * It is `memberProcedure` now, so `ctx.companyId` comes from the middleware and
+ * the scope costs no extra query. The id stays in the predicate: scoping by
+ * company alone would delete the whole company's mappings.
+ */
+describe("columnMappings.delete is scoped to the caller's company", () => {
+  async function seedMapping(seeded: Seeded, sourceColumn: string): Promise<string> {
+    const res = await ctx.db.execute(sql`
+      INSERT INTO company_column_mappings (company_id, source_column, mapped_component)
+      VALUES (${seeded.companyId}, ${sourceColumn}, ${sourceColumn})
+      RETURNING id
+    `);
+    return (res.rows[0] as { id: string }).id;
+  }
+
+  async function exists(id: string): Promise<boolean> {
+    const res = await ctx.db.execute(
+      sql`SELECT count(*)::int AS n FROM company_column_mappings WHERE id = ${id}`,
+    );
+    return (res.rows[0] as { n: number }).n === 1;
+  }
+
+  function caller(seeded: Seeded, role: Role) {
+    return columnMappingsRouter.createCaller({
+      userId: seeded.users[role].clerkUserId,
+      db: ctx.db,
+    } as never);
+  }
+
+  it("deletes the caller's own mapping", async () => {
+    const id = await seedMapping(acme, "Own Column");
+    const deleted = await caller(acme, "admin").delete({ id });
+    expect(deleted.id).toBe(id);
+    expect(await exists(id)).toBe(false);
+  });
+
+  it("refuses another company's mapping, and leaves it in place", async () => {
+    const id = await seedMapping(globex, "Globex Column");
+    await expect(caller(acme, "admin").delete({ id })).rejects.toThrow(/NOT_FOUND|not found/i);
+    // The refusal has to be a no-op, not just an error after the write.
+    expect(await exists(id)).toBe(true);
   });
 });

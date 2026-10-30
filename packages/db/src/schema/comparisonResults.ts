@@ -10,8 +10,9 @@ export const comparisonResults = pgTable("comparison_results", {
   currentComponents: jsonb("current_components").notNull(),
   previousComponents: jsonb("previous_components").notNull(),
   componentDeltas: jsonb("component_deltas").notNull(),
-  grossDelta: numeric("gross_delta", { precision: 15, scale: 2 }).notNull(),
-  netDelta: numeric("net_delta", { precision: 15, scale: 2 }).notNull(),
+  /** scale 3 — see the note on `employee_snapshots.gross_salary`. */
+  grossDelta: numeric("gross_delta", { precision: 20, scale: 3 }).notNull(),
+  netDelta: numeric("net_delta", { precision: 20, scale: 3 }).notNull(),
   status: varchar("status", { length: 20 }).notNull(),
   anomalyFlags: jsonb("anomaly_flags"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

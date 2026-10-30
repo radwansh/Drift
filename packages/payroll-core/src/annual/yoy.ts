@@ -3,6 +3,7 @@ import { generateExpectedPeriods } from "./periods";
 import { fiscalYearOf } from "./fiscal";
 import { groupBySlot } from "./slots";
 import { pctChange, roundMoney } from "./math";
+import { DEFAULT_MINOR_UNITS } from "../money";
 
 export interface YoYMetrics {
   gross: number;
@@ -116,6 +117,12 @@ export interface YoYOptions {
   employerCostFor?: (p: AnnualPeriodInput) => number;
   /** First month of the fiscal year (step 45); 1 = calendar year. */
   fiscalStartMonth?: number;
+  /**
+   * The currency's minor units (step 8a-ii). Defaults to 2. The like-for-like
+   * totals are sums of period figures, so at a coarser quantum than the
+   * currency's own they report a smaller year than the periods they add up.
+   */
+  decimals?: number;
 }
 
 /**
@@ -129,6 +136,8 @@ export interface YoYOptions {
  */
 export function computeYoY(opts: YoYOptions): YoYResult {
   const { current, previous, forecastFullYearGross } = opts;
+  const decimals = opts.decimals ?? DEFAULT_MINOR_UNITS;
+  const round = (value: number) => roundMoney(value, decimals);
   const employerCostFor = opts.employerCostFor ?? (() => 0);
 
   if (current.length === 0 || previous.length === 0) return unavailable();
@@ -161,23 +170,23 @@ export function computeYoY(opts: YoYOptions): YoYResult {
   const previousHeadcount = avg(previousTotals.headcounts);
 
   const currentMetrics: YoYMetrics = {
-    gross: roundMoney(currentTotals.gross),
-    net: roundMoney(currentTotals.net),
-    employerCost: roundMoney(currentTotals.employerCost),
+    gross: round(currentTotals.gross),
+    net: round(currentTotals.net),
+    employerCost: round(currentTotals.employerCost),
     headcount: Math.round(currentHeadcount * 100) / 100,
     costPerHead:
       currentHeadcount > 0
-        ? roundMoney((currentTotals.gross + currentTotals.employerCost) / currentHeadcount)
+        ? round((currentTotals.gross + currentTotals.employerCost) / currentHeadcount)
         : 0,
   };
   const previousMetrics: YoYMetrics = {
-    gross: roundMoney(previousTotals.gross),
-    net: roundMoney(previousTotals.net),
-    employerCost: roundMoney(previousTotals.employerCost),
+    gross: round(previousTotals.gross),
+    net: round(previousTotals.net),
+    employerCost: round(previousTotals.employerCost),
     headcount: Math.round(previousHeadcount * 100) / 100,
     costPerHead:
       previousHeadcount > 0
-        ? roundMoney((previousTotals.gross + previousTotals.employerCost) / previousHeadcount)
+        ? round((previousTotals.gross + previousTotals.employerCost) / previousHeadcount)
         : 0,
   };
 
@@ -197,8 +206,8 @@ export function computeYoY(opts: YoYOptions): YoYResult {
     return {
       slotIndex,
       label: c?.label ?? p?.label ?? `#${slotIndex}`,
-      currentGross: c ? roundMoney(c.gross) : null,
-      previousGross: p ? roundMoney(p.gross) : null,
+      currentGross: c ? round(c.gross) : null,
+      previousGross: p ? round(p.gross) : null,
     };
   });
 

@@ -3,7 +3,8 @@ import { TRPCError } from "@trpc/server";
 import { eq, and } from "drizzle-orm";
 import { companyColumnMappings, users } from "@saas/db";
 import { suggestColumnMappings } from "@saas/ai";
-import { protectedProcedure, router } from "../trpc";
+import { ColumnRole } from "@saas/types";
+import { memberProcedure, protectedProcedure, router } from "../trpc";
 
 export const columnMappingsRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
@@ -28,6 +29,8 @@ export const columnMappingsRouter = router({
         isDepartment: z.boolean().default(false),
         isGrossSalary: z.boolean().default(false),
         isNetSalary: z.boolean().default(false),
+        // Step 9: the enum mirrors the CHECK in migration 0010.
+        ...ColumnRole,
         isAiSuggested: z.boolean().default(false),
       })),
     }))
@@ -51,6 +54,10 @@ export const columnMappingsRouter = router({
         isDepartment: m.isDepartment,
         isGrossSalary: m.isGrossSalary,
         isNetSalary: m.isNetSalary,
+        // A column is one thing: the DB CHECK rejects both being set, so the
+        // snapshot field wins here rather than letting the insert fail.
+        snapshotField: m.snapshotField ?? null,
+        dimensionName: m.snapshotField ? null : (m.dimensionName ?? null),
         isAiSuggested: m.isAiSuggested,
       }));
 
@@ -67,11 +74,23 @@ export const columnMappingsRouter = router({
       return suggestions;
     }),
 
-  delete: protectedProcedure
+  /**
+   * Matched on `id` alone, which let any signed-in user delete another
+   * tenant's mapping given its UUID — the same shape as finding 4a on
+   * `payrollPeriods.delete`. Found while wiring step 9 through this file.
+   *
+   * `memberProcedure` supplies `ctx.companyId` from the middleware, so the
+   * scope costs no extra query. The id stays in the predicate: an unscoped
+   * `and` would delete the whole company's mappings.
+   */
+  delete: memberProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
       const [deleted] = await ctx.db.delete(companyColumnMappings)
-        .where(eq(companyColumnMappings.id, input.id))
+        .where(and(
+          eq(companyColumnMappings.id, input.id),
+          eq(companyColumnMappings.companyId, ctx.companyId),
+        ))
         .returning();
       if (!deleted) throw new TRPCError({ code: "NOT_FOUND", message: "Mapping not found" });
       return deleted;

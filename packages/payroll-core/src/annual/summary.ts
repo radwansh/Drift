@@ -9,9 +9,9 @@ import type {
   PeriodType,
 } from "./types";
 import { EMPLOYEE_DEDUCTION_CATEGORIES, EMPLOYER_COST_CATEGORIES, QUANTITY_CATEGORIES } from "./types";
-import { classifyComponent } from "./classify";
+import { classifyComponent, ambiguityFor } from "./classify";
 import { buildCategoryTotals, sumCategories } from "./categoryTotals";
-import { buildForecast } from "./forecast";
+import { buildForecast, type HeldHeadcount, type OneOffsExcluded } from "./forecast";
 import { computeHeadcountFlows, type HeadcountFlows } from "./headcount";
 import { computeYoY, type YoYResult } from "./yoy";
 import { countSupersededUploads, dedupePeriods, generateExpectedPeriods } from "./periods";
@@ -20,6 +20,7 @@ import { splitCoverage } from "./slots";
 import * as warn from "./warnings";
 import type { AnnualWarning } from "./warnings";
 import { average, pct, roundMoney } from "./math";
+import { minorUnits, smallestUnit } from "../money";
 
 export interface DepartmentTotalsInput {
   department: string;
@@ -121,6 +122,13 @@ export interface AnnualSummary {
   forecastMethod: ForecastMethod;
   methodsAvailable: ForecastMethod[];
   assumptions: string[];
+  /**
+   * Step 12a: the roster the projection held, and how it moved getting there.
+   * `null` when there is nothing to forecast. Carried here as well as in
+   * `assumptions` so the chart can label its projected rows with the figure
+   * rather than the reader having to find the sentence.
+   */
+  heldHeadcount: HeldHeadcount | null;
   warnings: AnnualWarning[];
   coverage: Coverage;
   missingLabels: string[];
@@ -132,6 +140,13 @@ export interface AnnualSummary {
    */
   categoryForecast: Partial<Record<Category, number>>;
   categoryFullYear: Partial<Record<Category, number>>;
+  /**
+   * One-offs inside the uploaded periods that the forecast does not repeat
+   * (step 6). Already counted in `categories.byCategory` and in the actual
+   * bridge; reported separately so the exclusion is named on screen rather than
+   * left for the reader to notice.
+   */
+  oneOffsExcluded: OneOffsExcluded;
   quantities: Partial<Record<"absence_days" | "other_quantity", number>>;
   bridge: { actual: BridgeLine; forecast: BridgeLine; fullYear: BridgeLine };
   forecastPerPeriod: { label: string; gross: Money; employeeDeductions: Money; employerCosts: Money; net: Money }[];
@@ -149,6 +164,24 @@ function resolveFor(saved?: Record<string, Category>) {
   return (key: string): Category => saved?.[key] ?? classifyComponent(key);
 }
 
+/**
+ * The question a column raises, unless the user has already answered it
+ * (step 11).
+ *
+ * The suppression belongs here rather than in the classifier, beside the
+ * override it depends on: a saved category is the answer, so a column that has
+ * one is never asked about again. Asked once per company per column.
+ */
+function ambiguityOfFor(saved?: Record<string, Category>) {
+  return (key: string) => (saved?.[key] ? undefined : ambiguityFor(key));
+}
+
+/**
+ * `decimals` is the currency's minor units (step 8a-ii). Both balancing lines
+ * are rounded to the same quantum as the two sides they reconcile, which is
+ * what keeps the bridge honest at three decimals: round gross to a cent and
+ * `balance` to a cent, and three fils vanish with `balance` still reading zero.
+ */
 function buildBridge(
   gross: Money,
   employerCosts: Money,
@@ -156,17 +189,19 @@ function buildBridge(
   earningsBalance: Money,
   balance: Money,
   net: Money,
+  decimals: number,
 ): BridgeLine {
-  const g = roundMoney(gross);
-  const ec = roundMoney(employerCosts);
+  const round = (value: number) => roundMoney(value, decimals);
+  const g = round(gross);
+  const ec = round(employerCosts);
   return {
     gross: g,
     employerCosts: ec,
-    totalEmploymentCost: roundMoney(g + ec),
-    employeeDeductions: roundMoney(employeeDeductions),
-    earningsBalance: roundMoney(earningsBalance),
-    balance: roundMoney(balance),
-    net: roundMoney(net),
+    totalEmploymentCost: round(g + ec),
+    employeeDeductions: round(employeeDeductions),
+    earningsBalance: round(earningsBalance),
+    balance: round(balance),
+    net: round(net),
   };
 }
 
@@ -183,6 +218,11 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
     previousYearLastEmployeeIds,
   } = opts;
   const resolve = resolveFor(savedCategories);
+  // Derived once here and threaded down (step 8a-ii): every money figure in
+  // this engine rounds to the company currency's own minor units. An unknown
+  // code falls back to 2, which is what the whole engine did before.
+  const decimals = minorUnits(currency);
+  const round = (value: number) => roundMoney(value, decimals);
   const estimateMissing = opts.estimateMissing ?? true;
   const fiscalStartMonth = normaliseFiscalStartMonth(opts.fiscalStartMonth);
 
@@ -218,15 +258,19 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
     if (actual.length < 3) warnings.push(warn.lowHistory(actual.length));
   }
 
-  const periodRows = actual.map((p) => buildCategoryTotals(p.components, resolve));
+  const periodRows = actual.map((p) =>
+    buildCategoryTotals(p.components, resolve, ambiguityOfFor(savedCategories)),
+  );
   const ytdCategories = sumCategories(periodRows.map((r) => r.byCategory));
-  const ytdGross = roundMoney(actual.reduce((a, p) => a + p.gross, 0));
-  const ytdNet = roundMoney(actual.reduce((a, p) => a + p.net, 0));
+  const ytdGross = round(actual.reduce((a, p) => a + p.gross, 0));
+  const ytdNet = round(actual.reduce((a, p) => a + p.net, 0));
 
   const quantityTotals: Partial<Record<"absence_days" | "other_quantity", number>> = {};
   for (const row of periodRows) {
     for (const q of QUANTITY_CATEGORIES) {
       const v = row.quantities[q];
+      // Days, not money, so `roundMoney` keeps its two-decimal default here on
+      // purpose: a JPY company's absence days must not round to whole days.
       if (typeof v === "number") quantityTotals[q] = roundMoney((quantityTotals[q] ?? 0) + v);
     }
   }
@@ -238,13 +282,36 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
   const actualEarningsBalance = ytdGross - actualEarnings;
 
   // RECONCILIATION_GAP now covers both balancing lines (step 19).
+  //
+  // Step 4 adds the absolute floor beside the percentage. The percentage alone
+  // let 403,335.64 sit unexplained inside a green bridge on a 20M payroll:
+  // 2% of gross is money, not noise. The floor is the currency's own minor
+  // unit, so anything that survives `roundMoney` is reported and float residue
+  // is not — at three decimals a KWD fils counts and a tenth of one does not.
+  //
+  // The percentage trigger stays, because it is what the *severity* of a gap is
+  // judged on and the plan asks for both.
   if (actual.length > 0 && ytdGross > 0) {
-    if (Math.abs(actualBalance) / ytdGross > 0.02) {
+    const floor = smallestUnit(decimals);
+    /**
+     * Tested on the **rounded** balance, which is the figure `round()` puts in
+     * the bridge a few lines down. The raw subtraction of two eight-digit
+     * figures carries residue of its own — 20,000,000 − 19,999,999.999 is
+     * 0.000999998 as doubles — so testing the raw value would let the bridge
+     * print a fils while the warning list stayed empty. Rounding first makes
+     * the two agree by construction.
+     */
+    const gapped = (amount: number) => {
+      const rounded = Math.abs(round(amount));
+      return rounded >= floor || rounded / ytdGross > 0.02;
+    };
+
+    if (gapped(actualBalance)) {
       warnings.push(
         warn.reconciliationGap("unreconciled_deductions", actualBalance, pct(Math.abs(actualBalance), ytdGross)),
       );
     }
-    if (Math.abs(actualEarningsBalance) / ytdGross > 0.02) {
+    if (gapped(actualEarningsBalance)) {
       warnings.push(
         warn.reconciliationGap("other_earnings_balance", actualEarningsBalance, pct(Math.abs(actualEarningsBalance), ytdGross)),
       );
@@ -284,16 +351,41 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
     previousYear: previousYearForForecast,
     resolve,
     fiscalStartMonth,
+    decimals,
   });
+
+  /**
+   * Step 12a: the forecast holds the latest roster, so say so when the roster
+   * has been moving.
+   *
+   * Raised here rather than inside `buildForecast` because warnings are this
+   * function's output, and because the threshold is a product judgement while
+   * the measurement is arithmetic — `heldHeadcount` carries the figures and
+   * `material` carries the decision to show them.
+   *
+   * This moves no projected figure, and `forecast.backtest.test.ts` asserts
+   * every recurring category at every cut, so it cannot start to.
+   */
+  if (forecast.heldHeadcount?.material) {
+    const h = forecast.heldHeadcount;
+    warnings.push(
+      warn.forecastHoldsHeadcount({
+        first: h.first,
+        last: h.last,
+        periods: h.periods,
+        remainingSlots: h.remainingSlots,
+      }),
+    );
+  }
 
   // Full year = uploaded + estimated past gaps + forecast future (step 14).
   const est = forecast.estimated;
-  const fullYearGross = roundMoney(ytdGross + est.gross + forecast.gross);
-  const fullYearNet = roundMoney(ytdNet + est.net + forecast.net);
-  const fullYearEmployerCosts = roundMoney(actualEmployerCosts + est.employerCosts + forecast.employerCosts);
-  const fullYearDeductions = roundMoney(actualEmployeeDeductions + est.employeeDeductions + forecast.employeeDeductions);
-  const fullYearBalance = roundMoney(actualBalance + est.balance + forecast.balance);
-  const fullYearEarningsBalance = roundMoney(actualEarningsBalance + est.earningsBalance + forecast.earningsBalance);
+  const fullYearGross = round(ytdGross + est.gross + forecast.gross);
+  const fullYearNet = round(ytdNet + est.net + forecast.net);
+  const fullYearEmployerCosts = round(actualEmployerCosts + est.employerCosts + forecast.employerCosts);
+  const fullYearDeductions = round(actualEmployeeDeductions + est.employeeDeductions + forecast.employeeDeductions);
+  const fullYearBalance = round(actualBalance + est.balance + forecast.balance);
+  const fullYearEarningsBalance = round(actualEarningsBalance + est.earningsBalance + forecast.earningsBalance);
 
   // Forecast covers both the estimated past gaps and the future, so the
   // components table's "Full year" column reconciles with the bridge.
@@ -315,18 +407,30 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
   if (mixedKeys.length > 0) warnings.push(warn.mixedSign(mixedKeys));
 
   const uncategorisedKeys = Array.from(new Set(periodRows.flatMap((r) => r.uncategorisedKeys)));
-  if (uncategorisedKeys.length > 0) warnings.push(warn.uncategorised(uncategorisedKeys));
+
+  // An ambiguous column is uncategorised, so it would otherwise appear in both
+  // warnings with two different explanations. It gets the specific question and
+  // is taken out of the generic notice.
+  const ambiguousByKey = new Map<string, string>();
+  for (const row of periodRows) {
+    for (const a of row.ambiguousKeys) ambiguousByKey.set(a.key, a.question);
+  }
+  const ambiguousEntries = [...ambiguousByKey].map(([key, question]) => ({ key, question }));
+  if (ambiguousEntries.length > 0) warnings.push(warn.ambiguousComponents(ambiguousEntries));
+
+  const unmatchedKeys = uncategorisedKeys.filter((k) => !ambiguousByKey.has(k));
+  if (unmatchedKeys.length > 0) warnings.push(warn.uncategorised(unmatchedKeys));
 
   const statutory = {
     effectiveTaxRate: pct(ytdCategories.income_tax ?? 0, ytdGross),
     employeeSocialSecurityRate: pct(ytdCategories.social_security_employee ?? 0, ytdGross),
     employerOnCostRate: pct(ytdCategories.social_security_employer ?? 0, ytdGross),
-    employerOnCostTotal: roundMoney(actualEmployerCosts),
+    employerOnCostTotal: round(actualEmployerCosts),
   };
 
-  const fixedMoney = roundMoney((ytdCategories.base_salary ?? 0) + (ytdCategories.allowance ?? 0) + (ytdCategories.other_earning ?? 0));
+  const fixedMoney = round((ytdCategories.base_salary ?? 0) + (ytdCategories.allowance ?? 0) + (ytdCategories.other_earning ?? 0));
   const variableMoneyValue = (c: Category) => ytdCategories[c] ?? 0;
-  const variableMoney = roundMoney(variableMoneyValue("bonus_commission") + variableMoneyValue("overtime"));
+  const variableMoney = round(variableMoneyValue("bonus_commission") + variableMoneyValue("overtime"));
   const mix = {
     fixed: fixedMoney,
     variable: variableMoney,
@@ -345,6 +449,7 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
     forecastFullYearGross: forecastAvailable ? fullYearGross : undefined,
     employerCostFor: employerCostForPeriod,
     fiscalStartMonth,
+    decimals,
   });
 
   // ---- departments (step 15, finding C6) ----
@@ -357,17 +462,19 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
     // gross, so adding them (as v1 did) inflated every department by its own
     // withholdings and pushed cost per head above the company average.
     const deptGross = typeof d.gross === "number" ? d.gross : sumEarnings([row]);
-    const actualDep = roundMoney(deptGross + employerCosts);
+    const actualDep = round(deptGross + employerCosts);
     const avgHeadcount = average(d.headcounts);
     return {
       department: d.department,
+      // People, not money: two decimals whatever the currency is.
       avgHeadcount: roundMoney(avgHeadcount),
       actual: actualDep,
-      forecast: roundMoney(actualDep * companyGrowth),
+      forecast: round(actualDep * companyGrowth),
       shareOfTotal: null,
-      costPerHead: avgHeadcount > 0 ? roundMoney(actualDep / avgHeadcount) : 0,
+      costPerHead: avgHeadcount > 0 ? round(actualDep / avgHeadcount) : 0,
+      // Days, not money: likewise kept at the two-decimal default.
       absencesDays: roundMoney(row.quantities.absence_days ?? 0),
-      absencesAmount: roundMoney(row.byCategory.absence_deduction ?? 0),
+      absencesAmount: round(row.byCategory.absence_deduction ?? 0),
     };
   });
   const totalDeptActual = departments.reduce((a, d) => a + d.actual, 0);
@@ -376,7 +483,7 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
   // ---- period series (step 16, finding C7) ----
   const slotLabelByIndex = new Map(expected.map((s) => [s.index, s.label]));
   const rows: AnnualPeriodRow[] = actual.map((p, i) => {
-    const employerCosts = roundMoney(
+    const employerCosts = round(
       (periodRows[i]?.byCategory.social_security_employer ?? 0) +
         (periodRows[i]?.byCategory.other_employer_cost ?? 0),
     );
@@ -385,7 +492,7 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
       kind: "actual" as PeriodKind,
       gross: p.gross,
       net: p.net,
-      totalEmploymentCost: roundMoney(p.gross + employerCosts),
+      totalEmploymentCost: round(p.gross + employerCosts),
       employerCosts,
       headcount: p.headcount,
       joiners: headcount.perPeriod[i]?.joiners ?? null,
@@ -399,7 +506,7 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
       kind: "estimated",
       gross: ep.gross,
       net: ep.net,
-      totalEmploymentCost: roundMoney(ep.gross + ep.employerCosts),
+      totalEmploymentCost: round(ep.gross + ep.employerCosts),
       employerCosts: ep.employerCosts,
       headcount: lastHeadcount,
       joiners: null,
@@ -429,7 +536,7 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
       kind: "forecast",
       gross: fp.gross,
       net: fp.net,
-      totalEmploymentCost: roundMoney(fp.gross + fp.employerCosts),
+      totalEmploymentCost: round(fp.gross + fp.employerCosts),
       employerCosts: fp.employerCosts,
       headcount: lastHeadcount,
       joiners: null,
@@ -466,31 +573,53 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
     forecastMethod: forecast.method,
     methodsAvailable: forecast.methodsAvailable,
     assumptions: forecast.assumptions,
+    heldHeadcount: forecast.heldHeadcount,
     warnings,
     coverage,
     missingLabels: missing.map((m) => m.label),
     categories: {
       byCategory: ytdCategories,
+      // Sum across periods, not overwrite. `acc[k] = v` left byKey holding the
+      // last period alone, so expanding a category showed one month under a
+      // year's label, the "Uncategorised components" row contradicted the
+      // "Earnings not categorised" row three lines above it in the same table,
+      // and the Excel Components sheet headed "Total to date" was December.
       byKey: periodRows.reduce<Record<string, { category: Category; total: number }>>((acc, r) => {
-        for (const [k, v] of Object.entries(r.byKey)) acc[k] = v;
+        for (const [k, v] of Object.entries(r.byKey)) {
+          const running = acc[k];
+          acc[k] = { category: v.category, total: (running?.total ?? 0) + v.total };
+        }
         return acc;
       }, {}),
       quantities: quantityTotals,
       mixedSignKeys: mixedKeys,
       uncategorisedKeys,
+      // Carried on the summary as well as in the warning, so the category
+      // manager can put the question beside the column it is about.
+      ambiguousKeys: ambiguousEntries,
     },
     categoryForecast: categoryForecast,
     categoryFullYear: categoryFullYear,
+    oneOffsExcluded: forecast.oneOffs,
     quantities: quantityTotals,
     bridge: {
-      actual: buildBridge(ytdGross, actualEmployerCosts, actualEmployeeDeductions, actualEarningsBalance, actualBalance, ytdNet),
+      actual: buildBridge(
+        ytdGross,
+        actualEmployerCosts,
+        actualEmployeeDeductions,
+        actualEarningsBalance,
+        actualBalance,
+        ytdNet,
+        decimals,
+      ),
       forecast: buildBridge(
-        roundMoney(est.gross + forecast.gross),
-        roundMoney(est.employerCosts + forecast.employerCosts),
-        roundMoney(est.employeeDeductions + forecast.employeeDeductions),
-        roundMoney(est.earningsBalance + forecast.earningsBalance),
-        roundMoney(est.balance + forecast.balance),
-        roundMoney(est.net + forecast.net),
+        round(est.gross + forecast.gross),
+        round(est.employerCosts + forecast.employerCosts),
+        round(est.employeeDeductions + forecast.employeeDeductions),
+        round(est.earningsBalance + forecast.earningsBalance),
+        round(est.balance + forecast.balance),
+        round(est.net + forecast.net),
+        decimals,
       ),
       fullYear: buildBridge(
         fullYearGross,
@@ -499,6 +628,7 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
         fullYearEarningsBalance,
         fullYearBalance,
         fullYearNet,
+        decimals,
       ),
     },
     forecastPerPeriod: forecast.perPeriod.map((fp) => ({

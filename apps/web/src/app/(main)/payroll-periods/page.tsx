@@ -250,6 +250,7 @@ export default function PayrollPeriodsPage() {
               <PeriodCard
                 key={period.id}
                 period={period}
+                check={listQuery.data?.checks[period.id]}
                 onDelete={(id) => setDeleteId(id)}
                 onCompare={handleCompare}
               />

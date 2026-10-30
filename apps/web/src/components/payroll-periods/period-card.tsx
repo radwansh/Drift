@@ -29,15 +29,51 @@ const STATUS_CONFIG: Record<string, { label: string; variant: "info" | "success"
   error: { label: "Error", variant: "destructive" },
 };
 
+/**
+ * Step 4: whether this period's two balancing lines are zero.
+ *
+ * `balanced: null` is "not checked", not "passed" — a period with no
+ * `period_component_totals` rows has nothing to judge from, and a green tick on
+ * it would be a claim nobody verified. Periods written after step 4 all
+ * reconcile, because the gate would not have let them in; this exists for the
+ * history that predates it.
+ */
+export interface PeriodCheck {
+  balanced: boolean | null;
+  earningsBalance: number;
+  balance: number;
+}
+
 interface PeriodCardProps {
   period: PayrollPeriod;
+  check?: PeriodCheck;
   onDelete: (id: string) => void;
   onCompare: (id: string) => void;
 }
 
-export function PeriodCard({ period, onDelete, onCompare }: PeriodCardProps) {
+export function PeriodCard({ period, check, onDelete, onCompare }: PeriodCardProps) {
   const statusCfg = STATUS_CONFIG[period.status] ?? { label: period.status, variant: "info" as const };
   const typeIcon = PERIOD_TYPE_ICONS[period.periodType] ?? <CalendarDays className="h-5 w-5" />;
+
+  const checkBadge =
+    check === undefined || check.balanced === null
+      ? null
+      : check.balanced
+        ? { label: "Reconciled", variant: "success" as const, title: "Both totals tie out." }
+        : {
+            label: "Does not reconcile",
+            variant: "destructive" as const,
+            title: [
+              check.earningsBalance !== 0
+                ? `Earnings are ${formatCurrency(Math.abs(check.earningsBalance), period.currencyCode)} off gross.`
+                : null,
+              check.balance !== 0
+                ? `${formatCurrency(Math.abs(check.balance), period.currencyCode)} of the gap between gross and net is unexplained.`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" "),
+          };
 
   return (
     <Card className="transition-shadow hover:shadow-md">
@@ -82,9 +118,20 @@ export function PeriodCard({ period, onDelete, onCompare }: PeriodCardProps) {
         </DropdownMenu>
       </CardHeader>
       <CardContent className="pb-3">
-        <div className="flex items-center justify-between">
-          <Badge variant={statusCfg.variant}>{statusCfg.label}</Badge>
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge variant={statusCfg.variant}>{statusCfg.label}</Badge>
+            {/*
+              Step 4, display only: the gate is the wizard, and this says
+              whether a period already in the database would pass it.
+            */}
+            {checkBadge && (
+              <Badge variant={checkBadge.variant} title={checkBadge.title}>
+                {checkBadge.label}
+              </Badge>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
             <Upload className="h-3 w-3" />
             {formatDate(period.createdAt)}
           </div>

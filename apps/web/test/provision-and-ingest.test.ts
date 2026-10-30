@@ -39,29 +39,35 @@ function comparisonsCaller(clerkUserId: string) {
   return comparisonsRouter.createCaller({ userId: clerkUserId, db: ctx.db } as never);
 }
 
-/** A two-employee monthly sheet in the shape the client sends. */
+/**
+ * A two-employee monthly sheet in the shape the client sends. `gross` is the
+ * period total, split evenly between the two.
+ *
+ * The rows reconcile, which step 4 now requires of any register: each one's
+ * Basic Salary is its whole gross, and its Income Tax is the 20% that takes
+ * that gross to its Net. The tax used to be 6% of the *period* total rather
+ * than of the row — so gross minus the deductions came to 4,400 against a Net
+ * of 4,000, and the sheet was 400 out per row. Nothing asserted the tax figure,
+ * and the gate refuses the sheet as written, so it is corrected here rather
+ * than exempted.
+ */
 function sheet(gross: number) {
+  const rowGross = gross / 2;
+  const rowNet = rowGross * 0.8;
+  const rowTax = -(rowGross - rowNet);
+
+  const employee = (id: string, name: string) => ({
+    "Employee ID": id,
+    "Employee Name": name,
+    Department: "Engineering",
+    "Basic Salary": String(rowGross),
+    "Income Tax": String(rowTax),
+    "Gross Salary": String(rowGross),
+    "Net Salary": String(rowNet),
+  });
+
   return {
-    rows: [
-      {
-        "Employee ID": "E1",
-        "Employee Name": "Ada",
-        Department: "Engineering",
-        "Basic Salary": String(gross / 2),
-        "Income Tax": String(-(gross * 0.06)),
-        "Gross Salary": String(gross / 2),
-        "Net Salary": String((gross / 2) * 0.8),
-      },
-      {
-        "Employee ID": "E2",
-        "Employee Name": "Grace",
-        Department: "Engineering",
-        "Basic Salary": String(gross / 2),
-        "Income Tax": String(-(gross * 0.06)),
-        "Gross Salary": String(gross / 2),
-        "Net Salary": String((gross / 2) * 0.8),
-      },
-    ],
+    rows: [employee("E1", "Ada"), employee("E2", "Grace")],
     mappings: [
       { sourceColumn: "Employee ID", mappedComponent: "", isEmployeeId: true, isEmployeeName: false, isDepartment: false, isGrossSalary: false, isNetSalary: false },
       { sourceColumn: "Employee Name", mappedComponent: "", isEmployeeId: false, isEmployeeName: true, isDepartment: false, isGrossSalary: false, isNetSalary: false },
@@ -394,10 +400,30 @@ describe("step 3: an upload reaches the database", () => {
     expect(result.results).toHaveLength(2);
     expect(result.comparisonRun.status).toBe("completed");
 
-    // `totalPayrollVariance` sums the mapped components, not the gross column:
-    // per employee Basic Salary + Income Tax is 5000-600=4400 in January and
-    // 6000-720=5280 in February, so 2*(5280-4400) = 1760 across the company.
-    expect(result.summary.totalPayrollVariance.absolute).toBeCloseTo(1_760, 2);
+    // The headline is net, read off the Net Salary column: 4,000 -> 4,800 per
+    // employee, so +1,600 across the two.
+    //
+    // This assertion used to read the sum of the mapped components (Basic
+    // Salary plus the negative Income Tax), which on this fixture is 8,000 ->
+    // 9,600 — the same as net here only because the fixture now reconciles.
+    // Before step 4 corrected its arithmetic the component sum was 1,760,
+    // which was neither net (1,600) nor gross (2,000): the fixture was a
+    // compact demonstration of the bug, and the test asserted it as intended
+    // behaviour.
+    expect(result.summary.totalPayrollVariance.absolute).toBeCloseTo(1_600, 2);
+    expect(result.summary.totalNet.absolute).toBeCloseTo(1_600, 2);
+    expect(result.summary.totalNet.previous).toBeCloseTo(8_000, 2);
+    expect(result.summary.totalNet.current).toBeCloseTo(9_600, 2);
+
+    // Gross moves differently, and is now reported separately rather than
+    // being conflated with net under one label.
+    expect(result.summary.totalGross.absolute).toBeCloseTo(2_000, 2);
+    expect(result.summary.totalGross.previous).toBeCloseTo(10_000, 2);
+    expect(result.summary.totalGross.current).toBeCloseTo(12_000, 2);
+
+    // Every employee had both figures, so nothing was excluded from the totals.
+    expect(result.summary.incompleteTotals).toEqual({ grossMissing: 0, netMissing: 0 });
+
     expect(result.summary.employeesAffected.increased).toBe(2);
   });
 });
@@ -563,5 +589,116 @@ describe("step 4: tenant filing", () => {
     `);
     expect((owned.rows[0] as { companyId: string }).companyId).toBe(a.companyId);
     expect((owned.rows[0] as { companyId: string }).companyId).not.toBe(b.companyId);
+  });
+});
+
+/**
+ * Step 2 of docs/PAYROLL_AUDIT_FIX_PLAN.md.
+ *
+ * A repeated employee ID was a warning, so the period was written and marked
+ * `ready` with both rows in it, and the comparison then kept the first row and
+ * dropped the rest. The gate is at ingest: nothing is written at all.
+ */
+describe("step 2: a register with a repeated employee ID never becomes a period", () => {
+  it("refuses the ingest and writes no period", async () => {
+    const user = await ensureUser(ctx.db, "clerk_dup_ingest", {
+      email: "dup@example.test",
+    });
+    const caller = periodsCaller("clerk_dup_ingest");
+    const data = sheet(10_000);
+
+    // One person, paid twice: the same row repeated, which is what a bad
+    // export or a merged off-cycle run looks like in the file.
+    const duplicated = { ...data, rows: [data.rows[0]!, data.rows[0]!] };
+
+    await expect(
+      caller.ingest({
+        ...duplicated,
+        periodType: "monthly",
+        periodStart: "2026-03-01",
+        periodEnd: "2026-03-31",
+        currencyCode: "USD",
+        filename: "march-duplicated.csv",
+      }),
+    ).rejects.toThrow(/Duplicate employee ID E1/);
+
+    const periods = await ctx.db.execute(sql`
+      SELECT count(*)::int AS n FROM payroll_periods WHERE company_id = ${user.companyId}
+    `);
+    expect((periods.rows[0] as { n: number }).n).toBe(0);
+  });
+
+  it("accepts the same register once the duplicate row is removed", async () => {
+    const user = await ensureUser(ctx.db, "clerk_dup_fixed", {
+      email: "dupfixed@example.test",
+    });
+    const caller = periodsCaller("clerk_dup_fixed");
+    const data = sheet(10_000);
+
+    const result = await caller.ingest({
+      ...data,
+      periodType: "monthly",
+      periodStart: "2026-03-01",
+      periodEnd: "2026-03-31",
+      currencyCode: "USD",
+      filename: "march.csv",
+    });
+
+    expect(result.employeeCount).toBe(2);
+    const periods = await ctx.db.execute(sql`
+      SELECT status FROM payroll_periods WHERE company_id = ${user.companyId}
+    `);
+    expect(periods.rows.map((r) => (r as { status: string }).status)).toEqual(["ready"]);
+  });
+});
+
+/**
+ * Step 2, the legacy half: periods that were uploaded while a duplicate ID was
+ * only a warning are already in the database, and the comparison is the last
+ * line of defence for them.
+ */
+describe("step 2: a stored period carrying a duplicate ID refuses at comparison time", () => {
+  it("reports it as bad input, names the ID, and records the run as failed", async () => {
+    await ensureUser(ctx.db, "clerk_dup_legacy", { email: "duplegacy@example.test" });
+    const caller = periodsCaller("clerk_dup_legacy");
+
+    const jan = await caller.ingest({
+      ...sheet(10_000),
+      periodType: "monthly",
+      periodStart: "2026-01-01",
+      periodEnd: "2026-01-31",
+      currencyCode: "USD",
+      filename: "jan.csv",
+    });
+    const feb = await caller.ingest({
+      ...sheet(10_000),
+      periodType: "monthly",
+      periodStart: "2026-02-01",
+      periodEnd: "2026-02-28",
+      currencyCode: "USD",
+      filename: "feb.csv",
+    });
+
+    // Written straight into the snapshot table, which is what the upload used
+    // to allow: E1 paid a second 5,000.00 in February.
+    await ctx.db.execute(sql`
+      INSERT INTO employee_snapshots
+        (payroll_period_id, employee_external_id, employee_name, department,
+         components, gross_salary, net_salary, currency_code)
+      VALUES
+        (${feb.periodId}, 'E1', 'Ada', 'Engineering', '{}'::jsonb, '5000', '5000', 'USD')
+    `);
+
+    await expect(
+      comparisonsCaller("clerk_dup_legacy").run({
+        currentPeriodId: feb.periodId,
+        previousPeriodId: jan.periodId,
+      }),
+    ).rejects.toThrow(/Comparison refused.*E1 \(2 rows in the current register, 1 in the previous\)/s);
+
+    const runs = await ctx.db.execute(sql`
+      SELECT status FROM comparison_runs WHERE current_period_id = ${feb.periodId}
+    `);
+    expect(runs.rows.map((r) => (r as { status: string }).status)).toEqual(["error"]);
   });
 });

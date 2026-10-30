@@ -19,9 +19,11 @@ interface DepartmentRow {
 
 interface DepartmentBreakdownProps {
   departments?: DepartmentRow[];
+  /** The company currency (step 8b). */
+  currency: string;
 }
 
-export function DepartmentBreakdown({ departments }: DepartmentBreakdownProps) {
+export function DepartmentBreakdown({ departments, currency }: DepartmentBreakdownProps) {
   return (
     <Card>
       <CardHeader>
@@ -46,9 +48,14 @@ export function DepartmentBreakdown({ departments }: DepartmentBreakdownProps) {
                   <TableHead>Department</TableHead>
                   <TableHead className="text-right">Headcount (Current)</TableHead>
                   <TableHead className="text-right">Headcount (Previous)</TableHead>
-                  <TableHead className="text-right">Payroll (Current)</TableHead>
-                  <TableHead className="text-right">Payroll (Previous)</TableHead>
-                  <TableHead className="text-right">Change ($)</TableHead>
+                  {/* Gross, not "payroll": these are what the department costs
+                      in pay. They used to be the component sum, which carried
+                      the department's deductions as well. */}
+                  <TableHead className="text-right">Gross (Current)</TableHead>
+                  <TableHead className="text-right">Gross (Previous)</TableHead>
+                  {/* No currency symbol — the company's currency is threaded
+                      through in step 8b of docs/PAYROLL_AUDIT_FIX_PLAN.md. */}
+                  <TableHead className="text-right">Change</TableHead>
                   <TableHead className="text-right">Change (%)</TableHead>
                 </TableRow>
               </TableHeader>
@@ -60,10 +67,10 @@ export function DepartmentBreakdown({ departments }: DepartmentBreakdownProps) {
                       <TableCell className="font-medium">{dept.department}</TableCell>
                       <TableCell className="text-right">{dept.headcountCurrent}</TableCell>
                       <TableCell className="text-right">{dept.headcountPrevious}</TableCell>
-                      <TableCell className="text-right font-mono text-xs">{formatCurrency(dept.totalCurrent)}</TableCell>
-                      <TableCell className="text-right font-mono text-xs">{formatCurrency(dept.totalPrevious)}</TableCell>
+                      <TableCell className="text-right font-mono text-xs">{formatCurrency(dept.totalCurrent, currency)}</TableCell>
+                      <TableCell className="text-right font-mono text-xs">{formatCurrency(dept.totalPrevious, currency)}</TableCell>
                       <TableCell className={cn("text-right font-mono text-xs", isPositive ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-                        {isPositive ? "+" : ""}{formatCurrency(dept.absoluteChange)}
+                        {isPositive ? "+" : ""}{formatCurrency(dept.absoluteChange, currency)}
                       </TableCell>
                       <TableCell className="text-right">
                         {dept.percentageChange !== null ? (

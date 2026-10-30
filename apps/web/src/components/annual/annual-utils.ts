@@ -1,4 +1,4 @@
-import { formatComponentName } from "@/lib/utils";
+import { formatComponentName, formatCurrency } from "@/lib/utils";
 import type { PeriodType } from "@saas/payroll-core";
 
 /**
@@ -11,35 +11,14 @@ import type { PeriodType } from "@saas/payroll-core";
  * "$1,234.56".
  */
 
-const FULL_CACHE = new Map<string, Intl.NumberFormat>();
-
-function fullFormatter(currency: string): Intl.NumberFormat {
-  const cached = FULL_CACHE.get(currency);
-  if (cached) return cached;
-  let fmt: Intl.NumberFormat;
-  try {
-    fmt = new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency,
-      currencyDisplay: "code",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  } catch {
-    // An invalid or unknown code must not take the page down.
-    fmt = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  }
-  FULL_CACHE.set(currency, fmt);
-  return fmt;
-}
-
-/** Full value, e.g. "USD 3,089,200.00". Use in tables and tooltips. */
-export function formatMoney(amount: number, currency: string): string {
-  if (!Number.isFinite(amount)) return "—";
-  const formatted = fullFormatter(currency).format(amount);
-  // The fallback formatter has no currency code, so prepend one.
-  return formatted.includes(currency) ? formatted : `${currency} ${formatted}`;
-}
+/**
+ * Full value, e.g. "USD 3,089,200.00". Use in tables and tooltips.
+ *
+ * One implementation, in `lib/utils.ts`, since step 8b took the comparison side
+ * to the same convention. This was that implementation and is unchanged in
+ * behaviour; only its home moved, so the two features cannot drift apart again.
+ */
+export const formatMoney = formatCurrency;
 
 /**
  * Compact value, e.g. "USD 2.67M". Includes a billions step, which the old

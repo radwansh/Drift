@@ -6,9 +6,11 @@ import { formatCurrency } from "@/lib/utils";
 
 interface KpiCardsProps {
   summary: AggregatedSummary | null;
+  /** The company currency (step 8b). */
+  currency: string;
 }
 
-export function KpiCards({ summary }: KpiCardsProps) {
+export function KpiCards({ summary, currency }: KpiCardsProps) {
   if (!summary) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -24,8 +26,10 @@ export function KpiCards({ summary }: KpiCardsProps) {
 
   const cards = [
     {
-      title: "Total Variance",
-      value: formatCurrency(Math.abs(variance.absolute)),
+      // Net, which is what totalPayrollVariance now holds. It read "Total
+      // Variance" over a figure that was gross plus deductions.
+      title: "Net Variance",
+      value: formatCurrency(Math.abs(variance.absolute), currency),
       subtext: variance.percentage !== null ? `${isPositive ? "+" : ""}${variance.percentage.toFixed(1)}%` : "N/A",
       iconName: isPositive ? "TrendingUp" : "TrendingDown",
       trend: isPositive ? "up" as const : "down" as const,
@@ -53,14 +57,14 @@ export function KpiCards({ summary }: KpiCardsProps) {
     },
     {
       title: "Largest Increase",
-      value: summary.largestIncrease ? formatCurrency(summary.largestIncrease.amount) : "—",
+      value: summary.largestIncrease ? formatCurrency(summary.largestIncrease.amount, currency) : "—",
       subtext: summary.largestIncrease ? `${summary.largestIncrease.employeeName} (${summary.largestIncrease.department ?? "N/A"})` : "None",
       iconName: "ArrowUpCircle",
       trend: "up" as const,
     },
     {
       title: "Largest Decrease",
-      value: summary.largestDecrease ? formatCurrency(Math.abs(summary.largestDecrease.amount)) : "—",
+      value: summary.largestDecrease ? formatCurrency(Math.abs(summary.largestDecrease.amount), currency) : "—",
       subtext: summary.largestDecrease ? `${summary.largestDecrease.employeeName} (${summary.largestDecrease.department ?? "N/A"})` : "None",
       iconName: "ArrowDownCircle",
       trend: "down" as const,

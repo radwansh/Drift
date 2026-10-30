@@ -10,6 +10,12 @@ interface AnnualWarningsProps {
   warnings: AnnualWarning[];
   /** Opens the categorise dialog, for warnings whose fix is a recategorisation. */
   onCategorise?: () => void;
+  /**
+   * Step 12a: scrolls to the scenario view. `FORECAST_HOLDS_HEADCOUNT` has no
+   * fix — the forecast cannot invent a hiring plan — so the action is to price
+   * one, which the scenario card already does.
+   */
+  onOpenScenario?: () => void;
 }
 
 const SEVERITY_STYLES = {
@@ -29,7 +35,7 @@ const SEVERITY_STYLES = {
  * Warnings now arrive structured (step 19), so this renders a title, a detail
  * sentence, the affected items and a fix button, inside one polite live region.
  */
-export function AnnualWarnings({ warnings, onCategorise }: AnnualWarningsProps) {
+export function AnnualWarnings({ warnings, onCategorise, onOpenScenario }: AnnualWarningsProps) {
   if (warnings.length === 0) return null;
 
   return (
@@ -70,6 +76,16 @@ export function AnnualWarnings({ warnings, onCategorise }: AnnualWarningsProps) 
                 onClick={onCategorise}
               >
                 Categorise
+              </Button>
+            )}
+            {warning.action.type === "open_scenario" && onOpenScenario && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="shrink-0 self-start"
+                onClick={onOpenScenario}
+              >
+                Plan hiring
               </Button>
             )}
           </div>

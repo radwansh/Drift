@@ -15,12 +15,20 @@ import {
 export function buildCategoryTotals(
   components: readonly ComponentAggregate[],
   resolve: (key: string) => Category,
+  /**
+   * The question a column raises, or undefined when it can be placed
+   * (step 11). Passed in rather than imported so the caller owns the
+   * suppression: a column the user has already decided must not be asked
+   * about again, and that decision lives with the override.
+   */
+  ambiguityOf?: (key: string) => { question: string } | undefined,
 ): CategoryTotals {
   const byCategory: Partial<Record<Category, number>> = {};
   const quantities: Partial<Record<"absence_days" | "other_quantity", number>> = {};
   const byKey: Record<string, { category: Category; total: number }> = {};
   const mixedSignKeys: string[] = [];
   const uncategorisedKeys: string[] = [];
+  const ambiguousKeys: { key: string; question: string }[] = [];
 
   for (const c of components) {
     const category = resolve(c.key);
@@ -43,10 +51,14 @@ export function buildCategoryTotals(
       byCategory[category] = (byCategory[category] ?? 0) + c.total;
     }
 
-    if (category === "uncategorised") uncategorisedKeys.push(c.key);
+    if (category === "uncategorised") {
+      uncategorisedKeys.push(c.key);
+      const note = ambiguityOf?.(c.key);
+      if (note) ambiguousKeys.push({ key: c.key, question: note.question });
+    }
   }
 
-  return { byCategory, quantities, byKey, mixedSignKeys, uncategorisedKeys };
+  return { byCategory, quantities, byKey, mixedSignKeys, uncategorisedKeys, ambiguousKeys };
 }
 
 export function sumCategories(

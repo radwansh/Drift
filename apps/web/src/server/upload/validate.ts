@@ -1,3 +1,19 @@
+import {
+  reconcileRegister,
+  checkControlTotals,
+  describeBreach,
+  openQuestionsFor,
+  minorUnits,
+  isSnapshotField,
+  CATEGORY_LABELS,
+  type Category,
+  type OpenQuestion,
+  type ReconcileRow,
+  type ReconciliationReport,
+  type ControlTotals,
+  type ControlTotalCheck,
+} from "@saas/payroll-core";
+
 interface Mapping {
   sourceColumn: string;
   mappedComponent: string;
@@ -6,6 +22,9 @@ interface Mapping {
   isDepartment: boolean;
   isGrossSalary: boolean;
   isNetSalary: boolean;
+  /** Step 9: a column recorded as a date, an FTE or a dimension is not money. */
+  snapshotField?: string | null;
+  dimensionName?: string | null;
 }
 
 interface ValidationError {
@@ -24,15 +43,50 @@ interface ValidationResult {
   totalNet: number;
   employeeCount: number;
   detectedCurrency: string | null;
+  /**
+   * Step 4: the reconciliation, for the wizard's Data check panel. Present
+   * whenever both a gross and a net column are mapped; `null` when they are
+   * not, because neither identity can be stated without them.
+   */
+  reconciliation: ReconciliationReport | null;
+  /** Lines where the admin's stated total disagrees with the computed one. */
+  controlTotals: ControlTotalCheck[];
+  /** Which control lines the admin left blank. Absence is not agreement. */
+  controlTotalsMissing: ("gross" | "net")[];
+  /**
+   * Step 11b: columns the classifier cannot place and nobody has answered. Each
+   * is also an error, so the import is blocked until one is chosen — the
+   * question has to be answered *before* the data carries the ambiguity.
+   */
+  openQuestions: OpenQuestion[];
+}
+
+export interface ValidateOptions {
+  /** The currency's minor units decide the tolerance. Defaults to 2. */
+  currencyCode?: string | null;
+  /** What the admin says the register's own export totalled. */
+  controlTotals?: ControlTotals;
+  /**
+   * Step 11b: categories already decided for this company, from
+   * `component_categories` plus whatever the admin just chose in the wizard. A
+   * decided column is not asked about again.
+   *
+   * Passed in rather than read here, because this function is pure and sync and
+   * the saved answers live in Postgres. The router that has `ctx.db` merges the
+   * two before calling.
+   */
+  answeredCategories?: Readonly<Record<string, Category>>;
 }
 
 export function validateRows(
   rows: Record<string, unknown>[],
   mappings: Mapping[],
+  options: ValidateOptions = {},
 ): ValidationResult {
   const errors: ValidationError[] = [];
   const warnings: ValidationError[] = [];
-  const employeeIds = new Set<string>();
+  /** First file row that held each employee ID, so a repeat can name its pair. */
+  const employeeIdRows = new Map<string, number>();
   let totalGross = 0;
   let totalNet = 0;
   let employeeCount = 0;
@@ -56,15 +110,25 @@ export function validateRows(
         });
       } else {
         const idStr = String(empId).trim();
-        if (employeeIds.has(idStr)) {
-          warnings.push({
+        const firstRow = employeeIdRows.get(idStr);
+        if (firstRow !== undefined) {
+          // An error, not a warning (step 2 of docs/PAYROLL_AUDIT_FIX_PLAN.md).
+          // As a warning the upload completed and the period was marked
+          // `ready` with both rows in it; the comparison then kept the first
+          // row per ID and dropped the rest, so one person paid twice produced
+          // a dashboard reading "no change" with no flag of any kind. The
+          // register is what has to be corrected, so the gate is at the door.
+          // The first row holding the ID is named because that is the pair the
+          // payroll admin has to look at.
+          errors.push({
             row: rowNum,
             column: empIdMapping.sourceColumn,
-            message: `Duplicate employee ID: ${idStr}`,
-            severity: "warning",
+            message: `Duplicate employee ID ${idStr}: also on row ${firstRow}`,
+            severity: "error",
           });
+        } else {
+          employeeIdRows.set(idStr, rowNum);
         }
-        employeeIds.add(idStr);
       }
     }
 
@@ -129,6 +193,121 @@ export function validateRows(
     }
   }
 
+  const detectedCurrency =
+    currencyCandidates.size === 1 ? (currencyCandidates.values().next().value ?? null) : null;
+
+  /**
+   * Step 4: the reconciliation gate.
+   *
+   * The two sums that define a correct register were computed nowhere, so
+   * `samples/payroll_july_2026.csv` — 520.00 out across three rows — imported
+   * cleanly, built a dashboard and had an AI narrative written about it.
+   *
+   * A breach is an **error**, which is what makes this a gate rather than a
+   * report: `payrollPeriods.ingest` refuses on `valid: false`, so a failing
+   * register never becomes a period at all, rather than becoming one that is
+   * flagged afterwards. The tolerance is the currency's own minor unit, from
+   * the register's detected currency where it has one.
+   *
+   * An unplaced column is a **warning**: "your register does not add up" and
+   * "Clarivo does not know what this column is" are different problems, and
+   * `samples/2025` carries such a column deliberately.
+   */
+  const decimals = minorUnits(detectedCurrency ?? options.currencyCode);
+  const reconciliation =
+    grossMapping && netMapping
+      ? reconcileRegister({
+          rows: reconcileRows(rows, mappings, grossMapping, netMapping),
+          decimals,
+          rowNumbers: employeeIdRows,
+          // Step 11b: an answered column sits on the side the admin said, here
+          // as on the dashboard. Without this the gate would keep reading a
+          // just-answered column as unplaced.
+          answeredCategories: options.answeredCategories,
+        })
+      : null;
+
+  if (reconciliation) {
+    for (const breach of reconciliation.breaches) {
+      errors.push({
+        row: breach.row,
+        message: describeBreach(breach, decimals),
+        severity: "error",
+      });
+    }
+
+    for (const column of reconciliation.mixedSignColumns) {
+      // An error, not a warning: the rows it touches get no verdict on the net
+      // identity, so passing the register would be passing something unchecked.
+      errors.push({
+        column: column.componentKey,
+        message:
+          `${column.componentKey} is written as a positive amount for ${column.positive.join(", ")} ` +
+          `and a negative one for ${column.negative.join(", ")}. Use one sign throughout, ` +
+          `so it is clear which rows it reduces.`,
+        severity: "error",
+      });
+    }
+
+    for (const column of reconciliation.unplacedColumns) {
+      warnings.push({
+        column: column.componentKey,
+        message:
+          `${column.componentKey} (${column.total.toFixed(decimals)}) is not a component Clarivo recognises, ` +
+          `so it is counted toward gross but not categorised. Categorise it in Settings to place it.`,
+        severity: "warning",
+      });
+    }
+  }
+
+  // The control total: what the admin ticks the register against. Clarivo's own
+  // totals can only ever agree with themselves, so a line left blank means the
+  // register was never checked against anything outside Clarivo — reported as
+  // "not supplied" rather than treated as agreement.
+  const stated = options.controlTotals ?? {};
+  const controlTotals = checkControlTotals(stated, { gross: totalGross, net: totalNet }, decimals);
+  const controlTotalsMissing = (["gross", "net"] as const).filter(
+    (line) => stated[line] === null || stated[line] === undefined,
+  );
+
+  for (const check of controlTotals) {
+    errors.push({
+      message:
+        `The ${check.line} control total you entered is ${check.stated.toFixed(decimals)}, ` +
+        `but the rows add up to ${check.computed.toFixed(decimals)} — ` +
+        `${check.difference > 0 ? "+" : ""}${check.difference.toFixed(decimals)}.`,
+      severity: "error",
+    });
+  }
+
+  /**
+   * Step 11b: the question goes here, not on the annual dashboard.
+   *
+   * It was raised by `computeSummary` and surfaced after the fact, which is the
+   * wrong order — the ambiguity was already in the data, every annual view
+   * carried the gap in its balancing lines until somebody answered, and the
+   * person who knew the answer had moved on. An **error**, so the column is
+   * decided before the register is committed rather than after.
+   *
+   * Only the money columns are asked about: a date or a dimension is not a
+   * component and never reaches the classifier.
+   */
+  const openQuestions = openQuestionsFor(
+    componentKeysOf(mappings),
+    options.answeredCategories ?? {},
+  );
+
+  for (const question of openQuestions) {
+    errors.push({
+      column: question.componentKey,
+      message:
+        `${question.componentKey} ${question.question} ` +
+        `Choose ${question.candidates.map((c) => CATEGORY_LABELS[c]).join(" or ")} ` +
+        `for this column before importing.`,
+      severity: "error",
+    });
+  }
+
   return {
     valid: errors.length === 0,
     totalRows: rows.length,
@@ -137,8 +316,84 @@ export function validateRows(
     totalGross,
     totalNet,
     employeeCount,
-    detectedCurrency: currencyCandidates.size === 1 ? (currencyCandidates.values().next().value ?? null) : null,
+    detectedCurrency,
+    reconciliation,
+    controlTotals,
+    controlTotalsMissing,
+    openQuestions,
   };
+}
+
+/**
+ * The component keys a mapping set actually writes.
+ *
+ * Step 9's record roles are excluded for the same reason they are excluded from
+ * `components`: a hire date is not a pay component and has no category to
+ * choose. So is an ignored column — the admin has said it is not pay.
+ */
+export function componentKeysOf(mappings: readonly Mapping[]): string[] {
+  return mappings
+    .filter(
+      (m) =>
+        !m.isEmployeeId &&
+        !m.isEmployeeName &&
+        !m.isDepartment &&
+        !m.isGrossSalary &&
+        !m.isNetSalary &&
+        !isSnapshotField(m.snapshotField) &&
+        !(m.dimensionName && m.dimensionName.trim().length > 0) &&
+        m.mappedComponent !== "" &&
+        m.mappedComponent !== "ignore",
+    )
+    .map((m) => m.mappedComponent);
+}
+
+/**
+ * The rows in the shape `reconcileRegister` takes.
+ *
+ * Only money columns: the identity flags are not components, and step 9's
+ * record roles are dates, an FTE or a dimension. A hire date reaching the
+ * earnings side would be a nine-digit number in it.
+ */
+function reconcileRows(
+  rows: Record<string, unknown>[],
+  mappings: Mapping[],
+  grossMapping: Mapping,
+  netMapping: Mapping,
+): ReconcileRow[] {
+  const empIdMapping = mappings.find((m) => m.isEmployeeId);
+  const componentMappings = mappings.filter(
+    (m) =>
+      !m.isEmployeeId &&
+      !m.isEmployeeName &&
+      !m.isDepartment &&
+      !m.isGrossSalary &&
+      !m.isNetSalary &&
+      !isSnapshotField(m.snapshotField) &&
+      !(m.dimensionName && m.dimensionName.trim().length > 0) &&
+      m.mappedComponent !== "" &&
+      m.mappedComponent !== "ignore",
+  );
+
+  return rows.map((row, i) => {
+    const components: Record<string, number | null> = {};
+    for (const m of componentMappings) {
+      components[m.mappedComponent] = parseNumeric(row[m.sourceColumn]);
+    }
+
+    const rawId = empIdMapping ? row[empIdMapping.sourceColumn] : undefined;
+    const employeeId =
+      rawId === null || rawId === undefined || String(rawId).trim() === ""
+        ? `row ${i + 2}`
+        : String(rawId).trim();
+
+    return {
+      employeeId,
+      gross: parseNumeric(row[grossMapping.sourceColumn]) ?? 0,
+      net: parseNumeric(row[netMapping.sourceColumn]) ?? 0,
+      components,
+    };
+  });
 }
 
 function parseNumeric(value: unknown): number | null {

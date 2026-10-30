@@ -13,6 +13,8 @@ interface ComponentItem {
 
 interface ComponentBreakdownProps {
   components?: ComponentItem[];
+  /** The company currency (step 8b). Without it the axis and tooltip read USD. */
+  currency: string;
 }
 
 const COMPONENT_COLORS: Record<string, string> = {
@@ -33,7 +35,7 @@ function getColor(component: string): string {
   return "#6b7280";
 }
 
-export function ComponentBreakdown({ components }: ComponentBreakdownProps) {
+export function ComponentBreakdown({ components, currency }: ComponentBreakdownProps) {
   return (
     <Card>
       <CardHeader>
@@ -64,7 +66,7 @@ export function ComponentBreakdown({ components }: ComponentBreakdownProps) {
                 tick={{ fontSize: 11 }}
                 tickLine={false}
                 axisLine={false}
-                tickFormatter={(v: number) => formatCurrency(v)}
+                tickFormatter={(v: number) => formatCurrency(v, currency)}
               />
               <YAxis
                 type="category"
@@ -76,7 +78,7 @@ export function ComponentBreakdown({ components }: ComponentBreakdownProps) {
               />
               <Tooltip
                 contentStyle={{ fontSize: 13, borderRadius: 8 }}
-                formatter={(value: number) => [formatCurrency(value), "Total Change"]}
+                formatter={(value: number) => [formatCurrency(value, currency), "Total Change"]}
                 labelFormatter={(label: string) => `Component: ${label}`}
               />
               <Bar dataKey="totalChange" radius={[0, 4, 4, 0]} maxBarSize={24}>

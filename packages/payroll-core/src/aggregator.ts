@@ -1,7 +1,9 @@
-import type { ComparisonOutput, AggregatedSummary, ComponentDelta } from "./types";
-import { calculateDelta } from "./delta-calculator";
+import type { ComparisonOutput, AggregatedSummary, PeriodTotal } from "./types";
 import { collectAnomalies } from "./anomaly-detector";
-import type { AnomalyResult } from "./anomaly-detector";
+import { DEFAULT_MINOR_UNITS, roundToMinorUnits } from "./money";
+
+/** Rounds to the currency's minor units; see ./money. */
+type Round = (value: number) => number;
 
 const DISTRIBUTION_COLORS: Record<string, string> = {
   "decreased >10%": "#ef4444",
@@ -11,33 +13,80 @@ const DISTRIBUTION_COLORS: Record<string, string> = {
   "increased >10%": "#16a34a",
 };
 
-export function aggregateResults(results: ComparisonOutput[]): AggregatedSummary {
+/**
+ * Builds a period total from two sums.
+ *
+ * The percentage is null rather than 0 when the previous period is empty: a
+ * movement from nothing is not a 0% change, and rendering it as one has it read
+ * as "no change".
+ */
+function periodTotal(previous: number, current: number, round: Round): PeriodTotal {
+  const absolute = current - previous;
+  return {
+    previous: round(previous),
+    current: round(current),
+    absolute: round(absolute),
+    percentage: previous !== 0 ? round((absolute / previous) * 100) : null,
+  };
+}
+
+/**
+ * Per-employee net, or null when it is absent.
+ *
+ * Everything below reads gross and net off the employee rows rather than
+ * summing `currentComponents` / `previousComponents`. That sum was the bug:
+ * components are every mapped column that is not id, name, department, gross or
+ * net, so with positive deduction columns their total comes to gross plus
+ * deductions — neither of the two numbers anyone wanted, under labels saying it
+ * was one of them.
+ */
+export function aggregateResults(
+  results: ComparisonOutput[],
+  decimals: number = DEFAULT_MINOR_UNITS,
+): AggregatedSummary {
+  // One rounder for the whole aggregation, built from the company's currency.
+  const round: Round = (value) => roundToMinorUnits(value, decimals);
+
   const total = results.length;
   let increased = 0;
   let decreased = 0;
   let unchanged = 0;
 
-  let totalCurrent = 0;
-  let totalPrevious = 0;
+  let grossPrevious = 0;
+  let grossCurrent = 0;
+  let netPrevious = 0;
+  let netCurrent = 0;
+  let grossMissing = 0;
+  let netMissing = 0;
 
   for (const r of results) {
     if (r.status === "increased") increased++;
     else if (r.status === "decreased") decreased++;
     else if (r.status === "unchanged") unchanged++;
 
-    const prevNet = Object.values(r.previousComponents).reduce<number>((s, v) => s + (v ?? 0), 0);
-    const currNet = Object.values(r.currentComponents).reduce<number>((s, v) => s + (v ?? 0), 0);
-    totalPrevious += prevNet;
-    totalCurrent += currNet;
+    // A departed employee has no current figures and a new one no previous, so
+    // a null on that side is expected rather than missing. Anywhere else a null
+    // is a data gap: it is counted, never silently added as zero.
+    if (r.status !== "departed") {
+      if (r.currentGross === null) grossMissing++;
+      else grossCurrent += r.currentGross;
+      if (r.currentNet === null) netMissing++;
+      else netCurrent += r.currentNet;
+    }
+
+    if (r.status !== "new") {
+      if (r.previousGross === null) grossMissing++;
+      else grossPrevious += r.previousGross;
+      if (r.previousNet === null) netMissing++;
+      else netPrevious += r.previousNet;
+    }
   }
+
+  const totalNet = periodTotal(netPrevious, netCurrent, round);
+  const totalGross = periodTotal(grossPrevious, grossCurrent, round);
 
   const newEmployees = results.filter((r) => r.status === "new").length;
   const departedEmployees = results.filter((r) => r.status === "departed").length;
-
-  const absoluteVariance = totalCurrent - totalPrevious;
-  const variancePct = totalPrevious !== 0
-    ? (absoluteVariance / totalPrevious) * 100
-    : null;
 
   const resultsWithDelta = results.filter(
     (r) => r.netDelta !== null && r.status !== "new" && r.status !== "departed",
@@ -45,13 +94,10 @@ export function aggregateResults(results: ComparisonOutput[]): AggregatedSummary
 
   const netDeltas = resultsWithDelta.map((r) => r.netDelta as number);
   const totalDeltaSum = netDeltas.reduce((s, v) => s + v, 0);
-  const avgAbsolute = netDeltas.length > 0 ? totalDeltaSum / netDeltas.length : 0;
 
+  // Percentage movement per employee, against that employee's own previous net.
   const pctDeltas = resultsWithDelta
-    .map((r) => {
-      const prevNet = Object.values(r.previousComponents).reduce<number>((s, v) => s + (v ?? 0), 0);
-      return prevNet !== 0 ? (r.netDelta! / prevNet) * 100 : null;
-    })
+    .map((r) => pctOfPreviousNet(r))
     .filter((p): p is number => p !== null);
 
   const avgPct = pctDeltas.length > 0
@@ -67,20 +113,22 @@ export function aggregateResults(results: ComparisonOutput[]): AggregatedSummary
     .sort((a, b) => (a.netDelta ?? 0) - (b.netDelta ?? 0))[0] ?? null;
 
   const distribution = computeDistribution(results);
-  const componentBreakdown = computeComponentBreakdown(results);
-  const departmentBreakdown = computeDepartmentBreakdown(results);
-  const topMovers = computeTopMovers(results);
+  const componentBreakdown = computeComponentBreakdown(results, round);
+  const departmentBreakdown = computeDepartmentBreakdown(results, round);
+  const topMovers = computeTopMovers(results, round);
   const anomalies = collectAnomalies(results);
 
-  const aggregateAvgAbs = netDeltas.length > 0
-    ? totalDeltaSum / netDeltas.length
-    : 0;
+  const avgAbsolute = netDeltas.length > 0 ? totalDeltaSum / netDeltas.length : 0;
 
   return {
+    // The headline is net, and it is the same movement as totalNet.
     totalPayrollVariance: {
-      absolute: absoluteVariance,
-      percentage: variancePct !== null ? Math.round(variancePct * 100) / 100 : null,
+      absolute: totalNet.absolute,
+      percentage: totalNet.percentage,
     },
+    totalNet,
+    totalGross,
+    incompleteTotals: { grossMissing, netMissing },
     employeesAffected: { total, increased, decreased, unchanged },
     newEmployees,
     departedEmployees,
@@ -91,8 +139,8 @@ export function aggregateResults(results: ComparisonOutput[]): AggregatedSummary
       ? { employeeName: largestDecrease.employeeName, department: largestDecrease.department, amount: largestDecrease.netDelta! }
       : null,
     averageChange: {
-      absolute: Math.round(aggregateAvgAbs * 100) / 100,
-      percentage: avgPct !== null ? Math.round(avgPct * 100) / 100 : null,
+      absolute: round(avgAbsolute),
+      percentage: avgPct !== null ? round(avgPct) : null,
     },
     distribution,
     componentBreakdown,
@@ -100,6 +148,17 @@ export function aggregateResults(results: ComparisonOutput[]): AggregatedSummary
     topMovers,
     anomalies,
   };
+}
+
+/**
+ * An employee's net movement as a percentage of their own previous net.
+ *
+ * Null when there is no previous net to divide by, so the caller decides what
+ * an unmeasurable movement means rather than inheriting a 0.
+ */
+function pctOfPreviousNet(r: ComparisonOutput): number | null {
+  if (r.netDelta === null || r.previousNet === null || r.previousNet === 0) return null;
+  return (r.netDelta / r.previousNet) * 100;
 }
 
 type DistributionLabel =
@@ -128,10 +187,10 @@ function computeDistribution(results: ComparisonOutput[]) {
       continue;
     }
 
-    const prevNet = Object.values(r.previousComponents).reduce<number>((s, v) => s + (v ?? 0), 0);
-    const pct = prevNet !== 0 ? (r.netDelta / prevNet) * 100 : 0;
-
-    if (Math.abs(pct) <= 0.01) {
+    // Unmeasurable (no previous net) counts as unchanged rather than being
+    // dropped, so the buckets still sum to the compared population.
+    const pct = pctOfPreviousNet(r);
+    if (pct === null || Math.abs(pct) <= 0.01) {
       buckets["unchanged"]++;
     } else if (pct > 10) {
       buckets["increased >10%"]++;
@@ -151,7 +210,7 @@ function computeDistribution(results: ComparisonOutput[]) {
   }));
 }
 
-function computeComponentBreakdown(results: ComparisonOutput[]) {
+function computeComponentBreakdown(results: ComparisonOutput[], round: Round) {
   const componentMap: Record<string, { totalChange: number; employeeCount: number }> = {};
 
   for (const r of results) {
@@ -173,13 +232,18 @@ function computeComponentBreakdown(results: ComparisonOutput[]) {
   return Object.entries(componentMap)
     .map(([component, data]) => ({
       component,
-      totalChange: Math.round(data.totalChange * 100) / 100,
+      totalChange: round(data.totalChange),
       employeeCount: data.employeeCount,
     }))
     .sort((a, b) => Math.abs(b.totalChange) - Math.abs(a.totalChange));
 }
 
-function computeDepartmentBreakdown(results: ComparisonOutput[]) {
+/**
+ * Department totals are **gross** — what the department costs in pay, which is
+ * what anyone comparing departments means. They were the component sum, so a
+ * department's "total" carried its deductions as well as its pay.
+ */
+function computeDepartmentBreakdown(results: ComparisonOutput[], round: Round) {
   const deptMap: Record<string, {
     headcountCurrent: Set<string>;
     headcountPrevious: Set<string>;
@@ -201,14 +265,12 @@ function computeDepartmentBreakdown(results: ComparisonOutput[]) {
 
     if (r.status !== "departed") {
       deptMap[dept].headcountCurrent.add(r.employeeExternalId);
-      const currTotal = Object.values(r.currentComponents).reduce<number>((s, v) => s + (v ?? 0), 0);
-      deptMap[dept].totalCurrent += currTotal;
+      deptMap[dept].totalCurrent += r.currentGross ?? 0;
     }
 
     if (r.status !== "new") {
       deptMap[dept].headcountPrevious.add(r.employeeExternalId);
-      const prevTotal = Object.values(r.previousComponents).reduce<number>((s, v) => s + (v ?? 0), 0);
-      deptMap[dept].totalPrevious += prevTotal;
+      deptMap[dept].totalPrevious += r.previousGross ?? 0;
     }
   }
 
@@ -216,40 +278,44 @@ function computeDepartmentBreakdown(results: ComparisonOutput[]) {
     .map(([department, data]) => {
       const absoluteChange = data.totalCurrent - data.totalPrevious;
       const percentageChange = data.totalPrevious !== 0
-        ? Math.round((absoluteChange / data.totalPrevious) * 10000) / 100
+        ? round((absoluteChange / data.totalPrevious) * 100)
         : null;
       return {
         department,
         headcountCurrent: data.headcountCurrent.size,
         headcountPrevious: data.headcountPrevious.size,
-        totalCurrent: Math.round(data.totalCurrent * 100) / 100,
-        totalPrevious: Math.round(data.totalPrevious * 100) / 100,
-        absoluteChange: Math.round(absoluteChange * 100) / 100,
+        totalCurrent: round(data.totalCurrent),
+        totalPrevious: round(data.totalPrevious),
+        absoluteChange: round(absoluteChange),
         percentageChange,
       };
     })
     .sort((a, b) => Math.abs(b.absoluteChange) - Math.abs(a.absoluteChange));
 }
 
-function computeTopMovers(results: ComparisonOutput[]) {
-  const movers = results
+/**
+ * Top movers by net movement.
+ *
+ * The three money cells in a row now tie by construction: `previousNet` and
+ * `currentNet` are the employee's own net, and `changeAmount` is their
+ * difference. They did not tie before — the two flanking columns were the
+ * component sum while the middle one was the real net delta, under headers
+ * reading "Previous Net" and "Current Net".
+ */
+function computeTopMovers(results: ComparisonOutput[], round: Round) {
+  return results
     .filter((r) => r.netDelta !== null && r.status !== "new" && r.status !== "departed")
     .map((r) => {
-      const prevNet = Object.values(r.previousComponents).reduce<number>((s, v) => s + (v ?? 0), 0);
-      const changePercentage = prevNet !== 0
-        ? Math.round((r.netDelta! / prevNet) * 10000) / 100
-        : null;
+      const pct = pctOfPreviousNet(r);
       return {
         employeeName: r.employeeName,
         department: r.department,
-        previousNet: prevNet,
-        currentNet: Object.values(r.currentComponents).reduce<number>((s, v) => s + (v ?? 0), 0),
-        changeAmount: r.netDelta!,
-        changePercentage,
+        previousNet: round(r.previousNet ?? 0),
+        currentNet: round(r.currentNet ?? 0),
+        changeAmount: round(r.netDelta!),
+        changePercentage: pct !== null ? round(pct) : null,
       };
     })
     .sort((a, b) => Math.abs(b.changeAmount) - Math.abs(a.changeAmount))
     .slice(0, 10);
-
-  return movers;
 }

@@ -276,6 +276,26 @@ export function AnnualBridge({ summary }: AnnualBridgeProps) {
                   </TableCell>
                 </TableRow>
               ))}
+              {/*
+                Step 6. The forecast projects a recurring floor and holds
+                one-offs back, so the bridge names what was held back rather
+                than leaving a reader to wonder why the forecast column is below
+                the to-date column. It is a memo line: the amount is already
+                inside "To date" above, which is why the other two cells are
+                dashes and why it sits below the totals rather than among them.
+              */}
+              {summary.oneOffsExcluded.total !== 0 && (
+                <TableRow className="border-t text-muted-foreground">
+                  <TableCell className="sticky left-0 z-10 bg-background font-medium whitespace-nowrap">
+                    One-offs excluded from forecast
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums whitespace-nowrap">
+                    {formatMoney(summary.oneOffsExcluded.total, currency)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums whitespace-nowrap">—</TableCell>
+                  <TableCell className="text-right tabular-nums whitespace-nowrap">—</TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </div>

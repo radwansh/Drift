@@ -94,14 +94,20 @@ export function AnnualPeriodsChart({ summary }: AnnualPeriodsChartProps) {
     });
   }, [summary, metric, cumulative]);
 
+  /**
+   * Step 12a: the held headcount comes from the engine now.
+   *
+   * This used to build its own sentence — "Forecast holds headcount at 141, as
+   * in Mar 2025" — from the last actual row, while `buildForecast` said nothing
+   * about the roster it had assumed. So the one place the assumption appeared
+   * was prose assembled in a chart component: the Excel export's Assumptions
+   * sheet, which maps `summary.assumptions`, did not carry it, and neither did
+   * anything else reading them. The engine states it, and this renders what the
+   * engine states.
+   */
   const assumption = useMemo(() => {
     if (!summary || summary.forecastPerPeriod.length === 0) return null;
-    const actualPeriods = summary.periods.filter((p) => p.kind === "actual");
-    const last = actualPeriods.length > 0 ? actualPeriods[actualPeriods.length - 1] : null;
-    const headcountPart = last
-      ? `Forecast holds headcount at ${last.headcount ?? "—"}, as in ${last.label}.`
-      : "";
-    return `${headcountPart} ${summary.assumptions.join(" ")}`.trim();
+    return summary.assumptions.join(" ").trim() || null;
   }, [summary]);
 
   const kindsPresent = useMemo(
