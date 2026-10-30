@@ -42,6 +42,19 @@ add coreyhaines31/marketingskills \
 add addyosmani/web-quality-skills --skill seo
 add resend/resend-skills --skill email-best-practices
 
+# --- marketing-lead: organic search, AI search and site quality ----------------
+add coreyhaines31/marketingskills \
+  --skill site-architecture --skill programmatic-seo --skill link-building \
+  --skill free-tools --skill competitor-profiling
+add addyosmani/web-quality-skills \
+  --skill performance --skill core-web-vitals --skill best-practices
+# Fetches Vercel's Web Interface Guidelines from GitHub each time it runs.
+add vercel-labs/agent-skills --skill web-design-guidelines
+add agricidaniel/claude-seo --skill seo-hreflang --skill seo-content-brief
+add zubair-trabzada/geo-seo-claude --skill geo-llmstxt --skill geo-crawlers
+# Needs the squirrel CLI from squirrelscan.com/download; signed-in audits use credits.
+add squirrelscan/skills --skill audit-website
+
 # --- payroll-manager ------------------------------------------------------------
 # Anthropic's finance, data and HR skills. Excel work uses the xlsx skill from
 # your claude.ai account, which isn't redistributable, so it isn't vendored here.
