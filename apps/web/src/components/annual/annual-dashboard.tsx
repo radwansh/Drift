@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { keepPreviousData } from "@tanstack/react-query";
 import { trpc } from "@/lib/trpc";
@@ -111,6 +111,15 @@ export function AnnualDashboard({
   const summary = summaryQuery.data ?? null;
   const methodsAvailable = summary?.methodsAvailable ?? ["run_rate", "average"];
   const openCategoriser = useCallback(() => setCategoriserOpen((n) => n + 1), []);
+  /**
+   * Step 12a. FORECAST_HOLDS_HEADCOUNT has no fix — the forecast cannot
+   * invent a hiring plan — so its action takes the reader to the card that
+   * prices one rather than opening a dialog.
+   */
+  const scenarioRef = useRef<HTMLDivElement>(null);
+  const openScenario = useCallback(() => {
+    scenarioRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -226,7 +235,11 @@ export function AnnualDashboard({
       </div>
 
       {summary && (
-        <AnnualWarnings warnings={summary.warnings} onCategorise={openCategoriser} />
+        <AnnualWarnings
+          warnings={summary.warnings}
+          onCategorise={openCategoriser}
+          onOpenScenario={openScenario}
+        />
       )}
 
       {summaryQuery.isLoading ? (
@@ -293,7 +306,9 @@ export function AnnualDashboard({
             </div>
           </div>
 
-          <AnnualScenario summary={summary} />
+          <div ref={scenarioRef}>
+            <AnnualScenario summary={summary} />
+          </div>
 
           <AnnualDepartments summary={summary} />
 

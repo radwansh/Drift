@@ -11,7 +11,7 @@ import type {
 import { EMPLOYEE_DEDUCTION_CATEGORIES, EMPLOYER_COST_CATEGORIES, QUANTITY_CATEGORIES } from "./types";
 import { classifyComponent, ambiguityFor } from "./classify";
 import { buildCategoryTotals, sumCategories } from "./categoryTotals";
-import { buildForecast, type OneOffsExcluded } from "./forecast";
+import { buildForecast, type HeldHeadcount, type OneOffsExcluded } from "./forecast";
 import { computeHeadcountFlows, type HeadcountFlows } from "./headcount";
 import { computeYoY, type YoYResult } from "./yoy";
 import { countSupersededUploads, dedupePeriods, generateExpectedPeriods } from "./periods";
@@ -122,6 +122,13 @@ export interface AnnualSummary {
   forecastMethod: ForecastMethod;
   methodsAvailable: ForecastMethod[];
   assumptions: string[];
+  /**
+   * Step 12a: the roster the projection held, and how it moved getting there.
+   * `null` when there is nothing to forecast. Carried here as well as in
+   * `assumptions` so the chart can label its projected rows with the figure
+   * rather than the reader having to find the sentence.
+   */
+  heldHeadcount: HeldHeadcount | null;
   warnings: AnnualWarning[];
   coverage: Coverage;
   missingLabels: string[];
@@ -347,6 +354,30 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
     decimals,
   });
 
+  /**
+   * Step 12a: the forecast holds the latest roster, so say so when the roster
+   * has been moving.
+   *
+   * Raised here rather than inside `buildForecast` because warnings are this
+   * function's output, and because the threshold is a product judgement while
+   * the measurement is arithmetic — `heldHeadcount` carries the figures and
+   * `material` carries the decision to show them.
+   *
+   * This moves no projected figure, and `forecast.backtest.test.ts` asserts
+   * every recurring category at every cut, so it cannot start to.
+   */
+  if (forecast.heldHeadcount?.material) {
+    const h = forecast.heldHeadcount;
+    warnings.push(
+      warn.forecastHoldsHeadcount({
+        first: h.first,
+        last: h.last,
+        periods: h.periods,
+        remainingSlots: h.remainingSlots,
+      }),
+    );
+  }
+
   // Full year = uploaded + estimated past gaps + forecast future (step 14).
   const est = forecast.estimated;
   const fullYearGross = round(ytdGross + est.gross + forecast.gross);
@@ -542,6 +573,7 @@ export function computeSummary(opts: AnnualSummaryOptions): AnnualSummary {
     forecastMethod: forecast.method,
     methodsAvailable: forecast.methodsAvailable,
     assumptions: forecast.assumptions,
+    heldHeadcount: forecast.heldHeadcount,
     warnings,
     coverage,
     missingLabels: missing.map((m) => m.label),

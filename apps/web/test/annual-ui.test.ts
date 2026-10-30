@@ -175,3 +175,67 @@ describe("components table reconciliation (step 36)", () => {
     expect(earnings + balance).toBeCloseTo(summary.bridge.actual.gross, 2);
   });
 });
+
+/**
+ * Step 12a: the held headcount reaches everything that reads the engine's
+ * assumptions.
+ *
+ * It used to be prose built inside `annual-periods-chart.tsx` from the last
+ * actual row — "Forecast holds headcount at 141, as in Mar 2025" — while
+ * `buildForecast` said nothing about the roster it had assumed. So the Excel
+ * export's Assumptions sheet, which maps `summary.assumptions`, did not carry
+ * it, and neither did anything else reading them.
+ */
+describe("the held headcount is in the engine's assumptions (step 12a)", () => {
+  function growingYear(heads: readonly number[]) {
+    return computeSummary({
+      year: 2026,
+      periodType: "monthly",
+      currency: "USD",
+      allPeriodTypes: ["monthly"],
+      allCurrencies: ["USD"],
+      forecastMethod: "run_rate",
+      periods: heads.map((headcount, i) => ({
+        id: `p${i}`,
+        periodType: "monthly" as const,
+        currency: "USD",
+        periodStart: `2026-${String(i + 1).padStart(2, "0")}-01`,
+        periodEnd: new Date(Date.UTC(2026, i + 1, 0)).toISOString().slice(0, 10),
+        createdAt: `2026-${String(i + 1).padStart(2, "0")}-05T00:00:00Z`,
+        headcount,
+        gross: 1000 * headcount,
+        net: 800 * headcount,
+        components: [{ key: "Base Salary", total: 1000 * headcount, negRows: 0, posRows: headcount }],
+      })),
+    });
+  }
+
+  it("states it, so the Excel Assumptions sheet carries it", () => {
+    const summary = growingYear([100, 105, 110]);
+
+    expect(summary.assumptions).toContain(
+      "Headcount held at 110 for the remaining 9 periods: no joiners or leavers are assumed.",
+    );
+    // This is the list the workbook's Assumptions sheet is built from.
+    const sheetRows = summary.assumptions.map((a) => [a]);
+    expect(sheetRows.some((r) => r[0]!.includes("Headcount held at 110"))).toBe(true);
+  });
+
+  it("is a single sentence, not duplicated by the chart's own copy", () => {
+    const summary = growingYear([100, 105, 110]);
+    const caption = summary.assumptions.join(" ");
+
+    expect(caption.match(/Headcount held/g)).toHaveLength(1);
+    // The chart renders `assumptions` verbatim now, so what it shows is what
+    // the engine said — no second sentence assembled from the rows.
+    expect(caption).not.toContain("as in");
+  });
+
+  it("carries the figure the chart draws on every projected row", () => {
+    const summary = growingYear([100, 105, 110]);
+    const projected = summary.periods.filter((p) => p.kind === "forecast");
+
+    expect(summary.heldHeadcount?.held).toBe(110);
+    expect(new Set(projected.map((p) => p.headcount))).toEqual(new Set([110]));
+  });
+});

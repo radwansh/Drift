@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { computeSummary, type AnnualSummaryOptions } from "./summary";
-import { applyScenario, costPerHeadLatest } from "./scenario";
+import { applyScenario, costPerHeadForecast } from "./scenario";
 import { period, pos, neg, qty } from "./test-utils";
 import { roundToMinorUnits } from "../money";
 import { roundMoney } from "./math";
@@ -234,7 +234,7 @@ describe("per-currency minor units in the annual engine (step 8a-ii)", () => {
     expect(s.yoy.slotPairs[0]!.previousGross).toBe(3500.555);
 
     // 3,703.701 / 4 heads = 925.92525 -> 925.925
-    expect(costPerHeadLatest(s)).toBe(925.925);
+    expect(costPerHeadForecast(s)).toBe(925.925);
 
     // The scenario layer takes its minor units from the summary it is compared
     // against, so a scenario cannot differ from its own baseline by rounding.

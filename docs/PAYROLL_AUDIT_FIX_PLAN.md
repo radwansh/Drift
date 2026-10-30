@@ -3,10 +3,11 @@
 Audit date: 2026-10-25, by the repo's own `payroll-manager` agent against `main` @ `e0666bb`.
 Plan written against `main` @ `6afd1d5`.
 
-> **Status: steps 0, 1, 2, 3, 4, 5, 6, 7, 8a, 8a-ii, 8b, 9, 10, 11 and 11b
-> done. Step 12 is measured and respecified as 12a and 12b, which are the only
-> work left: the change step 12 asked for is an identity with the rule already
-> in place.**
+> **Status: every step done — 0, 1, 2, 3, 4, 5, 6, 7, 8a, 8a-ii, 8b, 9, 10, 11,
+> 11b, 12a and 12b. Step 12's own prescription was measured and deliberately
+> not implemented: it is an identity with the rule already in place, and the
+> alternative it rejects is a compensating error. 12a and 12b are what was
+> built instead.**
 >
 > Each step was checked against its own unfixed source — the new tests are
 > re-run with that step's files stashed, and only count as binding the
@@ -200,6 +201,57 @@ Plan written against `main` @ `6afd1d5`.
 >   not asked at upload, 2 of the 7 tests fail; with the answer not persisted, 3
 >   others do. The first fixture I wrote failed for both reasons at once and
 >   only 1 of 7 caught the change.
+>
+> - **12a** The forecast declares the roster it held, and warns when the roster
+>   has been moving. `buildForecast` returns `heldHeadcount` and states
+>   "Headcount held at 141 for the remaining 9 periods: no joiners or leavers
+>   are assumed." A new `FORECAST_HOLDS_HEADCOUNT` warning carries the observed
+>   movement (132 → 141 over 3 periods, +9, +6.8%) and the one action Clarivo
+>   can offer — price your own hiring plan in the scenario view, which the
+>   warning's button now scrolls to.
+>
+>   **It moves no projected figure, and that is asserted beside the
+>   declaration** rather than in a separate file, so the two cannot drift: the
+>   same test that finds the warning re-checks base at −6.66% and every
+>   recurring category against the held level. The threshold (≥2 people and ≥5%
+>   of the opening roster, with something left to forecast) is a disclosure
+>   rule, not an error estimate — at the March cut the roster moved to 141 and
+>   the year in fact closed at 151, so any single number offered as "how wrong
+>   this is" would be one Clarivo cannot know.
+>
+>   **Found while wiring it:** the held headcount was already on screen, as
+>   prose `annual-periods-chart.tsx` assembled from the last actual row, while
+>   `buildForecast` said nothing. So the Excel export's Assumptions sheet, which
+>   maps `summary.assumptions`, did not carry it and neither did anything else
+>   reading them. The engine states it now and the chart renders what the engine
+>   states — one sentence, one source.
+>
+>   Measured: 6 tests fail with the warning disabled, 3 more with the assumption
+>   disabled.
+>
+> - **12b** A hire is priced off the projection, not the latest actual period.
+>   `scenario.ts` costed a marginal head at `lastActual.gross / headcount`, and
+>   step 6's one-off exclusion never reached that price — so a cut whose latest
+>   period held the annual bonus priced every hire as though bonuses recurred
+>   monthly. Every figure the step cites was reproduced against `samples/2025`
+>   before the change: 14,965.13 a head against the recurring 10,239.12 (46.2%
+>   over), `costPerHeadLatest` 16,115.80 against 11,265.63 (43.1%), and "hire 10
+>   from April" 1,346,861.43 against 921,520.80 — **425,340.63** of
+>   overstatement on a hiring decision. The May cut, whose actual period carries
+>   no one-off, agrees to 1.1% and is kept as the control.
+>
+>   Priced **per slot** from each projected slot's own figures, not one rate for
+>   the year, so the average and prior-year methods price a hire at what the
+>   slot it lands in is projected to cost. A hire overlapping a raise is priced
+>   off the slot's baseline and uplifted once, not off the already-raised gross.
+>   `costPerHeadLatest` is renamed `costPerHeadForecast`, because it is the
+>   number on screen beside the scenario controls and it has to be the number
+>   `applyScenario` actually charges.
+>
+>   Measured: 4 tests fail on the pricing basis and 1 on the displayed figure,
+>   independently. One existing test asserted the defect — trap 1 priced its
+>   expectation off the March actual row — and was corrected to the projected
+>   slot while keeping its own claim, that a hire is counted once.
 >
 > **The base-salary figure is a separate defect and needs its own step.** The
 > audit's −6.7% at the March cut is *not* the smearing step 6 fixed: base is

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { computeSummary } from "./summary";
-import { applyScenario, costPerHeadLatest } from "./scenario";
+import { applyScenario, costPerHeadForecast } from "./scenario";
 import { monthStart, period, pos, neg } from "./test-utils";
 import { endOfMonth } from "./dates";
 
@@ -32,7 +32,7 @@ function summaryThroughSeptember() {
 describe("applyScenario (step 43)", () => {
   it("adds ten people from October at the latest cost per head, for three periods", () => {
     const summary = summaryThroughSeptember();
-    const perHead = costPerHeadLatest(summary);
+    const perHead = costPerHeadForecast(summary);
 
     // 10 people at 10,000 gross with no employer costs: 1,000 each.
     expect(perHead).toBeCloseTo(1_000, 2);

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildForecast, splitRunRate, VARIABLE_CATEGORIES } from "./forecast";
 import { computeSummary } from "./summary";
-import { applyScenario } from "./scenario";
+import { applyScenario, costPerHeadForecast } from "./scenario";
 import { classifyComponent } from "./classify";
 import { generateExpectedPeriods, futureExpectedPeriods, coveredSlotIndexes } from "./periods";
 import { period, monthStart } from "./test-utils";
@@ -461,7 +461,12 @@ describe("step 12: headcount and the recurring forecast", () => {
     // remaining slots and nothing else. If the forecast extrapolated hiring, the
     // same scenario would pay for heads the baseline had already invented.
     const march = summaryAt(3);
-    const grossPerHead = march.periods[2]!.gross / march.periods[2]!.headcount!;
+    // Step 12b: priced off a projected slot, not the March actual. This read
+    // `march.periods[2]` — the March row — which is the defect 12b fixed: that
+    // period carries the annual bonus, so it priced every hire as though
+    // bonuses recurred monthly.
+    const projected = march.periods.filter((p) => p.kind === "forecast");
+    const grossPerHead = projected[0]!.gross / projected[0]!.headcount!;
     const result = applyScenario(march, { headcountChange: { fromSlotIndex: 4, people: 10 } });
 
     const moved = result.periods.filter((p) => p.scenarioGross !== p.baselineGross);
@@ -474,5 +479,210 @@ describe("step 12: headcount and the recurring forecast", () => {
       march.periods.filter((p) => p.kind === "forecast").map((p) => p.gross),
     );
     expect(forecastGross.size).toBe(1);
+  });
+
+  /**
+   * 12a: the error is unavoidable; being silent about it is not.
+   *
+   * Before this, `assumptions` at the March cut read only ["Forecast: run
+   * rate.", "One-offs in … are not projected forward."], and the only warning
+   * was UNCATEGORISED. The 141 was on every projected row of the chart and was
+   * never stated.
+   */
+  describe("12a: the held headcount is declared", () => {
+    it("states the roster it held, and how many periods it carried it across", () => {
+      const march = summaryAt(3);
+
+      expect(march.heldHeadcount).toMatchObject({
+        held: 141,
+        first: 132,
+        last: 141,
+        periods: 3,
+        remainingSlots: 9,
+        net: 9,
+        material: true,
+      });
+      expect(march.heldHeadcount!.pct).toBeCloseTo(6.8, 1);
+
+      const stated = march.assumptions.find((a) => a.includes("Headcount held"));
+      expect(stated).toBe(
+        "Headcount held at 141 for the remaining 9 periods: no joiners or leavers are assumed.",
+      );
+    });
+
+    it("warns, carrying the movement and pointing at the scenario view", () => {
+      const march = summaryAt(3);
+      const w = march.warnings.find((x) => x.code === "FORECAST_HOLDS_HEADCOUNT");
+
+      expect(w).toBeDefined();
+      expect(w!.severity).toBe("warning");
+      expect(w!.title).toBe("Forecast holds 141 employees for the rest of the year");
+      expect(w!.items).toEqual(["132 → 141 over 3 periods (+9, +6.8%)"]);
+      expect(w!.detail).toContain("no joiners and no leavers");
+      expect(w!.detail).toContain("9 remaining periods");
+      // The action is the one thing Clarivo can actually offer: the forecast
+      // cannot invent a hiring plan, and the scenario view prices one.
+      expect(w!.action).toEqual({ type: "open_scenario" });
+    });
+
+    it("moves no projected figure", () => {
+      // The whole of 12a is a disclosure. These are the same figures the tests
+      // above pin, asserted in the same place as the warning so the two cannot
+       // drift apart: if declaring the headcount ever starts changing it, this
+      // fails beside the declaration.
+      const march = summaryAt(3);
+      expect(march.warnings.some((w) => w.code === "FORECAST_HOLDS_HEADCOUNT")).toBe(true);
+
+      expect(errPct(fullYearAt("base_salary", 3), ACTUAL_BASE)).toBeCloseTo(-6.66, 2);
+      for (const cat of RECURRING_CATS) {
+        expect(fullYearAt(cat, 3), cat).toBeCloseTo(
+          fullYearFrom(cat, 3, heldTotal(cat, 3)),
+          2,
+        );
+      }
+
+      // And the projected rows are untouched: nine slots, one flat roster, one
+      // gross repeated.
+      const rows = march.periods.filter((p) => p.kind === "forecast");
+      expect(rows).toHaveLength(9);
+      expect(new Set(rows.map((r) => r.headcount))).toEqual(new Set([141]));
+      expect(new Set(rows.map((r) => r.gross)).size).toBe(1);
+    });
+
+    it("states the assumption at every cut that has something to forecast", () => {
+      for (const cut of CUTS) {
+        const s = summaryAt(cut);
+        expect(
+          s.assumptions.some((a) => a.includes("Headcount held")),
+          `cut ${cut}`,
+        ).toBe(true);
+      }
+    });
+
+    it("says nothing once the year is complete", () => {
+      // Nothing is being held, so there is no assumption to state and nothing
+      // to warn about.
+      const december = summaryAt(12);
+      expect(december.heldHeadcount).toBeNull();
+      expect(december.assumptions.some((a) => a.includes("Headcount held"))).toBe(false);
+      expect(december.warnings.some((w) => w.code === "FORECAST_HOLDS_HEADCOUNT")).toBe(false);
+    });
+  });
+});
+
+/**
+ * Step 12b: the scenario layer priced a hire off a period that contains a
+ * one-off.
+ *
+ * Found while establishing trap 1 of step 12. `scenario.ts` costed a marginal
+ * head at the latest *actual* period's gross per head. Step 6 stopped
+ * projecting one-offs forward, but that per-head price still carried them, so a
+ * cut whose latest period happened to hold the annual bonus priced every hire
+ * as though bonuses recurred monthly.
+ *
+ * The figures below are the ones the plan cites, reproduced against
+ * `samples/2025` before the fix and asserted after it. The May cut is the
+ * control: its actual period carries no one-off, so the two bases agree there
+ * and the defect is specific to the bonus, not an artefact of the comparison.
+ */
+describe("step 12b: a hire is priced off the projection, not the latest actual", () => {
+  /** The latest actual period's gross per head — the basis 12b replaced. */
+  function lastActualPerHead(cut: number): number {
+    const actuals = summaryAt(cut).periods.filter((p) => p.kind === "actual");
+    const last = actuals[actuals.length - 1]!;
+    return last.gross / last.headcount!;
+  }
+
+  function projectedPerHead(cut: number): number {
+    const first = summaryAt(cut).periods.filter((p) => p.kind === "forecast")[0]!;
+    return first.gross / first.headcount!;
+  }
+
+  it("the March cut's actual period is 46.2% above the recurring rate", () => {
+    // March carries the annual bonus, which step 6 holds out of the projection
+    // and the old per-head price did not.
+    expect(lastActualPerHead(3)).toBeCloseTo(14_965.13, 2);
+    expect(projectedPerHead(3)).toBeCloseTo(10_239.12, 2);
+
+    const over = (lastActualPerHead(3) / projectedPerHead(3) - 1) * 100;
+    expect(over).toBeCloseTo(46.2, 1);
+  });
+
+  it("prices ten hires from April at the recurring rate", () => {
+    const march = summaryAt(3);
+    const result = applyScenario(march, { headcountChange: { fromSlotIndex: 4, people: 10 } });
+
+    // Nine projected slots, ten heads each, at the projected rate.
+    expect(result.difference.gross).toBeCloseTo(921_520.8, 1);
+
+    // What it used to report, and the overstatement on a hiring decision.
+    const before = 9 * 10 * lastActualPerHead(3);
+    expect(before).toBeCloseTo(1_346_861.43, 1);
+    expect(before - result.difference.gross).toBeCloseTo(425_340.63, 1);
+  });
+
+  it("displays the figure it charges", () => {
+    // `costPerHeadForecast` is on screen beside the scenario controls, so it is
+    // what an owner sizes a hire against. It read 16,115.80 — the March actual
+    // — against the 11,265.63 the projection actually charges.
+    const march = summaryAt(3);
+    const projected = march.periods.filter((p) => p.kind === "forecast")[0]!;
+
+    expect(costPerHeadForecast(march)).toBeCloseTo(11_265.63, 2);
+    expect(costPerHeadForecast(march)).toBeCloseTo(
+      projected.totalEmploymentCost / projected.headcount!,
+      2,
+    );
+
+    const actuals = march.periods.filter((p) => p.kind === "actual");
+    const last = actuals[actuals.length - 1]!;
+    const was = last.totalEmploymentCost / last.headcount!;
+    expect(was).toBeCloseTo(16_115.8, 2);
+    expect((was / costPerHeadForecast(march) - 1) * 100).toBeCloseTo(43.1, 1);
+  });
+
+  it("control: at a cut with no one-off, the two bases agree to 1.1%", () => {
+    // May's actual period carries no bonus, so there is nothing for the old
+    // basis to over-count. If the fix moved figures generally rather than
+    // removing a one-off, this would move too.
+    expect(lastActualPerHead(5)).toBeCloseTo(10_433.09, 2);
+    expect(projectedPerHead(5)).toBeCloseTo(10_321.88, 2);
+    expect((lastActualPerHead(5) / projectedPerHead(5) - 1) * 100).toBeCloseTo(1.1, 1);
+  });
+
+  it("prices each slot from its own projection, not one rate for the year", () => {
+    // Under the run rate every projected slot is the same, so this is only
+    // visible on a method whose slots differ. The average of the last three
+    // actual periods still projects one level, so prior-year is the one that
+    // varies — and `samples/2025` has a single year, so the property is pinned
+    // on the code path instead: a hire in a slot is charged that slot's rate.
+    const march = summaryAt(3);
+    const result = applyScenario(march, { headcountChange: { fromSlotIndex: 4, people: 10 } });
+
+    for (const p of result.periods) {
+      if (p.scenarioGross === p.baselineGross) continue;
+      const slot = march.periods.find((q) => q.label === p.label)!;
+      const perHead = slot.gross / slot.headcount!;
+      expect(p.scenarioGross - p.baselineGross, p.label).toBeCloseTo(10 * perHead, 1);
+    }
+  });
+
+  it("does not charge a raise twice when a hire and a raise overlap", () => {
+    // The hire is priced off the slot's *baseline* per head and then uplifted
+    // once. Pricing it off the already-raised gross would pay the new people
+    // the raise twice.
+    const march = summaryAt(3);
+    const perHead = projectedPerHead(3);
+    const result = applyScenario(march, {
+      headcountChange: { fromSlotIndex: 4, people: 10 },
+      salaryIncreasePct: { fromSlotIndex: 4, percent: 10 },
+    });
+
+    const baselineProjected = march.periods
+      .filter((p) => p.kind === "forecast")
+      .reduce((a, p) => a + p.gross, 0);
+    const expected = baselineProjected * 0.1 + 9 * 10 * perHead * 1.1;
+
+    expect(result.difference.gross).toBeCloseTo(expected, 0);
   });
 });

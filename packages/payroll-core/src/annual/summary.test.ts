@@ -588,3 +588,105 @@ describe("computeYoY", () => {
     expect(computeYoY({ current: [], previous: [] }).available).toBe(false);
   });
 });
+
+/**
+ * Step 12a's threshold, which the `samples/2025` backtest cannot exercise: that
+ * fixture's roster only ever grows past the bar, so the cases where the warning
+ * must stay quiet need their own periods.
+ *
+ * The bar is a disclosure threshold, not an estimate of the forecast's error —
+ * at the March cut the roster moved 132 → 141 and the year in fact closed at
+ * 151, so any single number offered as "how wrong this is" would be one Clarivo
+ * cannot know. A roster that has not moved needs no warning either, because
+ * holding it is then the best available assumption; the assumption itself is
+ * stated regardless.
+ */
+describe("FORECAST_HOLDS_HEADCOUNT (step 12a)", () => {
+  const months = (heads: readonly number[]) =>
+    heads.map((headcount, i) =>
+      period({
+        periodStart: `2026-${String(i + 1).padStart(2, "0")}-01`,
+        periodEnd: new Date(Date.UTC(2026, i + 1, 0)).toISOString().slice(0, 10),
+        gross: 1000 * headcount,
+        net: 800 * headcount,
+        headcount,
+        components: [pos("Base Salary", 1000 * headcount)],
+      }),
+    );
+
+  const summaryOf = (heads: readonly number[]) => summaryFor({ periods: months(heads) });
+  const has = (heads: readonly number[]) =>
+    hasCode(summaryOf(heads), "FORECAST_HOLDS_HEADCOUNT");
+
+  it("fires when the roster has grown past the bar", () => {
+    // 100 -> 110 is +10, a tenth of the opening roster.
+    expect(has([100, 105, 110])).toBe(true);
+  });
+
+  it("fires on a shrinking roster too, and says so", () => {
+    const s = summaryOf([100, 95, 90]);
+    const w = s.warnings.find((x) => x.code === "FORECAST_HOLDS_HEADCOUNT")!;
+
+    expect(w.detail).toContain("shrunk");
+    expect(w.items).toEqual(["100 → 90 over 3 periods (-10, -10.0%)"]);
+    expect(w.title).toBe("Forecast holds 90 employees for the rest of the year");
+  });
+
+  it("stays quiet on a roster that has not moved", () => {
+    expect(has([100, 100, 100])).toBe(false);
+    // And the assumption is still stated, because the roster is still held.
+    expect(summaryOf([100, 100, 100]).assumptions).toContain(
+      "Headcount held at 100 for the remaining 9 periods: no joiners or leavers are assumed.",
+    );
+  });
+
+  it("stays quiet below the share, however many people that is", () => {
+    // 1,000 -> 1,020 is 20 people and 2% of the roster. Holding it flat for the
+    // rest of the year is not the headline on a company that size.
+    expect(has([1000, 1010, 1020])).toBe(false);
+  });
+
+  it("stays quiet below two people, however large the share", () => {
+    // 10 -> 11 is 10% of the roster and one person. A one-person move on a
+    // ten-person company is not an assumption worth a warning.
+    expect(has([10, 11])).toBe(false);
+    expect(has([10, 12])).toBe(true);
+  });
+
+  it("measures first to last, not the largest swing in between", () => {
+    // A roster that went up and came back is where it started. Holding it is
+    // then right, and the peak is not a reason to warn.
+    expect(has([100, 130, 100])).toBe(false);
+  });
+
+  it("needs two periods, because one has no movement to measure", () => {
+    const s = summaryOf([100]);
+    expect(hasCode(s, "FORECAST_HOLDS_HEADCOUNT")).toBe(false);
+    expect(s.heldHeadcount).toMatchObject({ held: 100, periods: 1, material: false });
+  });
+
+  it("says nothing when there is nothing left to forecast", () => {
+    const whole = Array.from({ length: 12 }, (_, i) => 100 + i * 5);
+    const s = summaryOf(whole);
+
+    expect(s.heldHeadcount).toBeNull();
+    expect(hasCode(s, "FORECAST_HOLDS_HEADCOUNT")).toBe(false);
+    expect(s.assumptions.some((a) => a.includes("Headcount held"))).toBe(false);
+  });
+
+  it("moves no projected figure either way", () => {
+    // The same roster, read with the warning on and off by crossing the bar.
+    // Gross per head is identical in both, so the projection is comparable: the
+    // only difference is whether the assumption is disclosed.
+    const quiet = summaryOf([100, 100, 100]);
+    const loud = summaryOf([100, 105, 110]);
+
+    // Each projects its own last period's gross across nine slots.
+    expect(quiet.bridge.forecast.gross).toBeCloseTo(9 * 100_000, 2);
+    expect(loud.bridge.forecast.gross).toBeCloseTo(9 * 110_000, 2);
+
+    // And the warning is the only thing that differs in kind.
+    expect(hasCode(quiet, "FORECAST_HOLDS_HEADCOUNT")).toBe(false);
+    expect(hasCode(loud, "FORECAST_HOLDS_HEADCOUNT")).toBe(true);
+  });
+});

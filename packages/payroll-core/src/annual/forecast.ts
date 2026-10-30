@@ -163,10 +163,48 @@ export interface ForecastTotals {
   net: Money;
 }
 
+/**
+ * Step 12a: the roster the projection held, and how it moved getting there.
+ *
+ * Reported, never acted on. The projection is unchanged by this — holding the
+ * latest headcount is an identity with the level already carried, and
+ * extrapolating the roster was measured and is worse (see
+ * `warnings.forecastHoldsHeadcount` and `forecast.backtest.test.ts`). What was
+ * missing was any statement that 141 heads were being carried through a year
+ * that closes at 151.
+ */
+export interface HeldHeadcount {
+  /** The headcount projected across every remaining slot. */
+  held: number;
+  /** The first and last headcount in the actual window. */
+  first: number;
+  last: number;
+  /** How many actual periods the movement is measured over. */
+  periods: number;
+  /** How many slots the held figure is carried across. */
+  remainingSlots: number;
+  /** `last - first`. */
+  net: number;
+  /** `net` as a percentage of `first`, 0 when `first` is 0. */
+  pct: number;
+  /**
+   * True when the movement is large enough to be worth disclosing: at least 2
+   * people and at least 5% of the opening roster, with something still to
+   * forecast.
+   *
+   * A disclosure threshold, not an error estimate. A roster that has not moved
+   * needs no warning, because holding it is then the best available assumption
+   * and the assumption itself is always stated.
+   */
+  material: boolean;
+}
+
 export interface ForecastResult extends ForecastTotals {
   method: ForecastMethod;
   methodsAvailable: ForecastMethod[];
   assumptions: string[];
+  /** Step 12a. `null` when there is nothing to forecast. */
+  heldHeadcount: HeldHeadcount | null;
   perPeriod: ForecastPeriod[];
   /** Estimated past slots, and their totals, kept separate from the forecast. */
   perEstimated: ForecastPeriod[];
@@ -486,10 +524,28 @@ export function buildForecast(opts: ForecastOptions): ForecastResult {
     );
   }
 
+  /**
+   * Step 12a: state the roster the projection assumed.
+   *
+   * Last, not an average: the recurring level carried forward is the last
+   * actual period's total, so the headcount that level covers is that same
+   * period's. Pushed after the one-off note so the forecast's own method and
+   * exclusions read first, and the roster assumption last.
+   */
+  const heldHeadcount = measureHeldHeadcount(actual, remaining.length);
+  if (heldHeadcount) {
+    assumptions.push(
+      `Headcount held at ${heldHeadcount.held} for the remaining ` +
+        `${heldHeadcount.remainingSlots} ${heldHeadcount.remainingSlots === 1 ? "period" : "periods"}: ` +
+        `no joiners or leavers are assumed.`,
+    );
+  }
+
   return {
     method,
     methodsAvailable,
     assumptions,
+    heldHeadcount,
     perPeriod,
     perEstimated,
     estimated: perEstimated.length > 0 ? totalsOf(perEstimated, decimals) : emptyTotals(),
@@ -510,3 +566,46 @@ export function sumRows(rows: readonly Partial<Record<Category, number>>[]): Par
 }
 
 export { EARNING_CATEGORIES, EMPLOYER_COST_CATEGORIES, VARIABLE as VARIABLE_CATEGORIES };
+
+/** Step 12a: at least this many people, and this share of the opening roster. */
+const MATERIAL_HEADS = 2;
+const MATERIAL_SHARE = 0.05;
+
+/**
+ * Step 12a: the roster the projection held, and how it moved.
+ *
+ * `null` when there is nothing to forecast or no actual period to hold — there
+ * is then no assumption to state.
+ *
+ * The movement is first-to-last across the actual window, which is a fact about
+ * the uploaded periods. Deliberately not a projection of it: the net flow
+ * applied forward was measured and is worse than holding (see
+ * `forecast.backtest.test.ts`), so presenting it as "how far out the forecast
+ * is" would be asserting the rule this step rejected.
+ */
+export function measureHeldHeadcount(
+  actual: readonly AnnualPeriodInput[],
+  remainingSlots: number,
+): HeldHeadcount | null {
+  if (actual.length === 0 || remainingSlots === 0) return null;
+
+  const first = actual[0]?.headcount ?? 0;
+  const last = actual[actual.length - 1]?.headcount ?? 0;
+  const net = last - first;
+  const pct = first > 0 ? (net / first) * 100 : 0;
+
+  return {
+    held: last,
+    first,
+    last,
+    periods: actual.length,
+    remainingSlots,
+    net,
+    pct,
+    material:
+      actual.length >= 2 &&
+      Math.abs(net) >= MATERIAL_HEADS &&
+      first > 0 &&
+      Math.abs(net) / first >= MATERIAL_SHARE,
+  };
+}

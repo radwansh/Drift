@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { FlaskConical, TrendingDown, TrendingUp } from "lucide-react";
 import type { AnnualSummary } from "@saas/payroll-core";
-import { applyScenario, costPerHeadLatest, type Scenario } from "@saas/payroll-core";
+import { applyScenario, costPerHeadForecast, type Scenario } from "@saas/payroll-core";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import {
   Select,
@@ -54,7 +54,7 @@ export function AnnualScenario({ summary }: AnnualScenarioProps) {
   );
 
   const result = useMemo(() => applyScenario(summary, scenario), [summary, scenario]);
-  const perHead = costPerHeadLatest(summary);
+  const perHead = costPerHeadForecast(summary);
   const currency = summary.currency;
   const hasScenario = result.assumptions.length > 0;
   const worse = result.difference.totalEmploymentCost > 0;
@@ -71,7 +71,7 @@ export function AnnualScenario({ summary }: AnnualScenarioProps) {
         <CardDescription>
           Applies changes to the {projectedSlots.length} remaining{" "}
           {projectedSlots.length === 1 ? "period" : "periods"} only; actuals are never changed. Cost
-          per head in the latest actual period is {formatMoney(perHead, currency)}.
+          per head in the next projected period is {formatMoney(perHead, currency)}, excluding one-offs.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
