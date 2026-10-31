@@ -240,6 +240,15 @@ E2:  =IF(OR(NOT(ISNUMBER($B2)), NOT(ISNUMBER($C2)), $B2=0), "", ($C2-$B2)/$B2)`}
         worth automating — either with a saved workbook and a macro, or with something that reads
         the export directly and keeps the column mapping between runs.
       </p>
+      <p>
+        Whichever way you do the comparison, it answers only half the question. A separate piece
+        covers{" "}
+        <a href="/blog/payroll-variance-report-what-to-check">
+          what to check before you approve a payroll run
+        </a>{" "}
+        — including the two sums that tell you whether the register adds up at all, which a
+        comparison between periods cannot see.
+      </p>
     </Article>
   );
 }

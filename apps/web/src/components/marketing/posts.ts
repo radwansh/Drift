@@ -35,6 +35,15 @@ export interface Post {
 
 export const POSTS: readonly Post[] = [
   {
+    slug: "payroll-variance-report-what-to-check",
+    title: "Payroll variance report: what to check before you approve payroll",
+    description:
+      "A variance report tells you what changed. It does not tell you whether the register adds up — and those are different checks. The order to run them in, how to set a threshold that catches real money, and the variances that look wrong but are right.",
+    keyword: "payroll variance report, compare payroll periods",
+    published: "2026-10-31",
+    readingMinutes: 12,
+  },
+  {
     slug: "compare-two-payroll-periods-in-excel",
     title: "How to compare two payroll periods in Excel, and a faster way",
     description:
@@ -75,11 +84,6 @@ export function postBySlug(slug: string): Post | undefined {
  *   "payroll KPIs" is not.
  */
 export const PLANNED: readonly { title: string; keyword: string; note: string }[] = [
-  {
-    title: "Payroll variance report: what to check before you approve payroll",
-    keyword: "payroll variance report, compare payroll periods",
-    note: "Target the pre-approval checklist intent, not the 'where is the report in my software' intent. The checks in step 4 of the audit plan are the spine: earnings reconcile to gross, gross minus deductions reconciles to net, no duplicate employee id, net within tolerance of last period.",
-  },
   {
     title: "Payroll KPIs every business owner should track",
     keyword: "payroll KPIs, payroll analytics",
