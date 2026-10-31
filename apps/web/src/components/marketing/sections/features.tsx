@@ -1,5 +1,5 @@
 import { Badge, Stat } from "../ui";
-import { FEATURES, SAMPLE } from "../content";
+import { FEATURES, SAMPLE, money, type Currency } from "../content";
 import { launch } from "@/config/launch";
 
 /**
@@ -13,7 +13,7 @@ import { launch } from "@/config/launch";
  * The figures are the sample company's, the same ones as the hero, and the
  * group carries a "Sample data" badge for the same reason the hero does.
  */
-export function Features() {
+export function Features({ currency }: { currency: Currency }) {
   const tiles = launch.annualSalariesLive ? [...FEATURES.live, ...FEATURES.annual] : FEATURES.live;
 
   return (
@@ -42,7 +42,7 @@ export function Features() {
               <Stat
                 className="w-full"
                 label={tile.label}
-                value={<span className="font-cv-mono">{tile.value}</span>}
+                value={<span className="font-cv-mono">{money(tile.value, currency)}</span>}
                 caption={"caption" in tile ? tile.caption : undefined}
               />
             </li>

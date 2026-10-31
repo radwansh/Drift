@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Badge, Button, Icon, SegmentedControl } from "../ui";
-import { PRICING, SITE } from "../content";
+import { PRICING, SITE, money, type Currency } from "../content";
 import { launch } from "@/config/launch";
 import { EarlyAccessButton } from "../early-access-button";
 
@@ -23,7 +23,7 @@ import { EarlyAccessButton } from "../early-access-button";
  * while the dashboard is still being fixed would be selling something that is
  * not ready.
  */
-export function Pricing() {
+export function Pricing({ currency }: { currency: Currency }) {
   const [billing, setBilling] = useState<"monthly" | "yearly">("monthly");
   const yearly = billing === "yearly";
 
@@ -62,8 +62,11 @@ export function Pricing() {
             per-client branch. */}
         <ul className="mt-8 grid gap-5 lg:grid-cols-3">
           {PRICING.plans.map((plan) => {
-            const founder = yearly ? plan.founderYearly : plan.founderMonthly;
-            const list = yearly ? plan.listYearly : plan.listMonthly;
+            // Step: per-market currency. The numerals are stored once and the
+            // symbol is substituted here, so the euro and dollar ladders
+            // cannot drift apart.
+            const founder = money(yearly ? plan.founderYearly : plan.founderMonthly, currency);
+            const list = money(yearly ? plan.listYearly : plan.listMonthly, currency);
             const per = yearly ? "per year" : "per month";
 
             return (

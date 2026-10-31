@@ -12,6 +12,41 @@
 
 import type { IconName } from "./ui";
 
+/**
+ * Markets, and why every figure below is written with `¤` rather than a
+ * currency symbol.
+ *
+ * The first campaign targets the United States, Australia, New Zealand and
+ * Malta. Of those only Malta is in the euro area, so the landing page exists at
+ * two URLs — `/` in euro and `/us/` in dollars — each crawlable, each carrying
+ * the full hreflang mesh. They are separate URLs on purpose: serving different
+ * content at one URL by visitor IP would mean Googlebot, which crawls mostly
+ * from US addresses, only ever indexes one version.
+ *
+ * `¤` is U+00A4, the generic currency sign. Every price and every sample figure
+ * stores the numerals once and `money()` substitutes the symbol, because the
+ * dollar ladder Radwan set ($59/$99/$299) uses the same numerals as the euro
+ * one. Holding two copies of the same numbers is how a price drifts — which has
+ * already happened once in this repo between `content.ts` and
+ * `docs/landing/content.md`. One set of numerals cannot drift from itself.
+ *
+ * It also preserves formatting exactly: signs, thousands separators and the `M`
+ * suffix on the sample figures are part of the stored string, so nothing is
+ * re-formatted per market and `−¤860` stays `−$860`.
+ *
+ * Prices are **list prices per market, not conversions.** $59 is not €59 at
+ * some rate; it is the dollar price. There is therefore no FX rate policy and
+ * no small print about which currency is actually charged.
+ */
+export type Currency = "EUR" | "USD";
+
+const CURRENCY_SYMBOL: Record<Currency, string> = { EUR: "€", USD: "$" };
+
+/** Substitutes the market's symbol into a stored figure. */
+export function money(text: string, currency: Currency): string {
+  return text.split("¤").join(CURRENCY_SYMBOL[currency]);
+}
+
 export const SITE = {
   /**
    * The host that actually serves the site. Vercel has the apex
@@ -118,7 +153,7 @@ export const SAMPLE = {
   company: "Halden Logistics",
   period: "September 2026 vs August 2026",
   badge: "Sample data",
-  totalVariance: "+€18,420",
+  totalVariance: "+¤18,420",
   totalVariancePct: "+2.6%",
   employeesAffected: "37",
   headcount: "248",
@@ -141,22 +176,22 @@ export const FEATURES = {
    * U+2212, as the design has them.
    */
   live: [
-    { label: "Total variance", value: "+€18,420", caption: "+2.6%", line: "How much this payroll differs from the last one, and what drove it." },
+    { label: "Total variance", value: "+¤18,420", caption: "+2.6%", line: "How much this payroll differs from the last one, and what drove it." },
     { label: "Employees affected", value: "37", caption: "of 248", line: "Everyone whose pay changed, at a glance." },
     { label: "New employees", value: "4", line: "Who joined the payroll this period." },
     { label: "Departed employees", value: "2", line: "Who left, so nobody is paid after they go." },
-    { label: "Largest increase", value: "+€1,240", caption: "Sara K., Sales", line: "The biggest pay rise this period, ready to check first." },
-    { label: "Largest decrease", value: "−€860", caption: "Tom R., Operations", line: "The biggest drop, before anyone calls payroll about it." },
-    { label: "Pay components", value: "+€9,310", caption: "Overtime", line: "Base, allowances, overtime, bonuses and deductions: see what moved." },
-    { label: "Departments", value: "+€7,840", caption: "Sales", line: "Which teams drive the change in salary cost." },
+    { label: "Largest increase", value: "+¤1,240", caption: "Sara K., Sales", line: "The biggest pay rise this period, ready to check first." },
+    { label: "Largest decrease", value: "−¤860", caption: "Tom R., Operations", line: "The biggest drop, before anyone calls payroll about it." },
+    { label: "Pay components", value: "+¤9,310", caption: "Overtime", line: "Base, allowances, overtime, bonuses and deductions: see what moved." },
+    { label: "Departments", value: "+¤7,840", caption: "Sales", line: "Which teams drive the change in salary cost." },
   ],
   /** Behind the annualSalariesLive switch. */
   annual: [
-    { label: "Paid so far this year", value: "€6.47M", line: "Net and gross salaries paid to date." },
-    { label: "Full-year forecast", value: "€8.69M", line: "Where this year's payroll will land, period by period." },
-    { label: "Total employer cost", value: "€11.27M", line: "Salaries plus employer contributions: the true cost of your team." },
-    { label: "Taxes and social security", value: "€4.75M", line: "What you withhold and owe the authorities, to date." },
-    { label: "Cost per employee and headcount", value: "€5,063", caption: "248 employees", line: "Average cost per head, and how your team is changing." },
+    { label: "Paid so far this year", value: "¤6.47M", line: "Net and gross salaries paid to date." },
+    { label: "Full-year forecast", value: "¤8.69M", line: "Where this year's payroll will land, period by period." },
+    { label: "Total employer cost", value: "¤11.27M", line: "Salaries plus employer contributions: the true cost of your team." },
+    { label: "Taxes and social security", value: "¤4.75M", line: "What you withhold and owe the authorities, to date." },
+    { label: "Cost per employee and headcount", value: "¤5,063", caption: "248 employees", line: "Average cost per head, and how your team is changing." },
     { label: "Budget vs forecast", value: "−1.8%", line: "Whether the year will land on budget, and by how much." },
   ],
 } as const;
@@ -318,29 +353,29 @@ export const PRICING = {
     {
       name: "Starter",
       for: "Up to 100 employees",
-      listMonthly: "€59",
-      founderMonthly: "€29",
-      founderYearly: "€290",
-      listYearly: "€590",
+      listMonthly: "¤59",
+      founderMonthly: "¤29",
+      founderYearly: "¤290",
+      listYearly: "¤590",
       highlighted: false,
     },
     {
       name: "Growth",
       for: "Up to 500 employees",
-      listMonthly: "€99",
-      founderMonthly: "€49",
-      founderYearly: "€490",
-      listYearly: "€990",
+      listMonthly: "¤99",
+      founderMonthly: "¤49",
+      founderYearly: "¤490",
+      listYearly: "¤990",
       highlighted: true,
       tag: "Best for growing teams",
     },
     {
       name: "Business",
       for: "Up to 2,000 employees",
-      listMonthly: "€299",
-      founderMonthly: "€149",
-      founderYearly: "€1,490",
-      listYearly: "€2,990",
+      listMonthly: "¤299",
+      founderMonthly: "¤149",
+      founderYearly: "¤1,490",
+      listYearly: "¤2,990",
       highlighted: false,
     },
   ],
@@ -422,7 +457,7 @@ export const FAQ = {
     },
     {
       q: "How much does Clarivo cost?",
-      a: "Clarivo is free during the beta, with no credit card. When billing starts, plans run from €59 to €299 a month by company size, and beta founders pay half: €29 to €149 a month for 24 months.",
+      a: "Clarivo is free during the beta, with no credit card. When billing starts, plans run from ¤59 to ¤299 a month by company size, and beta founders pay half: ¤29 to ¤149 a month for 24 months.",
     },
   ],
 } as const;

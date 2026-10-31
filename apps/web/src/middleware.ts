@@ -8,6 +8,18 @@ import { NextResponse } from "next/server";
  */
 const isPublicRoute = createRouteMatcher([
   "/",
+  /**
+   * The dollar landing page. It must be listed, unlike `/llms.txt`,
+   * `/robots.txt` and `/sitemap.xml`: the matcher below excludes any path
+   * containing a dot, so those three never reach this middleware at all, while
+   * `/us` has no dot and does.
+   *
+   * Without this line every visitor to `/us` is redirected to sign-in — which
+   * is what happened when the page was first added, and what the whole US
+   * campaign would have landed on. Any future market page (`/au`, `/nz`) needs
+   * an entry here too.
+   */
+  "/us",
   "/privacy",
   "/terms",
   "/security",

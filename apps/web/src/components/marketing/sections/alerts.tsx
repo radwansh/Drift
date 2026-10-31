@@ -1,5 +1,5 @@
 import { Badge, Variance } from "../ui";
-import { ALERTS, SAMPLE } from "../content";
+import { ALERTS, SAMPLE, type Currency } from "../content";
 import { launch } from "@/config/launch";
 
 /**
@@ -13,7 +13,7 @@ import { launch } from "@/config/launch";
  * periods and totals that do not reconcile, which are the annual engine's
  * checks.
  */
-export function Alerts() {
+export function Alerts({ currency }: { currency: Currency }) {
   const cards = launch.annualSalariesLive ? [...ALERTS.cards, ALERTS.dataCheck] : ALERTS.cards;
 
   return (
@@ -63,7 +63,7 @@ export function Alerts() {
                       Net pay
                     </th>
                     <td className="py-2 text-right">
-                      <Variance value={1240} percent={32} currency="EUR" decimals={0} flagged size="lg" />
+                      <Variance value={1240} percent={32} currency={currency} decimals={0} flagged size="lg" />
                     </td>
                   </tr>
                   <tr className="border-t border-white/10">
@@ -71,7 +71,7 @@ export function Alerts() {
                       Pay components
                     </th>
                     <td className="py-2 text-right">
-                      <Variance value={0} currency="EUR" decimals={0} />
+                      <Variance value={0} currency={currency} decimals={0} />
                     </td>
                   </tr>
                 </tbody>
