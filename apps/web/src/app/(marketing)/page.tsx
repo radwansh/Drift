@@ -1,20 +1,29 @@
 import type { Metadata } from "next";
-import { Hero } from "@/components/marketing/sections/hero";
-import { Problem } from "@/components/marketing/sections/problem";
-import { HowItWorks } from "@/components/marketing/sections/how-it-works";
-import { Features } from "@/components/marketing/sections/features";
-import { Alerts } from "@/components/marketing/sections/alerts";
-import { Roles } from "@/components/marketing/sections/roles";
-import { Security } from "@/components/marketing/sections/security";
-import { Pricing } from "@/components/marketing/sections/pricing";
-import { Faq } from "@/components/marketing/sections/faq";
-import { FinalCta } from "@/components/marketing/sections/final-cta";
-import { FAQ, SITE } from "@/components/marketing/content";
+import { Landing, HREFLANG, structuredData } from "@/components/marketing/landing";
+import { SITE } from "@/components/marketing/content";
 
+/**
+ * The euro page, and the canonical home of the site.
+ *
+ * `/` keeps the euro prices, the accumulated authority, the Search Console
+ * verification and `x-default`. `/us/` is the dollar page. The two are
+ * separate URLs rather than one URL serving by visitor IP: Googlebot crawls
+ * predominantly from US addresses, so IP-switching would mean only the dollar
+ * version is ever indexed, and it breaks the hreflang mesh.
+ *
+ * Malta is the one euro-area market in the first campaign; the United States,
+ * Australia and New Zealand are not. Australia and New Zealand currently fall
+ * back here through `x-default` rather than to `/us/`, because dollars are not
+ * their currency either and `x-default` is the honest answer until AUD and NZD
+ * prices exist. See `HREFLANG` in `components/marketing/landing.tsx`.
+ */
 export const metadata: Metadata = {
   title: SITE.title,
   description: SITE.description,
-  alternates: { canonical: `${SITE.url}/` },
+  alternates: {
+    canonical: `${SITE.url}/`,
+    languages: HREFLANG,
+  },
   openGraph: {
     type: "website",
     url: `${SITE.url}/`,
@@ -33,77 +42,15 @@ export const metadata: Metadata = {
   },
 };
 
-/**
- * Structured data, from the JSON-LD in docs/landing/content.md with the one
- * correction the hand-off README calls for: content.md's logo URL points at
- * /brand/clarivo-logo.svg, which does not exist — the real lockup is
- * clarivo-lockup.svg — so the logo is the 512px app icon instead, as the
- * README specifies.
- *
- * The FAQPage block is generated from the same FAQ array the visible section
- * renders, so the two cannot drift apart. Google stopped showing FAQ rich
- * results in May 2026 but still reads the markup to understand the page.
- */
-function structuredData() {
-  return {
-    "@context": "https://schema.org",
-    "@graph": [
-      {
-        "@type": "Organization",
-        "@id": `${SITE.url}/#org`,
-        name: SITE.name,
-        url: `${SITE.url}/`,
-        logo: `${SITE.url}/brand/clarivo-app-icon-512.png`,
-        email: SITE.email,
-      },
-      {
-        "@type": "SoftwareApplication",
-        name: SITE.name,
-        applicationCategory: "BusinessApplication",
-        applicationSubCategory: "Payroll dashboard",
-        operatingSystem: "Web",
-        url: `${SITE.url}/`,
-        description:
-          "Payroll dashboard that shows every salary KPI in one click and flags payroll anomalies before payday.",
-        publisher: { "@id": `${SITE.url}/#org` },
-        offers: {
-          "@type": "AggregateOffer",
-          priceCurrency: "EUR",
-          lowPrice: "0",
-          highPrice: "299",
-          offerCount: "5",
-        },
-      },
-      {
-        "@type": "FAQPage",
-        mainEntity: FAQ.items.map((item) => ({
-          "@type": "Question",
-          name: item.q,
-          acceptedAnswer: { "@type": "Answer", text: item.a },
-        })),
-      },
-    ],
-  };
-}
-
 export default function LandingPage() {
   return (
     <>
       <script
         type="application/ld+json"
         // The payload is our own typed content, not user input.
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData()) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData("EUR", "/")) }}
       />
-      <Hero />
-      <Problem />
-      <HowItWorks />
-      <Features />
-      <Alerts />
-      <Roles />
-      <Security />
-      <Pricing />
-      <Faq />
-      <FinalCta />
+      <Landing currency="EUR" />
     </>
   );
 }

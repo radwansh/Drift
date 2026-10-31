@@ -1,5 +1,5 @@
 import { Badge, Button, DriftStrip, Stat } from "../ui";
-import { HERO, SAMPLE } from "../content";
+import { HERO, SAMPLE, money, type Currency } from "../content";
 import { EarlyAccessButton } from "../early-access-button";
 
 /**
@@ -15,7 +15,7 @@ import { EarlyAccessButton } from "../early-access-button";
  * The baseline strip under the section is the signature device: 160 ticks with
  * tick 86 drifted, per the README.
  */
-export function Hero() {
+export function Hero({ currency }: { currency: Currency }) {
   return (
     <section className="relative overflow-hidden border-b border-cv-line bg-cv-surface">
       <div className="mx-auto grid max-w-6xl gap-12 px-4 py-16 sm:px-6 lg:grid-cols-[1fr_1.1fr] lg:items-center lg:py-24">
@@ -58,7 +58,7 @@ export function Hero() {
             <div className="grid gap-3 sm:grid-cols-2">
               <Stat
                 label="Total variance"
-                value={SAMPLE.totalVariance}
+                value={money(SAMPLE.totalVariance, currency)}
                 caption={`${SAMPLE.totalVariancePct} vs August`}
               />
               <Stat label="Employees affected" value={SAMPLE.employeesAffected} caption={`of ${SAMPLE.headcount}`} />

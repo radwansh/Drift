@@ -1,5 +1,5 @@
 import { Icon } from "../ui";
-import { FAQ } from "../content";
+import { FAQ, money, type Currency } from "../content";
 
 /**
  * Section 10: the FAQ. Anchor #faq.
@@ -14,7 +14,7 @@ import { FAQ } from "../content";
  * structured data in the page's metadata, which is the point of keeping the
  * copy in one module.
  */
-export function Faq() {
+export function Faq({ currency }: { currency: Currency }) {
   return (
     <section id="faq" className="scroll-mt-20 border-b border-cv-line bg-cv-bg">
       <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:py-20">
@@ -34,7 +34,7 @@ export function Faq() {
                   <Icon name="chevron-down" size={18} />
                 </span>
               </summary>
-              <p className="pb-5 pr-8 text-base leading-relaxed text-cv-ink-muted">{item.a}</p>
+              <p className="pb-5 pr-8 text-base leading-relaxed text-cv-ink-muted">{money(item.a, currency)}</p>
             </details>
           ))}
         </div>
