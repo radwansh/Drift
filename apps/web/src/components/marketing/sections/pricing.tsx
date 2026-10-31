@@ -25,7 +25,6 @@ import { EarlyAccessButton } from "../early-access-button";
  */
 export function Pricing({ currency }: { currency: Currency }) {
   const [billing, setBilling] = useState<"monthly" | "yearly">("monthly");
-  const yearly = billing === "yearly";
 
   const includes = launch.annualSalariesLive
     ? // Restores content.md's order, where the annual line sits fourth.
@@ -62,12 +61,34 @@ export function Pricing({ currency }: { currency: Currency }) {
             per-client branch. */}
         <ul className="mt-8 grid gap-5 lg:grid-cols-3">
           {PRICING.plans.map((plan) => {
-            // Step: per-market currency. The numerals are stored once and the
-            // symbol is substituted here, so the euro and dollar ladders
-            // cannot drift apart.
-            const founder = money(yearly ? plan.founderYearly : plan.founderMonthly, currency);
-            const list = money(yearly ? plan.listYearly : plan.listMonthly, currency);
-            const per = yearly ? "per year" : "per month";
+            /**
+             * Both billing cycles, always, with the inactive one hidden.
+             *
+             * This component is `"use client"` and starts at `monthly`, so
+             * when it rendered only the active cycle the server HTML contained
+             * the monthly figures alone and the yearly ones existed only after
+             * a click. Crawlers with limited JavaScript — which includes
+             * GPTBot, ClaudeBot and PerplexityBot — therefore never saw
+             * ¤290 / ¤490 / ¤1,490 at all, and the JSON-LD did not make up for
+             * it: its AggregateOffer carries the monthly range only.
+             *
+             * Rendering both and hiding one with `hidden` puts both in the
+             * markup. `hidden` rather than a CSS class on purpose: it removes
+             * the inactive figures from the accessibility tree too, so a
+             * screen reader is not read two prices for one plan.
+             *
+             * Per-market currency: the numerals are stored once and the symbol
+             * substituted here, so the euro and dollar ladders cannot drift.
+             */
+            const cycles = (["monthly", "yearly"] as const).map((cycle) => ({
+              cycle,
+              founder: money(
+                cycle === "yearly" ? plan.founderYearly : plan.founderMonthly,
+                currency,
+              ),
+              list: money(cycle === "yearly" ? plan.listYearly : plan.listMonthly, currency),
+              per: cycle === "yearly" ? "per year" : "per month",
+            }));
 
             return (
               <li key={plan.name} className="flex">
@@ -85,17 +106,21 @@ export function Pricing({ currency }: { currency: Currency }) {
                   </div>
                   <p className="text-sm text-cv-ink-muted">{plan.for}</p>
 
-                  <p className="flex flex-wrap items-baseline gap-2 font-cv-mono">
-                    <s className="text-base text-cv-ink-disabled">
-                      <span className="sr-only">List price </span>
-                      {list}
-                    </s>
-                    <span className="text-3xl font-medium tracking-[-0.02em] text-cv-ink">
-                      <span className="sr-only">Founder price </span>
-                      {founder}
-                    </span>
-                  </p>
-                  <p className="-mt-2 text-xs text-cv-ink-subtle">{per}</p>
+                  {cycles.map((c) => (
+                    <div key={c.cycle} hidden={c.cycle !== billing}>
+                      <p className="flex flex-wrap items-baseline gap-2 font-cv-mono">
+                        <s className="text-base text-cv-ink-disabled">
+                          <span className="sr-only">List price </span>
+                          {c.list}
+                        </s>
+                        <span className="text-3xl font-medium tracking-[-0.02em] text-cv-ink">
+                          <span className="sr-only">Founder price </span>
+                          {c.founder}
+                        </span>
+                      </p>
+                      <p className="mt-2 text-xs text-cv-ink-subtle">{c.per}</p>
+                    </div>
+                  ))}
 
                   <Badge tone="signal">{PRICING.founderBadge}</Badge>
 

@@ -20,6 +20,13 @@ const isPublicRoute = createRouteMatcher([
    * an entry here too.
    */
   "/us",
+  /**
+   * The blog index and every post. Same reason as `/us`: no dot in the path,
+   * so these do reach this middleware and would otherwise redirect a reader
+   * who followed a link from search straight to a sign-in form.
+   */
+  "/blog",
+  "/blog/(.*)",
   "/privacy",
   "/terms",
   "/security",
