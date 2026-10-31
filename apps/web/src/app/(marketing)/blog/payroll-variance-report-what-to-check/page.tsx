@@ -114,7 +114,9 @@ export default function Page() {
       </p>
       <h3>2. Gross, net and employer cost at the total level</h3>
       <p>
-        Three numbers. If all three moved by roughly the headcount change and nothing else, the run
+        Three numbers, and the three worth{" "}
+        <a href="/blog/payroll-kpis-small-business">tracking every month</a> rather than only at
+        approval. If all three moved by roughly the headcount change and nothing else, the run
         is probably quiet. If gross moved and net did not, or the other way round, something
         happened in the deductions and you want to know what before you approve.
       </p>

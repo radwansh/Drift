@@ -35,6 +35,15 @@ export interface Post {
 
 export const POSTS: readonly Post[] = [
   {
+    slug: "payroll-kpis-small-business",
+    title: "Payroll KPIs every business owner should track",
+    description:
+      "Most payroll KPI lists are written for a payroll department. Here are the ones a 40-person company can compute from the file it already exports, the ones that need a second system, and the ones not worth tracking at that size.",
+    keyword: "payroll KPIs, payroll analytics",
+    published: "2026-10-31",
+    readingMinutes: 13,
+  },
+  {
     slug: "payroll-variance-report-what-to-check",
     title: "Payroll variance report: what to check before you approve payroll",
     description:
@@ -59,34 +68,30 @@ export function postBySlug(slug: string): Post | undefined {
 }
 
 /**
- * Written but not yet published, kept here so the plan is visible in the repo
- * rather than in a chat log.
+ * Why the three posts were written in this order, which is **not** the order
+ * `docs/landing/content.md` lists them in. Measured on 2026-10-31, before any
+ * of them was written, because the previous attempt at briefs had no search
+ * data and could only have guessed.
  *
- * The order is the one the search results imply, which is **not** the order
- * `docs/landing/content.md` lists them in. Measured 2026-10-31:
+ * - `payroll Excel` — first. The results for "how to compare two payroll
+ *   periods in Excel" are entirely vendor help documentation (Nethris,
+ *   Employment Hero, Asanify, SAP, Odoo, Tricentis) and government PDFs. Every
+ *   one answers "click here in our software". Nobody had written the
+ *   spreadsheet method the searcher is asking for.
+ * - `payroll variance report` — second. Vendor help pages and glossary
+ *   entries. Half the intent is navigational ("where is the variance report in
+ *   my software"), which cannot be won and should not be chased; the "what
+ *   should I check before I approve" half was unowned.
+ * - `payroll KPIs` — last, and the most contested by a distance: Netchex, Lano
+ *   on several URLs, Oyster, Deel, Zoho, Parakar, OnTheClock, Unrubble,
+ *   ZoomShift, HROne. Well-funded vendors with real domain authority, and one
+ *   of them notes there is no standard KPI set, so there was no definitive
+ *   list to take and no gap to fill by listing harder. It is narrowed instead:
+ *   written for a company of a few dozen people, and organised by which KPIs
+ *   can be computed from one payroll export rather than by importance. That
+ *   frame is the one none of the ten competitors use.
  *
- * - `payroll Excel` — the first page above. The results for "how to compare two
- *   payroll periods in Excel" are entirely vendor help documentation (Nethris,
- *   Employment Hero, Asanify, SAP, Odoo, Tricentis) and government PDFs. Nobody
- *   has written the actual spreadsheet method: the searcher wants formulas and
- *   is given software menus. The clearest gap of the three, and the reason this
- *   post went first.
- * - `payroll variance report` — vendor help pages and glossary entries. Half the
- *   intent is navigational ("where is the variance report in my software"),
- *   which cannot be won and should not be chased; the other half is "what should
- *   I check before I approve", which nobody owns authoritatively.
- * - `payroll KPIs` — the most contested of the three by a distance: Netchex,
- *   Lano on several URLs, Oyster, Deel, Zoho, Parakar, OnTheClock, Unrubble,
- *   ZoomShift, HROne. Well-funded vendors with real domain authority, and one of
- *   them notes there is no standard KPI set, so there is no definitive list to
- *   take. Worth writing last, once the domain has some authority, and worth
- *   narrowing: "payroll KPIs for a 40-person company" is winnable where
- *   "payroll KPIs" is not.
+ * A fourth post should start the same way: measure the SERP first, and if the
+ * term is owned by authoritative pages, narrow the angle rather than writing a
+ * better version of what already ranks.
  */
-export const PLANNED: readonly { title: string; keyword: string; note: string }[] = [
-  {
-    title: "Payroll KPIs every business owner should track",
-    keyword: "payroll KPIs, payroll analytics",
-    note: "Most contested term of the three. Narrow it to the small and mid-sized owner and to KPIs derivable from one payroll file, which is what Clarivo actually computes — cost per employee, employer on-cost rate, overtime share of base, absence days. Avoid the generic ten-item list every competitor already ranks for.",
-  },
-];
