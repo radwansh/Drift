@@ -299,42 +299,56 @@ export const SECURITY = {
     {
       title: "Hosted in the EU",
       copy: "Your payroll data is stored and processed in the European Union.",
+      detail:
+        "Clarivo runs in Frankfurt. The application's functions are pinned to Vercel's fra1 region and the database is Neon Postgres in AWS eu-central-1 — the same region, so your payroll file is not carried across continents to be processed. The region is set in vercel.json in the repository rather than only in a dashboard, so it travels with the code.",
       icon: "globe" as IconName,
       gate: "hostedInTheEu" as const,
     },
     {
       title: "Encrypted",
       copy: "Encrypted in transit and at rest.",
+      detail:
+        "Every request to Clarivo is served over HTTPS; there is no unencrypted route to the application. Your payroll data is encrypted at rest by the infrastructure that stores it.",
       icon: "lock" as IconName,
       gate: null,
     },
     {
       title: "Kept separate",
       copy: "Each company's data is kept apart. No other customer can see it.",
+      detail:
+        "Every row of payroll data carries the company it belongs to, and every query that reads it is restricted to the company of the person signed in. The separation is enforced in the application on each request, rather than left to whichever query happens to be written.",
       icon: "layers" as IconName,
       gate: null,
     },
     {
       title: "Verified sign-in",
       copy: "Every account is confirmed by an email code, with bot protection at sign-up.",
+      detail:
+        "Accounts are created through a verified email code, and sign-up carries bot protection.",
       icon: "shield-check" as IconName,
       gate: "verifiedSignIn" as const,
     },
     {
       title: "Access by role",
       copy: "Admins, managers and viewers each see and change only what their role allows.",
+      detail:
+        "An administrator, a manager and a viewer each reach only what their role permits, checked on every request rather than hidden in the interface.",
       icon: "users" as IconName,
       gate: "accessByRole" as const,
     },
     {
       title: "No AI training",
       copy: "Your payroll data is never used to train AI models.",
+      detail:
+        "The written summaries are generated through Anthropic's API, which does not use what is sent to it to train models. The AI layer is also optional: with no model configured Clarivo writes the same summaries from its own rules instead, and the interface says which of the two produced the text you are reading.",
       icon: "ban" as IconName,
       gate: null,
     },
     {
       title: "Deleted on request",
       copy: "Ask, and we delete your company's data.",
+      detail:
+        "Ask, and your company's payroll data is deleted, including the uploaded files.",
       icon: "trash" as IconName,
       gate: "deletedOnRequest" as const,
     },
