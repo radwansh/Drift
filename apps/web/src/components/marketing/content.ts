@@ -491,6 +491,13 @@ export const FINAL_CTA = {
 export const FOOTER = {
   brandLine: "Clarivo. Payroll, clearly.",
   product: NAV,
+  /**
+   * The blog needs an inbound internal link from somewhere, or it is an
+   * orphan: the header is in-page anchors and cannot carry it, and a page
+   * nothing links to accumulates no internal authority however good it is.
+   * The footer is on every page, which is exactly what a hub page wants.
+   */
+  resources: [{ label: "Writing", href: "/blog" }],
   legal: [
     { label: "Privacy policy", href: "/privacy" },
     { label: "Terms", href: "/terms" },

@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { SITE } from "@/components/marketing/content";
+import { POSTS } from "@/components/marketing/posts";
 
 /**
  * The public pages. Everything else is behind sign-in.
@@ -46,10 +47,36 @@ const LAST_MODIFIED: Record<string, string> = {
 };
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  return PUBLIC_PAGES.map((page) => ({
+  const pages = PUBLIC_PAGES.map((page) => ({
     url: `${SITE.url}${page.path}`,
     lastModified: LAST_MODIFIED[page.path] ?? "2026-10-30",
     changeFrequency: page.changes,
     priority: page.priority,
   }));
+
+  /**
+   * The blog, from `POSTS`, so publishing a post needs no edit here.
+   *
+   * Each post carries its own publication date as `lastmod` — a real date that
+   * means something, which is the whole reason the build-time `new Date()` was
+   * removed above. The index is listed at a higher priority than the posts
+   * only because it is the hub they all link back to.
+   */
+  const latest = POSTS.map((p) => p.published).sort().at(-1) ?? "2026-10-31";
+  const blog: MetadataRoute.Sitemap = [
+    {
+      url: `${SITE.url}/blog`,
+      lastModified: latest,
+      changeFrequency: "weekly",
+      priority: 0.7,
+    },
+    ...POSTS.map((post) => ({
+      url: `${SITE.url}/blog/${post.slug}`,
+      lastModified: post.published,
+      changeFrequency: "yearly" as const,
+      priority: 0.6,
+    })),
+  ];
+
+  return [...pages, ...blog];
 }

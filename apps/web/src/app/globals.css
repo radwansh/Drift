@@ -180,3 +180,128 @@
     margin: 14mm;
   }
 }
+
+/**
+ * Long-form article prose (/blog).
+ *
+ * The repo has no typography plugin, so the posts' spacing and scale live here
+ * rather than as `prose-*` classes on every element. Scoped to `.cv-article`
+ * so it cannot reach the landing page sections, which set their own type.
+ *
+ * Every value is a design-system token. The measure is capped on the container
+ * rather than here, so a table or a code block can still use the full width.
+ */
+.cv-article {
+  color: var(--cv-ink-muted);
+  font-size: 1.0625rem;
+  line-height: 1.75;
+}
+
+.cv-article > * + * {
+  margin-top: 1.25rem;
+}
+
+.cv-article h2 {
+  margin-top: 2.75rem;
+  color: var(--cv-ink);
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+
+.cv-article h3 {
+  margin-top: 2rem;
+  color: var(--cv-ink);
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.cv-article strong {
+  color: var(--cv-ink);
+  font-weight: 600;
+}
+
+.cv-article a {
+  color: var(--cv-accent);
+  text-underline-offset: 2px;
+}
+
+.cv-article a:hover {
+  text-decoration: underline;
+}
+
+.cv-article ul,
+.cv-article ol {
+  padding-left: 1.5rem;
+}
+
+.cv-article ul {
+  list-style: disc;
+}
+
+.cv-article ol {
+  list-style: decimal;
+}
+
+.cv-article li + li {
+  margin-top: 0.5rem;
+}
+
+/* Formulas and column names. `font-cv-mono` is the same face the KPI tiles
+   use, so a spreadsheet formula reads as a figure rather than as prose. */
+.cv-article code {
+  padding: 0.125rem 0.375rem;
+  border: 1px solid var(--cv-line);
+  border-radius: var(--cv-radius-sm, 0.25rem);
+  background: var(--cv-surface);
+  color: var(--cv-ink);
+  font-family: var(--font-cv-mono), ui-monospace, monospace;
+  font-size: 0.9375em;
+  overflow-wrap: break-word;
+}
+
+.cv-article pre {
+  overflow-x: auto;
+  padding: 1rem 1.125rem;
+  border: 1px solid var(--cv-line);
+  border-radius: var(--cv-radius-md, 0.5rem);
+  background: var(--cv-surface);
+  line-height: 1.6;
+}
+
+.cv-article pre code {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 0.875rem;
+  white-space: pre;
+}
+
+.cv-article table {
+  display: block;
+  overflow-x: auto;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+
+.cv-article th,
+.cv-article td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--cv-line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.cv-article th {
+  color: var(--cv-ink);
+  font-weight: 600;
+}
+
+.cv-article blockquote {
+  padding-left: 1rem;
+  border-left: 2px solid var(--cv-accent);
+  color: var(--cv-ink);
+}

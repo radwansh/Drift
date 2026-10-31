@@ -49,6 +49,27 @@ export function MarketingFooter() {
           </div>
 
           <div className="flex flex-col gap-3">
+            <p
+              id="footer-resources"
+              className="font-cv-sans text-[13px] font-semibold uppercase tracking-wide text-white/50"
+            >
+              Resources
+            </p>
+            <ul aria-labelledby="footer-resources" className="flex flex-col gap-2">
+              {FOOTER.resources.map((item) => (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    className="rounded font-cv-sans text-sm text-white/80 underline-offset-2 hover:text-white hover:underline focus-visible:outline-none focus-visible:shadow-cv-focus-ring"
+                  >
+                    {item.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="flex flex-col gap-3">
             <p className="font-cv-sans text-[13px] font-semibold uppercase tracking-wide text-white/50">
               Contact
             </p>
