@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Button } from "./ui";
 import { SITE } from "./content";
+import { EarlyAccessButton } from "./early-access-button";
 import type { Post } from "./posts";
 
 /**
@@ -87,11 +88,35 @@ export function Article({
 
       <div className="cv-article mt-10">{children}</div>
 
+      {/*
+        The one place a reader who arrived from search can act.
+
+        `EarlyAccessButton` rather than a newsletter field: it opens the dialog
+        `EarlyAccessProvider` already owns — this route group is inside that
+        provider, so the posts need no plumbing of their own — and the lead
+        lands in `trial_requests`, in the CRM and on Clerk's waiting list
+        through `trial.submit`, rate-limited, which is machinery that exists and
+        works today. A subscribe field would need a mail provider that has not
+        been chosen, and a form that posts nowhere is worse than no form.
+
+        Primary and secondary, in that order: somebody who read 2,000 words on
+        reconciling a register is a warmer lead than a visitor to the home page,
+        and asking them to go and read the home page instead spends that.
+      */}
       <aside className="mt-16 rounded-cv-lg border border-cv-line bg-cv-surface p-6">
         <p className="text-base leading-relaxed text-cv-ink">{closing}</p>
-        <Button href="/" variant="secondary" className="mt-5">
-          See how Clarivo works
-        </Button>
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <EarlyAccessButton>Get early access</EarlyAccessButton>
+          <Button href="/" variant="secondary">
+            See how Clarivo works
+          </Button>
+        </div>
+        {/* No figure here on purpose: the founder discount and every price
+            live in `content.ts` behind the `¤` placeholder, and a percentage
+            restated in this file is one more copy to keep in step. */}
+        <p className="mt-4 text-sm leading-relaxed text-cv-ink-subtle">
+          Free during the beta, and no credit card.
+        </p>
       </aside>
     </article>
   );

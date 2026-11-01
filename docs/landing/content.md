@@ -156,12 +156,29 @@ These are the flat, size-based prices we agreed for Clarivo as a self-serve micr
 | Badge on each paid plan | Beta founder: −50% for 24 months |
 | Highlighted plan | Growth, tagged "Best for growing teams" |
 
+> **`content.ts` is the source of truth for every figure below, not this file.**
+> Prices are held once, in `PRICING.plans` in `apps/web/src/components/marketing/content.ts`,
+> written with the `¤` placeholder and rendered per market by `money()`. This table is a
+> record of what was agreed and drifted from the shipped numbers twice before being corrected
+> on 2026-11-01: the Growth row carried €139/€69/€690/€1,390 against a shipped €99/€49/€490/€990,
+> and the Bureau row published per-client prices the site deliberately does not show.
+> Read a price from `content.ts`; change it there.
+
 | Plan | For | List price | Beta founder price | Founder price, yearly | Button |
 | Starter | Up to 100 employees | ~~€59~~ per month | **€29** per month | €290 per year (list €590) | Get early access |
-| Growth | Up to 500 employees | ~~€139~~ per month | **€69** per month | €690 per year (list €1,390) | Get early access |
+| Growth | Up to 500 employees | ~~€99~~ per month | **€49** per month | €490 per year (list €990) | Get early access |
 | Business | Up to 2,000 employees | ~~€299~~ per month | **€149** per month | €1,490 per year (list €2,990) | Get early access |
-| Bureau | Payroll bureaus and accountants | ~~€15~~ per client company per month | **€7** per client company per month | €70 per client company per year (list €150) | Get early access |
+| Bureau | Payroll bureaus and accountants, up to 200 employees per client company | Priced per client company, from five clients | Founder discount applies | — | Talk to us |
 | Enterprise | Over 2,000 employees or several countries | On request | Founder discount applies | — | Talk to us (opens an email to hello@clarivo-app.com) |
+
+The US dollar column on `/us` is **$59 / $99 / $299** a month list, with the same founder
+discount. These are list prices set per market, not conversions, so there is no FX rate to apply.
+
+**Bureau carries no published number**, and the omission is deliberate: it sells by a different
+unit — per client company rather than per company — so a figure sitting in the same row as
+Starter reads as "the cheapest plan" to anyone scanning. Enterprise was pulled out for the same
+reason. The terms that constrain the deal are still stated; only the number moves into the
+conversation. See the comment above `bureau` in `content.ts`.
 
 Every plan includes:
 - The payroll dashboard with every salary KPI
