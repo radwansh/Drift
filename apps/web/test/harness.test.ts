@@ -167,6 +167,30 @@ describe("annual indexes (step 27)", () => {
     expect(text).toMatch(/Index (Only )?Scan|Bitmap Index Scan/);
     expect(text).toContain("employee_snapshots_period_employee_idx");
   });
+
+  /**
+   * Step B3 of docs/EMPLOYEE_FILE_PLAN.md: the Employee File's own index.
+   *
+   * The query above is led by the period, which is what 0006's index serves.
+   * The Employee File's central query is the other way round — one employee
+   * across many periods — and 0006's index cannot serve it, because its leading
+   * column is the one this query does not constrain.
+   *
+   * The seed above gives this the selectivity it needs: 15,000 snapshot rows
+   * across 300 periods with 50 distinct external ids, so one id selects about
+   * 2% of the table and the planner should prefer the index. It also runs
+   * ANALYZE, without which the assertion would say nothing.
+   */
+  it("serves the per-employee history query with an index scan", async () => {
+    const text = await plan(`
+      SELECT gross_salary FROM employee_snapshots
+      WHERE employee_external_id = 'E7'
+        AND payroll_period_id IN (SELECT id FROM payroll_periods LIMIT 50)
+    `);
+
+    expect(text).toMatch(/Index (Only )?Scan|Bitmap Index Scan/);
+    expect(text).toContain("employee_snapshots_employee_period_idx");
+  });
 });
 
 /**
