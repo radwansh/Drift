@@ -95,6 +95,12 @@ export interface EmployeeFileScope {
   periods: EmployeePeriodInput[];
   /** Explicit binds for the data query's `IN (...)`. Empty means no SQL at all. */
   periodIdsInRange: string[];
+  /** Every surviving period in scope, ignoring the range — `everyone_on_record`. */
+  allScopePeriodIds: string[];
+  /** The periods on the latest covered slot — `currently_employed`. */
+  latestSlotPeriodIds: string[];
+  /** That slot's end date, for the `termination_date` half of the predicate. */
+  latestSlotEnd: string | null;
   coveredSlotIndexes: number[];
   supersededCount: number;
   savedCategories: Record<string, Category>;
@@ -288,6 +294,27 @@ export async function resolveEmployeeFileScope(
     expected = fullYear.filter((s) => s.index === input.slotIndex);
   }
 
+  /**
+   * The periods on the latest covered slot, for the `currently_employed` scope.
+   *
+   * "Appears in the latest covered slot" is an `assignSlot` question, not an
+   * end-date comparison, so the slot's periods are resolved here and the id list
+   * is what the SQL predicate uses. That is what lets the scope be applied
+   * before pagination — a filter applied after it would make every page short
+   * and the total wrong.
+   */
+  const latestSlotPeriodIds: string[] = [];
+  if (lastCoveredIndex !== null) {
+    for (const period of periods) {
+      const slot = assignSlot(period, periodType, fullYear);
+      if (slot && slot.index === lastCoveredIndex) latestSlotPeriodIds.push(period.id);
+    }
+  }
+  const latestSlotEnd =
+    lastCoveredIndex === null
+      ? null
+      : fullYear.find((s) => s.index === lastCoveredIndex)?.end ?? null;
+
   // Only the periods that land inside the selected range reach the data query,
   // so a single-slot range does not fetch a year of rows.
   const visibleIndexes = new Set(expected.map((s) => s.index));
@@ -314,6 +341,14 @@ export async function resolveEmployeeFileScope(
     slotsPerYear,
     periods: periodsInRange,
     periodIdsInRange: periodsInRange.map((p) => p.id),
+    // Every surviving period in this (cadence, currency, fiscal year), ignoring
+    // the range selector — what `everyone_on_record` lists over. It stays inside
+    // the fiscal year on purpose: "in scope" is the cadence and currency, and
+    // finding a leaver from two years ago is a change of year rather than an
+    // unbounded query.
+    allScopePeriodIds: periods.map((p) => p.id),
+    latestSlotPeriodIds,
+    latestSlotEnd,
     coveredSlotIndexes: [...coveredIndexes].sort((a, b) => a - b),
     supersededCount,
     savedCategories,

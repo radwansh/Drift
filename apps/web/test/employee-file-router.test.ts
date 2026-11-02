@@ -561,6 +561,106 @@ describe("re-uploaded periods (spec 7.1)", () => {
   });
 });
 
+describe("the three list scopes", () => {
+  /**
+   * Each scope is a SQL predicate applied **before** pagination. Applied after,
+   * every page would come back short and `total` would count a different set
+   * from the one on screen.
+   */
+  it("paid_in_range lists everyone with a row in the range, leavers badged", async () => {
+    const list = await callerFor(acme, "admin").list({ year: 2026, scope: "paid_in_range" });
+    expect(list.employees.map((e) => e.externalId).sort()).toEqual(["E1", "E2", "E3", "E4"]);
+    expect(list.total).toBe(4);
+    // A leaver never simply vanishes: E2 stopped in February and is still here.
+    const e2 = list.employees.find((e) => e.externalId === "E2");
+    expect(e2?.lastPaidSlotLabel).toBe("Feb 2026");
+    expect(e2?.currentlyEmployed).toBe(false);
+    expect(list.excludedByScope).toBe(0);
+  });
+
+  it("currently_employed keeps only the latest covered slot's roster", async () => {
+    const list = await callerFor(acme, "admin").list({
+      year: 2026,
+      scope: "currently_employed",
+    });
+    // April is the latest covered slot: E1 and E4 are in it.
+    expect(list.employees.map((e) => e.externalId).sort()).toEqual(["E1", "E4"]);
+    expect(list.total).toBe(2);
+  });
+
+  it("states how many the currently_employed filter dropped", async () => {
+    const list = await callerFor(acme, "admin").list({
+      year: 2026,
+      scope: "currently_employed",
+    });
+    // "2 people paid in 2026 are not currently employed."
+    expect(list.excludedByScope).toBe(2);
+    expect(list.counts.paidInRange).toBe(4);
+    expect(list.counts.currentlyEmployed).toBe(2);
+  });
+
+  it("keeps total and the page in agreement under a scope filter", async () => {
+    // The assertion that a post-pagination filter would fail: page 1 of size 1
+    // must still carry the scope's own total.
+    const page = await callerFor(acme, "admin").list({
+      year: 2026,
+      scope: "currently_employed",
+      pageSize: 1,
+      sort: "name",
+    });
+    expect(page.employees).toHaveLength(1);
+    expect(page.total).toBe(2);
+  });
+
+  it("everyone_on_record ignores the range but keeps the figures to it", async () => {
+    // A single-slot range: only April. Under `paid_in_range` that is E1 and E4;
+    // under `everyone_on_record` the whole year's roster lists, with money for
+    // April alone.
+    const inRange = await callerFor(acme, "admin").list({
+      year: 2026,
+      range: "slot",
+      slotIndex: 4,
+      scope: "paid_in_range",
+    });
+    expect(inRange.employees.map((e) => e.externalId).sort()).toEqual(["E1", "E4"]);
+
+    const onRecord = await callerFor(acme, "admin").list({
+      year: 2026,
+      range: "slot",
+      slotIndex: 4,
+      scope: "everyone_on_record",
+      sort: "name",
+    });
+    expect(onRecord.employees.map((e) => e.externalId).sort()).toEqual(["E1", "E2", "E3", "E4"]);
+    expect(onRecord.total).toBe(4);
+
+    // E2 was not paid in April, so the money is blank rather than borrowed from
+    // a different window.
+    const e2 = onRecord.employees.find((e) => e.externalId === "E2");
+    expect(e2?.paidPeriods).toBe(0);
+    expect(e2?.rangeGross).toBe(0);
+    expect(e2?.lastPaidSlotLabel).toBeNull();
+    expect(e2?.paidInRange).toBe(false);
+
+    // And E1's figures are April's, not the year's.
+    const e1 = onRecord.employees.find((e) => e.externalId === "E1");
+    expect(e1?.rangeGross).toBe(5000);
+    expect(e1?.paidPeriods).toBe(1);
+  });
+
+  it("combines a scope with a flag filter", async () => {
+    // E3 has the critical flag but left in March, so it is not in April's
+    // roster: the two predicates are ANDed into one HAVING rather than fighting.
+    const list = await callerFor(acme, "admin").list({
+      year: 2026,
+      scope: "currently_employed",
+      hasFlag: "critical",
+    });
+    expect(list.employees).toEqual([]);
+    expect(list.total).toBe(0);
+  });
+});
+
 describe("pagination and the count", () => {
   it("counts the whole filtered set, not the page", async () => {
     const page = await callerFor(acme, "admin").list({ year: 2026, pageSize: 1, sort: "name" });

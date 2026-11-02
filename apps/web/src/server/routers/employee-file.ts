@@ -65,14 +65,20 @@ const ListRowSchema = z.object({
   rangeGross: Numeric,
   latestGross: Numeric,
   latestNet: Numeric,
-  lastPeriodEnd: z.union([z.string(), z.date()]).transform(toIsoDate),
+  /** Null under `everyone_on_record` for somebody with nothing in range. */
+  lastPeriodEnd: z.union([z.string(), z.date()]).transform(toIsoDate).nullable(),
   netExceedsGrossRows: IntLike,
   negativeNetRows: IntLike,
   hasDuplicateRows: z.boolean(),
   terminationDate: z.union([z.string(), z.date()]).transform(toIsoDate).nullable(),
+  currentlyEmployed: z.boolean(),
 });
 
-const CountRowSchema = z.object({ total: IntLike });
+const CountRowSchema = z.object({
+  everyoneOnRecord: IntLike,
+  paidInRange: IntLike,
+  currentlyEmployed: IntLike,
+});
 const DepartmentRowSchema = z.object({ department: z.string() });
 const DimensionKeyRowSchema = z.object({ key: z.string() });
 const DimensionValueRowSchema = z.object({
@@ -235,12 +241,57 @@ export const employeeFileRouter = router({
           pageSize: input.pageSize,
           departments: [],
           dimensions: [],
+          counts: { everyoneOnRecord: 0, paidInRange: 0, currentlyEmployed: 0 },
           excludedByScope: 0,
         };
       }
 
-      const ids = periodIdBinds(scope.periodIdsInRange);
+      /**
+       * Two id lists, because the three scopes list over different row sets.
+       *
+       * `everyone_on_record` reads every surviving period in scope and ignores
+       * the range, so somebody who was paid earlier in the year still appears.
+       * The other two read the range. Either way the **figures** are for the
+       * range, via `FILTER (WHERE ... IN (rangeIds))` on each aggregate, so an
+       * employee with nothing in range lists with blank money rather than a
+       * total borrowed from a different window.
+       */
+      const rangeIds = periodIdBinds(scope.periodIdsInRange);
+      const baseIdList =
+        input.scope === "everyone_on_record" && scope.allScopePeriodIds.length > 0
+          ? scope.allScopePeriodIds
+          : scope.periodIdsInRange;
+      const ids = periodIdBinds(baseIdList);
+      const inRange = sql`r.payroll_period_id IN (${rangeIds})`;
       const offset = (input.page - 1) * input.pageSize;
+
+      /**
+       * `currently_employed`: appears in the latest covered slot, and
+       * `termination_date` is null or later than that slot's end.
+       *
+       * Expressed in SQL so it is applied **before** pagination. Applied after,
+       * every page would come back short and `total` would count a different
+       * set from the one on screen — which is exactly the "a filter that drops
+       * rows without saying how many" failure the footer count exists to
+       * prevent, one level down.
+       *
+       * With no covered slot at all nobody is currently employed, which is the
+       * honest answer rather than everybody.
+       */
+      const latestIds = scope.latestSlotPeriodIds;
+      const currentlyEmployed =
+        latestIds.length === 0
+          ? sql`false`
+          : sql`(
+              COUNT(*) FILTER (WHERE r.payroll_period_id IN (${periodIdBinds(latestIds)})) > 0
+              AND (
+                (array_agg(r.termination_date ORDER BY p.period_end DESC, p.created_at DESC))[1]
+                  IS NULL
+                OR (array_agg(r.termination_date ORDER BY p.period_end DESC, p.created_at DESC))[1]
+                  > ${scope.latestSlotEnd ?? "9999-12-31"}::date
+              )
+            )`;
+      const paidInRange = sql`COUNT(*) FILTER (WHERE ${inRange}) > 0`;
 
       // Free text searches EVERY name the id has carried in range, not only the
       // latest, with ILIKE — a renamed employee is otherwise unfindable under
@@ -288,17 +339,24 @@ export const employeeFileRouter = router({
        * is already running.
        */
       const criticalFlagCount = sql`
-        COUNT(*) FILTER (WHERE r.net_salary > r.gross_salary)
-        + COUNT(*) FILTER (WHERE r.net_salary < 0)
+        COUNT(*) FILTER (WHERE ${inRange} AND r.net_salary > r.gross_salary)
+        + COUNT(*) FILTER (WHERE ${inRange} AND r.net_salary < 0)
       `;
-      const hasDuplicate = sql`COUNT(*) > COUNT(DISTINCT r.payroll_period_id)`;
+      const hasDuplicate = sql`
+        COUNT(*) FILTER (WHERE ${inRange})
+          > COUNT(DISTINCT r.payroll_period_id) FILTER (WHERE ${inRange})
+      `;
 
+      // Every predicate is a HAVING, because all of them read aggregates. They
+      // are collected into one clause rather than appended, since a second
+      // HAVING is a syntax error.
+      const having: ReturnType<typeof sql>[] = [];
+      if (input.hasFlag === "critical") having.push(sql`(${criticalFlagCount}) > 0`);
+      if (input.hasFlag === "duplicate") having.push(sql`(${hasDuplicate})`);
+      if (input.scope === "paid_in_range") having.push(sql`(${paidInRange})`);
+      if (input.scope === "currently_employed") having.push(sql`(${currentlyEmployed})`);
       const flagFilter =
-        input.hasFlag === "critical"
-          ? sql`HAVING (${criticalFlagCount}) > 0`
-          : input.hasFlag === "duplicate"
-            ? sql`HAVING ${hasDuplicate}`
-            : sql``;
+        having.length > 0 ? sql`HAVING ${sql.join(having, sql` AND `)}` : sql``;
 
       // Default sort is "critical first, then name", and the column header says
       // which flags it counts. Money sorts on the numeric column, never on a
@@ -331,19 +389,22 @@ export const employeeFileRouter = router({
                    (array_agg(COALESCE(r.department, 'Unassigned')
                               ORDER BY p.period_end DESC, p.created_at DESC))[1]
                      AS department,
-                   COUNT(DISTINCT p.id)::int AS "paidPeriods",
-                   COALESCE(SUM(r.gross_salary), 0)::numeric AS "rangeGross",
-                   (array_agg(r.gross_salary ORDER BY p.period_end DESC, p.created_at DESC))[1]
-                     AS "latestGross",
-                   (array_agg(r.net_salary ORDER BY p.period_end DESC, p.created_at DESC))[1]
-                     AS "latestNet",
-                   MAX(p.period_end) AS "lastPeriodEnd",
-                   COUNT(*) FILTER (WHERE r.net_salary > r.gross_salary)::int
+                   COUNT(DISTINCT p.id) FILTER (WHERE ${inRange})::int AS "paidPeriods",
+                   COALESCE(SUM(r.gross_salary) FILTER (WHERE ${inRange}), 0)::numeric
+                     AS "rangeGross",
+                   COALESCE((array_agg(r.gross_salary ORDER BY p.period_end DESC, p.created_at DESC)
+                             FILTER (WHERE ${inRange}))[1], 0)::numeric AS "latestGross",
+                   COALESCE((array_agg(r.net_salary ORDER BY p.period_end DESC, p.created_at DESC)
+                             FILTER (WHERE ${inRange}))[1], 0)::numeric AS "latestNet",
+                   MAX(p.period_end) FILTER (WHERE ${inRange}) AS "lastPeriodEnd",
+                   COUNT(*) FILTER (WHERE ${inRange} AND r.net_salary > r.gross_salary)::int
                      AS "netExceedsGrossRows",
-                   COUNT(*) FILTER (WHERE r.net_salary < 0)::int AS "negativeNetRows",
-                   (COUNT(*) > COUNT(DISTINCT r.payroll_period_id)) AS "hasDuplicateRows",
+                   COUNT(*) FILTER (WHERE ${inRange} AND r.net_salary < 0)::int
+                     AS "negativeNetRows",
+                   (${hasDuplicate}) AS "hasDuplicateRows",
                    (array_agg(r.termination_date ORDER BY p.period_end DESC, p.created_at DESC))[1]
-                     AS "terminationDate"
+                     AS "terminationDate",
+                   (${currentlyEmployed}) AS "currentlyEmployed"
             FROM employee_snapshots r
             JOIN payroll_periods p ON p.id = r.payroll_period_id
             WHERE r.payroll_period_id IN (${ids})
@@ -354,16 +415,27 @@ export const employeeFileRouter = router({
             ${order}
             LIMIT ${input.pageSize} OFFSET ${offset}
           `),
+          // All three scope counts in one row, so the footer can say "14 people
+          // paid in FY2026 are not currently employed" without a sixth query —
+          // and so `total` counts the same set the page shows.
           ctx.db.execute(sql`
-            SELECT COUNT(*)::int AS total FROM (
-              SELECT r.employee_external_id
+            SELECT COUNT(*)::int AS "everyoneOnRecord",
+                   COUNT(*) FILTER (WHERE "paidInRange")::int AS "paidInRange",
+                   COUNT(*) FILTER (WHERE "currentlyEmployed")::int AS "currentlyEmployed"
+            FROM (
+              SELECT (${paidInRange}) AS "paidInRange",
+                     (${currentlyEmployed}) AS "currentlyEmployed"
               FROM employee_snapshots r
               JOIN payroll_periods p ON p.id = r.payroll_period_id
               WHERE r.payroll_period_id IN (${ids})
                 ${searchFilter}
                 ${departmentFilter}
               GROUP BY r.employee_external_id
-              ${flagFilter}
+              ${input.hasFlag === "critical"
+                ? sql`HAVING (${criticalFlagCount}) > 0`
+                : input.hasFlag === "duplicate"
+                  ? sql`HAVING (${hasDuplicate})`
+                  : sql``}
             ) counted
           `),
           ctx.db.execute(sql`
@@ -405,12 +477,25 @@ export const employeeFileRouter = router({
         ]);
 
       const rows = parseRows(ListRowSchema, pageRes.rows, "employee list");
-      const total = parseRows(CountRowSchema, countRes.rows, "employee count")[0]?.total ?? 0;
+      const counts = parseRows(CountRowSchema, countRes.rows, "employee count")[0] ?? {
+        everyoneOnRecord: 0,
+        paidInRange: 0,
+        currentlyEmployed: 0,
+      };
+      const total =
+        input.scope === "everyone_on_record"
+          ? counts.everyoneOnRecord
+          : input.scope === "currently_employed"
+            ? counts.currentlyEmployed
+            : counts.paidInRange;
 
       // The slot label is resolved here by `assignSlot`, never by comparing end
       // dates: a 26th-to-25th payroll matches no month by equality.
       const employees = rows.map((row) => {
-        const slot = assignSlot({ periodEnd: row.lastPeriodEnd }, scope.periodType, scope.expected);
+        const slot =
+          row.lastPeriodEnd === null
+            ? null
+            : assignSlot({ periodEnd: row.lastPeriodEnd }, scope.periodType, scope.expected);
         return {
           externalId: row.employeeExternalId,
           name: row.employeeName,
@@ -427,6 +512,8 @@ export const employeeFileRouter = router({
           netExceedsGrossRows: row.netExceedsGrossRows,
           negativeNetRows: row.negativeNetRows,
           hasDuplicateRows: row.hasDuplicateRows,
+          currentlyEmployed: row.currentlyEmployed,
+          paidInRange: row.paidPeriods > 0,
         };
       });
 
@@ -450,30 +537,9 @@ export const employeeFileRouter = router({
         };
       });
 
-      /**
-       * `currently_employed` drops rows, so the footer has to state how many —
-       * a filter that drops rows without saying how many is how a payroll total
-       * gets signed off short.
-       *
-       * The scope itself is applied here rather than in SQL: "appears in the
-       * latest covered slot" needs `assignSlot` to know which slot that is, and
-       * the page is already in hand.
-       */
-      const latestIndex = scope.lastCoveredIndex;
-      const filtered =
-        input.scope === "currently_employed"
-          ? employees.filter(
-              (e) =>
-                e.lastPaidSlotIndex === latestIndex &&
-                (e.terminationDate === null ||
-                  e.terminationDate >
-                    (scope.expected.find((s) => s.index === latestIndex)?.end ?? "")),
-            )
-          : employees;
-
       return {
         scope: scopeResponse(scope),
-        employees: filtered,
+        employees,
         total,
         page: input.page,
         pageSize: input.pageSize,
@@ -481,7 +547,17 @@ export const employeeFileRouter = router({
           (r) => r.department,
         ),
         dimensions,
-        excludedByScope: employees.length - filtered.length,
+        /**
+         * Every scope's count, so the footer can state what a filter dropped:
+         * "14 people paid in FY2026 are not currently employed. Switch to Paid
+         * in range to see them." A filter that drops rows without saying how
+         * many is how a payroll total gets signed off short.
+         */
+        counts: counts,
+        excludedByScope:
+          input.scope === "currently_employed"
+            ? counts.paidInRange - counts.currentlyEmployed
+            : 0,
       };
     }),
 
