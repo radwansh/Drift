@@ -397,18 +397,26 @@ describe("drill-down (step 44)", () => {
     expect(result.periods.length).toBeGreaterThan(0);
   });
 
-  it("refuses a viewer and a manager reaching employee rows, but allows an admin", async () => {
+  it("refuses a viewer, and allows a manager and an admin, on employee rows", async () => {
     const scope = { year: 2026, periodType: "monthly" as const, currency: "USD" as never };
 
-    // The acceptance check. This is the only place the annual feature exposes
-    // individual pay, so it is admin-only — a manager can change company
-    // settings without being able to read every salary.
+    /**
+     * Step A2 of docs/EMPLOYEE_FILE_PLAN.md: `payDetailProcedure`, not
+     * `adminProcedure`.
+     *
+     * This used to assert that a manager was refused, on the rule that editing
+     * company settings should not imply reading every salary. The Employee File
+     * gives admin and manager a full year of one person's gross, net and every
+     * component, so refusing them a drill-down that shows a subset of the same
+     * data is an incoherent seam rather than a control. A viewer is still
+     * refused, which is the part that was ever doing work.
+     */
     await expect(callerFor(acme, "viewer").drillDownEmployees(scope)).rejects.toMatchObject({
       code: "FORBIDDEN",
     });
-    await expect(callerFor(acme, "manager").drillDownEmployees(scope)).rejects.toMatchObject({
-      code: "FORBIDDEN",
-    });
+
+    const managerRows = await callerFor(acme, "manager").drillDownEmployees(scope);
+    expect(managerRows.employees.length).toBeGreaterThan(0);
 
     const rows = await callerFor(acme, "admin").drillDownEmployees(scope);
     expect(rows.employees.length).toBeGreaterThan(0);

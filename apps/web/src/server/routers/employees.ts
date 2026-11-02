@@ -1,16 +1,25 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { eq, and, or, like, sql } from "drizzle-orm";
+import { eq, and, or, ilike, sql } from "drizzle-orm";
 import { employeeSnapshots, payrollPeriods } from "@saas/db";
-import { adminProcedure, router } from "../trpc";
+import { payDetailProcedure, router } from "../trpc";
 
 /**
  * Employee snapshots are individual pay records, so every procedure here is
- * `adminProcedure`, matching the rule the annual drill-downs already follow:
- * a manager who may edit company settings should not automatically be able to
- * read every salary.
+ * `payDetailProcedure`: **admin and manager, both full detail** (step A2 of
+ * docs/EMPLOYEE_FILE_PLAN.md).
  *
- * All three were `protectedProcedure` with no tenant filter at all, so any
+ * These were `adminProcedure`, on the stated rule that a manager who may edit
+ * company settings should not automatically be able to read every salary. That
+ * rule is reversed, and it was never a rule in practice: `comparisons.getById`
+ * is a `memberProcedure` returning every employee's name, gross, net and
+ * per-component deltas to any signed-in member, viewers included. Relaxing
+ * these three to admin+manager opens nothing that is not already open through a
+ * different door, while removing an incoherent seam — the Employee File shows
+ * strictly more than any of them, so a manager who may read a whole year per
+ * person but not one period's roster makes no sense.
+ *
+ * All three were once `protectedProcedure` with no tenant filter at all, so any
  * signed-in user of any company could pass any period or snapshot UUID and read
  * back names, components, gross and net. CLAUDE.md is explicit that a missing
  * `companyId` is a cross-tenant leak rather than a bug.
@@ -23,7 +32,7 @@ import { adminProcedure, router } from "../trpc";
  * so the error does not confirm that the id exists.
  */
 export const employeesRouter = router({
-  listByPeriod: adminProcedure
+  listByPeriod: payDetailProcedure
     .input(z.object({
       payrollPeriodId: z.string().uuid(),
       page: z.number().int().positive().default(1),
@@ -55,7 +64,7 @@ export const employeesRouter = router({
       return { data, total: Number(total[0].count), page: input.page, pageSize: input.pageSize };
     }),
 
-  getById: adminProcedure
+  getById: payDetailProcedure
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       // The input names a snapshot rather than a period, so tenancy comes from
@@ -75,7 +84,7 @@ export const employeesRouter = router({
       return snapshot;
     }),
 
-  search: adminProcedure
+  search: payDetailProcedure
     .input(z.object({
       payrollPeriodId: z.string().uuid(),
       query: z.string().min(1),
@@ -90,12 +99,15 @@ export const employeesRouter = router({
       });
       if (!period) throw new TRPCError({ code: "NOT_FOUND", message: "Payroll period not found" });
 
+      // `ilike`, not `like`: Postgres `like` is case-sensitive, so "alice" did
+      // not match "Alice Johnson" and the search looked broken for every
+      // lower-case query a user actually types.
       const results = await ctx.db.select().from(employeeSnapshots)
         .where(and(
           eq(employeeSnapshots.payrollPeriodId, input.payrollPeriodId),
           or(
-            like(employeeSnapshots.employeeName, `%${input.query}%`),
-            like(employeeSnapshots.employeeExternalId, `%${input.query}%`),
+            ilike(employeeSnapshots.employeeName, `%${input.query}%`),
+            ilike(employeeSnapshots.employeeExternalId, `%${input.query}%`),
           ),
         ))
         .limit(input.limit);

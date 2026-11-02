@@ -127,7 +127,12 @@ Every tenant-scoped table carries `companyId`. There is **no row-level security 
 | `protectedProcedure` | signed in | when you only need `ctx.userId` and `ctx.db` |
 | `memberProcedure` | signed in | **the default.** Resolves the user once and puts `ctx.companyId` and `ctx.currentUser` on the context |
 | `editorProcedure` | admin, manager | any company-wide write (categories, budget, settings, AI generation) |
-| `adminProcedure` | admin | individual employee data |
+| `payDetailProcedure` | admin, manager | reading an individual's pay detail (`employees.*`, `annual.drillDownEmployees`, `employeeFile.*`) |
+| `adminProcedure` | admin | reserved; nothing uses it after the Employee File change |
+
+`payDetailProcedure` is deliberately not `editorProcedure`, even though the two role lists are identical today: `EDITOR_ROLES` means "may change company-wide settings", and sharing the constant would make a later change to who sets the budget silently change who reads every salary.
+
+**`comparisons.getById` is the widest employee-level surface in the product, and it is a `memberProcedure`.** It returns every `comparison_results` row — employee name, gross, net, per-component deltas — to any signed-in member, viewers included, and the Dashboard and Detailed View are built on it. So the role table above describes `employees.*` and the annual drill-down, not the product's actual exposure of individual pay. Narrowing `comparisons.getById` would remove the Dashboard and Detailed View from viewers, which is a product decision rather than a tidy-up; do not change it as part of unrelated work.
 
 Prefer `memberProcedure` over `protectedProcedure` in new code: it supplies `companyId` and saves a query. Forgetting to scope by `companyId` is a cross-tenant data leak, not just a bug.
 

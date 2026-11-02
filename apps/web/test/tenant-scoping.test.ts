@@ -150,17 +150,53 @@ describe("employees router is scoped to the caller's company", () => {
     ).rejects.toThrow(/NOT_FOUND|not found/i);
   });
 
-  // Individual pay is admin-only, the same rule the annual drill-downs follow.
-  it("a manager cannot read employee-level pay", async () => {
-    await expect(
-      employeesCaller(acme, "manager").listByPeriod({ payrollPeriodId: acme.periodId }),
-    ).rejects.toThrow(/FORBIDDEN|admin role/i);
+  /**
+   * Step A2 of docs/EMPLOYEE_FILE_PLAN.md reversed the policy this asserted.
+   *
+   * These procedures were admin-only on the rule that a manager who may edit
+   * company settings should not automatically read every salary. They are
+   * `payDetailProcedure` now — admin and manager, both full detail — because
+   * the Employee File shows strictly more per person, and because the rule was
+   * already not a rule: `comparisons.getById` is a `memberProcedure` returning
+   * per-employee gross, net and component deltas to viewers.
+   */
+  it("a manager can read employee-level pay", async () => {
+    const res = await employeesCaller(acme, "manager").listByPeriod({
+      payrollPeriodId: acme.periodId,
+    });
+    expect(res.total).toBe(1);
+    expect(res.data[0]?.employeeName).toBe("Employee of acme");
   });
 
+  // A viewer is still refused. The message now says "admin or manager role", so
+  // the old /FORBIDDEN|admin role/i regex would have matched either policy and
+  // proved nothing — it matches the new wording explicitly.
   it("a viewer cannot read employee-level pay", async () => {
     await expect(
       employeesCaller(acme, "viewer").getById({ id: acme.snapshotId }),
-    ).rejects.toThrow(/FORBIDDEN|admin role/i);
+    ).rejects.toThrow(/admin or manager role/i);
+  });
+
+  /**
+   * `search` used Drizzle's `like`, which is case-sensitive in Postgres, so a
+   * lower-case query matched nothing. Without this case the `ilike` fix has no
+   * test and the next person to "tidy" the import reverts it silently.
+   */
+  it("search is case-insensitive", async () => {
+    const res = await employeesCaller(acme, "admin").search({
+      payrollPeriodId: acme.periodId,
+      query: "employee of acme",
+    });
+    expect(res).toHaveLength(1);
+    expect(res[0]?.employeeName).toBe("Employee of acme");
+  });
+
+  it("search is case-insensitive on the external id too", async () => {
+    const res = await employeesCaller(acme, "admin").search({
+      payrollPeriodId: acme.periodId,
+      query: "acme-e1",
+    });
+    expect(res).toHaveLength(1);
   });
 });
 

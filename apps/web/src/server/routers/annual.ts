@@ -26,7 +26,7 @@ import {
   normaliseFiscalStartMonth,
 } from "@saas/payroll-core";
 import { generateAnnualInsights, DEFAULT_MODEL, isAiAvailable, type AnnualInsightPayload } from "@saas/ai";
-import { memberProcedure, editorProcedure, adminProcedure, router, type MemberContext } from "../trpc";
+import { memberProcedure, editorProcedure, payDetailProcedure, router, type MemberContext } from "../trpc";
 import { parseRows } from "../parse-rows";
 import { CategoryEnum } from "../categories";
 import { buildAnnualWorkbook, annualWorkbookSheets } from "../export/annual-workbook";
@@ -1097,7 +1097,15 @@ export const annualRouter = router({
    * gated on the admin role rather than the editor roles — a manager can change
    * company settings without being able to read every salary.
    */
-  drillDownEmployees: adminProcedure
+  /**
+   * Admin and manager (step A2 of docs/EMPLOYEE_FILE_PLAN.md).
+   *
+   * Was `adminProcedure`. Leaving it there would reproduce the Employee File's
+   * seam one screen over, for the same data: a manager who may read a full year
+   * of one person's gross, net and every component cannot sensibly be refused a
+   * drill-down showing a subset of it.
+   */
+  drillDownEmployees: payDetailProcedure
     .input(z.object({
       year: z.number().int().min(2000).max(2100),
       periodType: PeriodTypeSchema,
