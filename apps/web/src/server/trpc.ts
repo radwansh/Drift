@@ -1,6 +1,7 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import { auth } from "@clerk/nextjs/server";
 import { db, requireDb } from "@saas/db";
+import { EDITOR_ROLES, PAY_DETAIL_ROLES } from "@/lib/roles";
 import { ensureUser } from "./ensure-user";
 
 export async function createContext() {
@@ -24,8 +25,16 @@ const isAuthenticated = t.middleware(async ({ ctx, next }) => {
 
 export const protectedProcedure = t.procedure.use(isAuthenticated);
 
-/** Roles that may change company-wide settings. Viewers are read-only. */
-export const EDITOR_ROLES = ["admin", "manager"] as const;
+/**
+ * Both role sets come from `lib/roles.ts` and are re-exported here, so every
+ * existing `from "../trpc"` import keeps working.
+ *
+ * They live in a dependency-free module because `lib/constants.ts` needs
+ * `PAY_DETAIL_ROLES` to gate the sidebar entry, and `lib/constants.ts` is
+ * imported by a client component — importing this file from there would pull
+ * Clerk's server SDK and the Neon driver into the client bundle.
+ */
+export { EDITOR_ROLES, PAY_DETAIL_ROLES };
 
 /**
  * Loads the caller's user row once and attaches it to the context.
@@ -72,17 +81,9 @@ export const editorProcedure = memberProcedure.use(async ({ ctx, next }) => {
 });
 
 /**
- * Roles that may read an individual's pay detail (Employee File, step A1).
- *
- * Deliberately NOT EDITOR_ROLES, even though the two lists are identical today.
- * EDITOR_ROLES means "may change company-wide settings"; this means "may read
- * every salary in the company". Sharing the constant would make a later change
- * to who may set the budget silently change who may read every salary.
- */
-export const PAY_DETAIL_ROLES = ["admin", "manager"] as const;
-
-/**
  * Admin and manager, both full pay detail (Employee File, step A1).
+ *
+ * `PAY_DETAIL_ROLES` is defined in `lib/roles.ts` and re-exported above.
  *
  * Replaces `adminProcedure` on `employees.*` and `annual.drillDownEmployees`.
  * The rule it relaxes was never actually a rule: `comparisons.getById` is a

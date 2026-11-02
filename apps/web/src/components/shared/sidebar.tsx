@@ -2,32 +2,27 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { NAV_ITEMS } from "@/lib/constants";
+import { visibleNavItems } from "@/lib/constants";
 import { useSidebar } from "@/lib/sidebar-context";
-import {
-  LayoutDashboard,
-  Table,
-  Calendar,
-  CalendarRange,
-  Plug,
-  Settings,
-  BarChart3,
-  X,
-} from "lucide-react";
+import { NAV_ICONS, type NavIconName } from "./nav-icons";
+import { BarChart3, X } from "lucide-react";
 
-const iconMap: Record<string, React.ReactNode> = {
-  LayoutDashboard: <LayoutDashboard className="h-5 w-5" />,
-  Table: <Table className="h-5 w-5" />,
-  Calendar: <Calendar className="h-5 w-5" />,
-  CalendarRange: <CalendarRange className="h-5 w-5" />,
-  Plug: <Plug className="h-5 w-5" />,
-  Settings: <Settings className="h-5 w-5" />,
-};
+export interface SidebarProps {
+  /**
+   * The caller's role, resolved by the layout. `null` when the lookup failed,
+   * which hides every gated item — a failure must hide a link rather than show
+   * a broken one.
+   */
+  role: string | null;
+}
 
-export function Sidebar() {
+export function Sidebar({ role }: SidebarProps) {
   const pathname = usePathname();
   const section = "/" + (pathname.split("/")[1] ?? "");
   const { isOpen, close } = useSidebar();
+  // Active state needs no change for the new entry: this compares the first
+  // path segment, so /employees/E0002 highlights /employees.
+  const items = visibleNavItems(role);
 
   return (
     <>
@@ -58,8 +53,11 @@ export function Sidebar() {
             </button>
           </div>
           <nav className="flex-1 space-y-1 px-3 py-4">
-            {NAV_ITEMS.map((item) => {
+            {items.map((item) => {
               const isActive = section === item.href;
+              const Icon = NAV_ICONS[item.icon as NavIconName] as
+                | (typeof NAV_ICONS)[NavIconName]
+                | undefined;
               return (
                 <Link
                   key={item.href}
@@ -72,7 +70,7 @@ export function Sidebar() {
                       : "text-white/60 hover:bg-white/10 hover:text-white",
                   )}
                 >
-                  {iconMap[item.icon]}
+                  {Icon ? <Icon className="h-5 w-5" aria-hidden="true" /> : null}
                   {item.label}
                 </Link>
               );
