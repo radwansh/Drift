@@ -39,14 +39,25 @@ function flagsFor(flags: readonly EmployeeFlag[], index: number): EmployeeFlag[]
   return flags.filter((flag) => flag.slotIndex === index);
 }
 
+/**
+ * The deduction cell's tooltip, through the money formatter like the cell above
+ * it (CLAUDE.md's formatter rule).
+ *
+ * It used to build `${label}: ${value.toFixed(2)}` by hand, so the cell read
+ * `USD 1,220.00` and its own tooltip read `Income tax: 1000.00`. Two decimals
+ * is also simply wrong off USD: on KWD it drops the fils and the breakdown stops
+ * re-adding to the cell, and on JPY it invents two decimals the currency does
+ * not have.
+ */
 function deductionBreakdown(
   byCategory: Partial<Record<Category, number>> | null,
+  currency: string,
 ): string | undefined {
   if (!byCategory) return undefined;
   const parts = EMPLOYEE_DEDUCTION_CATEGORIES.map((category) => {
     const value = byCategory[category];
     if (value === undefined || value === 0) return null;
-    return `${CATEGORY_LABELS[category]}: ${value.toFixed(2)}`;
+    return `${CATEGORY_LABELS[category]}: ${formatMoney(value, currency)}`;
   }).filter((part): part is string => part !== null);
   return parts.length > 0 ? parts.join(" · ") : undefined;
 }
@@ -142,7 +153,7 @@ export function EmployeePeriodTable({
                     </TableCell>
                     <TableCell
                       className="text-right tabular-nums"
-                      title={deductionBreakdown(row.byCategory)}
+                      title={deductionBreakdown(row.byCategory, currency)}
                     >
                       {row.deductions === null ? "" : formatMoney(row.deductions, currency)}
                     </TableCell>

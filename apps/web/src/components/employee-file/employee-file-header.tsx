@@ -3,6 +3,7 @@
 import type { EmployeeFileResult, PeriodType } from "@saas/payroll-core";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { formatRatio } from "@/components/annual/annual-utils";
 import { PERIOD_TYPE_LABELS } from "@/lib/constants";
 import { coverageSentence, statusSentence } from "@/components/employee-file/employee-file-text";
 
@@ -34,9 +35,24 @@ export function EmployeeFileHeader({
   scopeLabel: string;
   onScopeChange: (option: { periodType?: PeriodType; currency?: string }) => void;
 }) {
-  const withDates = file.slots.find(
-    (slot) => slot.hireDate !== null || slot.terminationDate !== null,
-  );
+  /**
+   * Each date resolved from its **own** slot series, not from one slot that
+   * happened to carry either of them.
+   *
+   * Registers carry `hire_date` on every row and `termination_date` only in the
+   * final run, so "the first slot with a hire date or a termination date" was
+   * always slot 1, its `terminationDate` was always null, and because its
+   * `hireDate` was truthy the card printed "None on the register" — on the same
+   * card whose badge read `Left Jun 2026`.
+   *
+   * The hire date is the first on record and the termination date the last: a
+   * termination only exists once, in the final run, and taking the first slot
+   * that has one is the same mistake in the other direction.
+   */
+  const hireDateSlot = file.slots.find((slot) => slot.hireDate !== null);
+  const terminationSlot = [...file.slots]
+    .reverse()
+    .find((slot) => slot.terminationDate !== null);
   const withFte = file.slots.find((slot) => slot.fte !== null);
   const latestPaid = [...file.slots].reverse().find((slot) => slot.gross !== null);
   const dimensions = Object.entries(latestPaid?.dimensions ?? {});
@@ -83,9 +99,9 @@ export function EmployeeFileHeader({
           <div>
             <dt className="text-xs text-muted-foreground">Hire date</dt>
             <dd>
-              {withDates?.hireDate ? (
+              {hireDateSlot?.hireDate ? (
                 <>
-                  {withDates.hireDate}
+                  {hireDateSlot.hireDate}
                   {file.presence.hireDates.length > 1 && (
                     <span className="block text-xs text-muted-foreground">
                       Also seen as {file.presence.hireDates.slice(1).join(", ")} — the register
@@ -101,11 +117,18 @@ export function EmployeeFileHeader({
           <div>
             <dt className="text-xs text-muted-foreground">Termination date</dt>
             <dd>
-              {withDates?.terminationDate ?? (
+              {/*
+                One fallback, not two. A null `termination_date` is the same
+                value whether the column is unmapped or mapped and empty, and
+                the slot series cannot tell those apart for one employee — so
+                the wording stays a statement about the register, which is the
+                safer of the two errors. The status badge above already says
+                whether this person stopped being paid, and says which slot it
+                read that off.
+              */}
+              {terminationSlot?.terminationDate ?? (
                 <span className="text-muted-foreground">
-                  {withDates?.hireDate
-                    ? "None on the register"
-                    : "Termination date not mapped"}
+                  No termination date on this register
                 </span>
               )}
             </dd>
@@ -113,7 +136,13 @@ export function EmployeeFileHeader({
           <div>
             <dt className="text-xs text-muted-foreground">FTE</dt>
             <dd>
-              {withFte?.fte ?? <span className="text-muted-foreground">FTE not mapped</span>}
+              {/* A ratio, through the ratio formatter: never `formatMoney`, and
+                  not raw, so 0.875 and 1 print the same way. */}
+              {withFte?.fte != null ? (
+                formatRatio(withFte.fte)
+              ) : (
+                <span className="text-muted-foreground">FTE not mapped</span>
+              )}
             </dd>
           </div>
           <div>

@@ -19,6 +19,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatComponentName, formatMoney } from "@/components/annual/annual-utils";
+import {
+  SLOT_KIND_LABELS,
+  slotKindReason,
+} from "@/components/employee-file/employee-file-text";
 import type { PeriodRow } from "@/components/employee-file/employee-chart-data";
 
 /**
@@ -90,9 +94,11 @@ export function EmployeeComponentMatrix({
       <CardHeader>
         <CardTitle className="text-sm font-medium">Component history</CardTitle>
         <CardDescription>
-          Every component this employee was paid in range, under the name the register uses.
-          A blank cell means the column was not on that period&apos;s register; 0.00 means it
-          was, with a value of zero.
+          Every component this employee was paid in range, under the name the register uses. In
+          a period that was uploaded and paid, a blank cell means the column was not on that
+          period&apos;s register and 0.00 means it was, with a value of zero. A period with no
+          register to read — nobody uploaded it, or this employee is not in it — is marked in
+          the header and dashed all the way down.
         </CardDescription>
       </CardHeader>
       <CardContent className="p-0">
@@ -101,9 +107,26 @@ export function EmployeeComponentMatrix({
             <TableHeader>
               <TableRow>
                 <TableHead className="min-w-[14rem]">Component</TableHead>
+                {/*
+                  The slot's `kind` is marked in the header, because a blank
+                  cell in a `missing` column is not the fact the caption
+                  describes: nobody uploaded that period, so there was no
+                  register for the column to be absent from. The four-valued
+                  `kind` exists to keep "we do not know" apart from "they got
+                  nothing", and the matrix was collapsing both into the one
+                  blank that the caption calls "the column was not there".
+                */}
                 {rows.map((row) => (
                   <TableHead key={row.index} className="whitespace-nowrap text-right">
                     {row.label}
+                    {row.kind !== "actual" && (
+                      <span
+                        className="block text-[10px] font-normal lowercase text-muted-foreground"
+                        title={slotKindReason(row.kind, row.rowCount) ?? undefined}
+                      >
+                        {SLOT_KIND_LABELS[row.kind]}
+                      </span>
+                    )}
                   </TableHead>
                 ))}
               </TableRow>
@@ -141,14 +164,34 @@ export function EmployeeComponentMatrix({
                           {entry.key}
                         </span>
                       </TableCell>
-                      {entry.values.map((value, index) => (
-                        <TableCell
-                          key={rows[index]?.index ?? index}
-                          className="text-right tabular-nums"
-                        >
-                          {value === null ? "" : formatMoney(value, file.currency)}
-                        </TableCell>
-                      ))}
+                      {entry.values.map((value, index) => {
+                        const slot = rows[index];
+                        // A period with no register for this employee gets a
+                        // dash with its reason, never the blank that means "the
+                        // column was not on the register".
+                        const noRegister =
+                          slot !== undefined &&
+                          (slot.kind === "missing" || slot.kind === "not_paid");
+                        return (
+                          <TableCell
+                            key={slot?.index ?? index}
+                            className="text-right tabular-nums"
+                            title={
+                              noRegister && slot
+                                ? slotKindReason(slot.kind, slot.rowCount) ?? undefined
+                                : undefined
+                            }
+                          >
+                            {noRegister ? (
+                              <span className="text-muted-foreground">—</span>
+                            ) : value === null ? (
+                              ""
+                            ) : (
+                              formatMoney(value, file.currency)
+                            )}
+                          </TableCell>
+                        );
+                      })}
                     </TableRow>
                   </Fragment>
                 );

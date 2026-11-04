@@ -5,9 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   formatComponentName,
-  formatMoney,
   formatSignedPct,
 } from "@/components/annual/annual-utils";
+import { describeChangeLogValue } from "@/components/employee-file/employee-file-text";
 
 /**
  * The change log (step E5, spec 4.6).
@@ -37,14 +37,15 @@ const KIND_LABELS: Record<ChangeLogKind, string> = {
   last_appearance: "Last appearance",
 };
 
-function describeValue(
-  value: number | string | null,
-  currency: string,
-): string {
-  if (value === null) return "not present";
-  if (typeof value === "number") return formatMoney(value, currency);
-  return value;
-}
+/**
+ * Values are formatted by **kind**, in `employee-file-text.ts`.
+ *
+ * Every numeric value used to go through `formatMoney`, and `fte` entries carry
+ * ratios, so a part-time conversion printed as
+ * `USD 1.00 → USD 0.50 (USD -0.50, -50.0%)`. The `absolute` in the
+ * parenthetical was formatted unconditionally, so it was wrong even on an entry
+ * whose two sides were not.
+ */
 
 export function EmployeeChangeLog({
   entries,
@@ -61,7 +62,8 @@ export function EmployeeChangeLog({
         <CardTitle className="text-sm font-medium">What changed, and when</CardTitle>
         <CardDescription>
           Derived from consecutive uploaded periods. A movement at or below the
-          currency&apos;s smallest unit is not a change, and nothing here states a cause.
+          currency&apos;s smallest unit is not a change — an FTE is a ratio, so it is
+          measured against a fixed 0.001 instead — and nothing here states a cause.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -81,12 +83,12 @@ export function EmployeeChangeLog({
                 <span className="text-muted-foreground">{formatComponentName(entry.key)}</span>
               )}
               <span className="tabular-nums">
-                {describeValue(entry.previous, currency)} →{" "}
-                {describeValue(entry.current, currency)}
+                {describeChangeLogValue(entry.previous, entry.kind, currency)} →{" "}
+                {describeChangeLogValue(entry.current, entry.kind, currency)}
               </span>
               {entry.absolute !== null && (
                 <span className="tabular-nums text-muted-foreground">
-                  ({formatMoney(entry.absolute, currency)}
+                  ({describeChangeLogValue(entry.absolute, entry.kind, currency)}
                   {entry.percentage !== null && `, ${formatSignedPct(entry.percentage)}`})
                 </span>
               )}

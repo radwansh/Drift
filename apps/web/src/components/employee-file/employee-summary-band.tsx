@@ -100,7 +100,21 @@ export function EmployeeSummaryBand({
     total: sumSlots(paid, (slot) => slot.byCategory[category] ?? null, decimals),
   })).filter((entry) => entry.total !== 0);
 
-  const variable = sumSlots(paid, (slot) => slot.variable, decimals);
+  /**
+   * Variable pay as a `Kpi<number>`, like every other figure on this band.
+   *
+   * It was a bare `sumSlots`, so a file with no paid slot in range rendered
+   * `USD 0.00` under subtext reading "Not paid in this range" — against this
+   * component's own documented rule and against the "a 0 is a claim" argument
+   * the employer-cost card next to it is built on. Nothing was paid, so there
+   * is no variable pay to report, which is not the same as none being paid.
+   *
+   * Suppressed on `kpis.grossInRange`, so the band cannot end up with one card
+   * suppressed and another not from the same empty range.
+   */
+  const variable: Kpi<number> = kpis.grossInRange.ok
+    ? { ok: true, value: sumSlots(paid, (slot) => slot.variable, decimals) }
+    : kpis.grossInRange;
   const coverage = kpis.coverage;
 
   return (
@@ -139,8 +153,15 @@ export function EmployeeSummaryBand({
                 </span>
               ))}
             </span>
-          ) : (
+          ) : kpis.bridge.ok ? (
+            // The split is empty and there *is* data, so the sentence is true:
+            // the register's deductions did not classify to an employee
+            // category.
             "No deduction column in range classifies here."
+          ) : (
+            // Nothing was paid in range, so there is no column to classify.
+            // Blaming the mapping for an empty range names the wrong cause.
+            KPI_SUPPRESSION_LABELS[kpis.bridge.reason]
           )
         }
       >
@@ -226,7 +247,7 @@ export function EmployeeSummaryBand({
             : KPI_SUPPRESSION_LABELS[kpis.variableShare.reason]
         }
       >
-        {formatMoney(variable, currency)}
+        {variable.ok ? formatMoney(variable.value, currency) : <Suppressed kpi={variable} />}
       </Figure>
     </div>
   );

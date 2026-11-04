@@ -50,9 +50,17 @@ export function EmployeeReconciliation({
   const breaches = file.flags.filter((flag) => flag.source === "reconciliation");
   const earnBalSlots = rows.filter((row) => row.earnBal !== null && row.earnBal !== 0);
   const { currency } = file;
-  const controlsSupplied = file.tieOuts.controlTotals.filter(
-    (entry) => entry.grossSupplied || entry.netSupplied,
-  ).length;
+  /**
+   * R5 counts the two control totals **separately**.
+   *
+   * `grossSupplied || netSupplied` meant "Supplied for 4 of 4 periods" could be
+   * true when the net total was never supplied for any of them — and the net
+   * identity is the one that catches a deduction mapped to the wrong side. A
+   * half-supplied check is not a supplied check.
+   */
+  const controlTotals = file.tieOuts.controlTotals;
+  const grossSupplied = controlTotals.filter((entry) => entry.grossSupplied).length;
+  const netSupplied = controlTotals.filter((entry) => entry.netSupplied).length;
   const r3Mismatch = file.tieOuts.perSlot.filter((entry) => entry.cause !== null);
 
   return (
@@ -163,11 +171,11 @@ export function EmployeeReconciliation({
           <div>
             <p className="font-medium">Control totals (R5)</p>
             <p className="mt-0.5 text-muted-foreground">
-              {file.tieOuts.controlTotals.length === 0
+              {controlTotals.length === 0
                 ? "No paid period in range to check."
-                : controlsSupplied === 0
+                : grossSupplied === 0 && netSupplied === 0
                   ? "Not supplied for any period in range. Without one, the register was never checked against anything outside Clarivo — which is not the same as agreeing."
-                  : `Supplied for ${controlsSupplied} of ${file.tieOuts.controlTotals.length} periods in range. The rest were never checked against anything outside Clarivo.`}
+                  : `Gross supplied for ${grossSupplied} of ${controlTotals.length} periods in range, net for ${netSupplied} of ${controlTotals.length}. The rest were never checked against anything outside Clarivo.`}
             </p>
           </div>
         </div>

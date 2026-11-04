@@ -1,9 +1,11 @@
 import type {
+  ChangeLogKind,
   EmployeeCoverage,
   EmployeeSlotKind,
   EmployeeStatus,
   KpiSuppression,
 } from "@saas/payroll-core";
+import { formatMoney, formatRatio } from "@/components/annual/annual-utils";
 
 /**
  * Every sentence the Employee File states rather than implies (steps E2-E6).
@@ -45,19 +47,26 @@ export function slotKindReason(kind: EmployeeSlotKind, rowCount = 0): string | n
 }
 
 /**
- * Spec 7.3's wording, verbatim for the two-row case.
+ * Spec 7.3's wording for the two-row case, plus when such a row can arrive.
  *
  * The ambiguity is stated rather than implied because both readings are
  * live: the sum is what ties to the register, and if the extra row is a
  * duplicated export then the register itself is overstated. Nothing in the
  * data can tell those apart, so the screen must not pick one.
+ *
+ * The last clause is the one an admin needs in order to act. A repeated
+ * external id is an `error` in `upload/validate.ts` and
+ * `payroll-periods.ts` throws on it before `processUpload` runs, so these rows
+ * can only predate that gate — and without saying so the note reads as "this
+ * will happen again on the next upload", which would send somebody to fix a
+ * check that is already there.
  */
 export function duplicateSlotNote(rowCount: number): string {
   const tail =
     rowCount > 2
       ? "If any of them is a duplicated export, both this figure and the period total are overstated."
       : "If the second row is a duplicated export, both this figure and the period total are overstated.";
-  return `${rowCount} rows for this employee in this period. The total shown is the sum, which matches the register. ${tail}`;
+  return `${rowCount} rows for this employee in this period. The total shown is the sum, which matches the register. ${tail} Rows like these predate the duplicate-id check: an upload with a repeated external id is refused today, so a new file cannot add more.`;
 }
 
 /**
@@ -112,6 +121,49 @@ export const KPI_SUPPRESSION_LABELS: Record<KpiSuppression, string> = {
   spans_gap: "The window spans a period nobody uploaded",
   quantity_not_mapped: "No quantity column is mapped",
 };
+
+/**
+ * What each change-log kind's numbers **are**, so one is never printed as the
+ * other.
+ *
+ * The change log ran `formatMoney` over every numeric value, and `fte` entries
+ * carry ratios (`employee/changelog.ts`), so a part-time conversion printed as
+ * `USD 1.00 → USD 0.50 (USD -0.50, -50.0%)`.
+ *
+ * A closed `Record` over the union rather than a list of kinds to skip: adding
+ * a kind to `ChangeLogKind` fails typecheck here instead of silently defaulting
+ * to money. It lives in this file rather than in the component because
+ * `apps/web/tsconfig.json` sets `jsx: "preserve"`, so a vitest module cannot
+ * import anything from a `.tsx` — and a money-versus-ratio decision that no
+ * test can reach is how this one shipped.
+ */
+export const CHANGE_LOG_VALUE_SHAPE: Record<ChangeLogKind, "money" | "ratio" | "text"> = {
+  base_rate: "money",
+  allowance: "money",
+  component_added: "money",
+  component_removed: "money",
+  department: "text",
+  dimension: "text",
+  name: "text",
+  fte: "ratio",
+  currency: "text",
+  cadence: "text",
+  first_appearance: "text",
+  last_appearance: "text",
+};
+
+/** One side of a change-log entry, formatted for what that kind holds. */
+export function describeChangeLogValue(
+  value: number | string | null,
+  kind: ChangeLogKind,
+  currency: string,
+): string {
+  if (value === null) return "not present";
+  if (typeof value !== "number") return value;
+  return CHANGE_LOG_VALUE_SHAPE[kind] === "ratio"
+    ? formatRatio(value)
+    : formatMoney(value, currency);
+}
 
 /**
  * The scope label a figure in this range carries.

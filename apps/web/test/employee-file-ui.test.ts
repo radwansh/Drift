@@ -15,6 +15,7 @@ import {
   formatDays,
   formatMoney,
   formatPct,
+  formatRatio,
 } from "@/components/annual/annual-utils";
 import {
   buildChartData,
@@ -34,7 +35,10 @@ import {
   type EmployeeListRow,
 } from "@/components/employee-file/employee-columns";
 import {
+  CHANGE_LOG_VALUE_SHAPE,
   coverageSentence,
+  CURRENTLY_EMPLOYED_UNKNOWN_NOTICE,
+  describeChangeLogValue,
   duplicateSlotNote,
   excludedByScopeSentence,
   KPI_SUPPRESSION_LABELS,
@@ -466,6 +470,32 @@ describe("the list's columns (step E4)", () => {
     expect(left.kind).toBe("left");
     expect(left.label).toBe("Left Apr 2025");
   });
+
+  /**
+   * Defect 4's UI half. Where the range does not reach the latest covered slot
+   * the router answers null, and null is a third status rather than a leaver:
+   * rendering it as `Left Apr 2025` put a leaving date on every employee in the
+   * company, from one URL, with an authoritative slot label attached.
+   */
+  it("calls an unanswerable employment question unknown, not a leaver", () => {
+    const unknown = listStatus(
+      row({ currentlyEmployed: null, lastPaidSlotLabel: "Apr 2025" }),
+    );
+    expect(unknown.kind).toBe("unknown");
+    expect(unknown.label).toBe("Not known for this range");
+    expect(unknown.label).not.toMatch(/left/i);
+  });
+
+  it("renders the FTE the list now projects, and a dash where there is none", () => {
+    // The column's availability rule was unfalsifiable while `employeeFile.list`
+    // projected no FTE: permanently unavailable, and bucketed under "Not in
+    // this register" even for a company whose register maps it.
+    expect(availableColumns([row({ fte: 0.5 })]).map((c) => c.key)).toContain("fte");
+    expect(formatRatio(0.5)).toBe("0.5");
+    expect(formatRatio(1)).toBe("1");
+    expect(formatRatio(0.875)).toBe("0.875");
+    expect(formatRatio(null)).toBe("—");
+  });
 });
 
 describe("money on screen (CLAUDE.md's formatter rule)", () => {
@@ -490,6 +520,42 @@ describe("money on screen (CLAUDE.md's formatter rule)", () => {
     expect(formatDays(44.540000000000006)).toBe("44.5 days");
     expect(formatPct(null)).toBe("—");
   });
+
+  /**
+   * Defect 5. The change log ran `formatMoney` over every numeric value, and
+   * `fte` entries carry ratios, so a part-time conversion printed as
+   * `USD 1.00 → USD 0.50 (USD -0.50, -50.0%)` — a currency code on a headcount
+   * fraction, three times in one line.
+   */
+  it("prints an FTE as a ratio and a rate as money", () => {
+    expect(describeChangeLogValue(1, "fte", "USD")).toBe("1");
+    expect(describeChangeLogValue(0.5, "fte", "USD")).toBe("0.5");
+    expect(describeChangeLogValue(-0.5, "fte", "USD")).toBe("-0.5");
+    for (const value of [1, 0.5, -0.5]) {
+      expect(describeChangeLogValue(value, "fte", "USD")).not.toContain("USD");
+    }
+
+    expect(describeChangeLogValue(16187.41, "base_rate", "USD")).toBe(
+      formatMoney(16187.41, "USD"),
+    );
+    // Strings pass through, and null is a sentence rather than a zero.
+    expect(describeChangeLogValue("Engineering", "department", "USD")).toBe("Engineering");
+    expect(describeChangeLogValue(null, "component_removed", "USD")).toBe("not present");
+  });
+
+  it("classifies every change-log kind, so none defaults to money", () => {
+    const money = Object.entries(CHANGE_LOG_VALUE_SHAPE)
+      .filter(([, shape]) => shape === "money")
+      .map(([kind]) => kind)
+      .sort();
+    expect(money).toEqual([
+      "allowance",
+      "base_rate",
+      "component_added",
+      "component_removed",
+    ]);
+    expect(CHANGE_LOG_VALUE_SHAPE.fte).toBe("ratio");
+  });
 });
 
 describe("the sentences the file states rather than implies", () => {
@@ -507,9 +573,13 @@ describe("the sentences the file states rather than implies", () => {
   it("states the duplicate ambiguity rather than presenting the sum as a fact", () => {
     const note = duplicateSlotNote(2);
     expect(note).toBe(
-      "2 rows for this employee in this period. The total shown is the sum, which matches the register. If the second row is a duplicated export, both this figure and the period total are overstated.",
+      "2 rows for this employee in this period. The total shown is the sum, which matches the register. If the second row is a duplicated export, both this figure and the period total are overstated. Rows like these predate the duplicate-id check: an upload with a repeated external id is refused today, so a new file cannot add more.",
     );
     expect(duplicateSlotNote(3)).toMatch(/any of them/);
+    // The closing clause is the one an admin acts on: `upload/validate.ts`
+    // makes a repeated id an error and `payroll-periods.ts` throws before
+    // `processUpload`, so without it the note reads as "this will recur".
+    expect(note).toMatch(/refused today/);
   });
 
   it("says how many a scope filter dropped, and nothing when it dropped none", () => {
@@ -539,6 +609,17 @@ describe("the sentences the file states rather than implies", () => {
     }
     // Never 0 for an unmapped employer cost: the reason is the figure.
     expect(KPI_SUPPRESSION_LABELS.employer_costs_not_mapped).toMatch(/not mapped/i);
+  });
+
+  /**
+   * "Currently employed" cannot be answered from a range that stops before the
+   * latest covered slot, and an unanswerable scope must not read as an empty
+   * one — the list would otherwise report the whole company as having left.
+   */
+  it("says why the employment scope is unanswerable rather than showing nobody", () => {
+    expect(CURRENTLY_EMPLOYED_UNKNOWN_NOTICE).toMatch(/cannot be told from this range/);
+    // And names the way out, like every other dropped-rows sentence here.
+    expect(CURRENTLY_EMPLOYED_UNKNOWN_NOTICE).toMatch(/Full year|Year to date/);
   });
 
   it("never labels a range on this page as a forecast", () => {
