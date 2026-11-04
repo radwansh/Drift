@@ -10,6 +10,7 @@
     "db:seed": "tsx src/seed/index.ts",
     "db:backfill-period-totals": "tsx src/backfill/periodComponentTotals.ts",
     "fixtures:annual-2025": "tsx src/fixtures/annual2025.ts",
+    "fixtures:employee-file": "tsx src/fixtures/employeeFile/index.ts",
     "typecheck": "tsc --noEmit",
     "lint": "echo 'lint ok'"
   },

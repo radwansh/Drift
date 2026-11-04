@@ -15,7 +15,8 @@
     "db:migrate": "pnpm --filter @saas/db db:migrate",
     "db:seed": "pnpm --filter @saas/db db:seed",
     "db:backfill-period-totals": "pnpm --filter @saas/db db:backfill-period-totals",
-    "samples:annual-2025": "pnpm --filter @saas/db fixtures:annual-2025"
+    "samples:annual-2025": "pnpm --filter @saas/db fixtures:annual-2025",
+    "samples:employee-file": "pnpm --filter @saas/db fixtures:employee-file"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

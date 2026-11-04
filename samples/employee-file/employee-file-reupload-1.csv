@@ -1,0 +1,4 @@
+Employee ID,Full Name,Department,Base Salary,Housing Allowance,Income Tax,Social Security Employee,Employer Social Security,Gross Salary,Net Salary
+E001,Ada Okonkwo,Engineering,5000.00,500.00,550.00,275.00,440.00,5500.00,4675.00
+E002,Grace Haddad,Engineering,4000.00,400.00,440.00,220.00,352.00,4400.00,3740.00
+E003,Katherine Aoun,Finance,3000.00,300.00,330.00,165.00,264.00,3300.00,2805.00
