@@ -113,6 +113,20 @@ export const KPI_SUPPRESSION_LABELS: Record<KpiSuppression, string> = {
   quantity_not_mapped: "No quantity column is mapped",
 };
 
+/**
+ * The scope label a figure in this range carries.
+ *
+ * Every figure on the file gets one, because a figure without a scope is what
+ * made "Total Employer Cost" read as an actual when it was a full-year
+ * forecast. Nothing here is ever `full_year_forecast`: the Employee File
+ * forecasts nothing, and a future slot is `missing` rather than an estimate.
+ */
+export function scopeForRange(
+  range: "ytd" | "full_year" | "previous_year" | "slot",
+): "to_date" | "full_year_actual" {
+  return range === "full_year" || range === "previous_year" ? "full_year_actual" : "to_date";
+}
+
 /** The file's employment status, always naming the slot it came from. */
 export function statusSentence(status: EmployeeStatus): string {
   const slot = status.slotLabel;

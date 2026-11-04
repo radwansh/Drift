@@ -20,7 +20,14 @@ import {
 import { PERIOD_TYPE_LABELS } from "@/lib/constants";
 import { buildPeriodRows } from "@/components/employee-file/employee-chart-data";
 import { EmployeeFileHeader } from "@/components/employee-file/employee-file-header";
+import { EmployeeSummaryBand } from "@/components/employee-file/employee-summary-band";
+import { EmployeeReconciliation } from "@/components/employee-file/employee-reconciliation";
 import { EmployeePeriodTable } from "@/components/employee-file/employee-period-table";
+import { EmployeePeriodChart } from "@/components/employee-file/employee-period-chart";
+import { EmployeeComponentMatrix } from "@/components/employee-file/employee-component-matrix";
+import { EmployeeChangeLog } from "@/components/employee-file/employee-change-log";
+import { EmployeeExceptions } from "@/components/employee-file/employee-exceptions";
+import { scopeForRange } from "@/components/employee-file/employee-file-text";
 import {
   parseCadence,
   parseCurrency,
@@ -203,7 +210,18 @@ export function EmployeeFileView({ externalId }: { externalId: string }) {
             </Card>
           )}
 
+          {/*
+            Top to bottom in the spec's priority order: a payroll admin opening
+            one employee is usually mid-query with the register open beside
+            them, so the figures and the checks come before the history.
+          */}
+          <EmployeeSummaryBand file={file} scope={scopeForRange(range)} />
+          <EmployeeReconciliation file={file} rows={rows} />
           <EmployeePeriodTable rows={rows} flags={file.flags} currency={file.currency} />
+          <EmployeePeriodChart rows={rows} currency={file.currency} />
+          <EmployeeComponentMatrix file={file} rows={rows} />
+          <EmployeeExceptions file={file} />
+          <EmployeeChangeLog entries={file.changeLog} currency={file.currency} />
         </>
       )}
     </div>
