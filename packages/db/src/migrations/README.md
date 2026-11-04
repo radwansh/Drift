@@ -57,6 +57,24 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS employee_snapshots_period_employee_idx
 `CONCURRENTLY` cannot run inside a transaction block, and the migrator wraps
 each file in one, so it can never live in a migration.
 
+`0011_employee_file.sql` adds a second index on the same table, so it needs the
+same treatment — and it is the one the next person to hit a lock on
+`employee_snapshots` will be running:
+
+```sql
+CREATE INDEX CONCURRENTLY IF NOT EXISTS employee_snapshots_employee_period_idx
+  ON employee_snapshots (employee_external_id, payroll_period_id);
+```
+
+That index is led by the **employee id**, which is what every Employee File
+query filters on first. `0006`'s index is led by the period, so it cannot serve
+a per-employee-across-periods read at all; both stay, because the list query is
+still driven by the period set. `created_at` is deliberately absent from it: the
+Employee File does no `DISTINCT ON ... created_at DESC`, so there is nothing to
+serve, and on snapshot rows that column cannot discriminate anyway —
+`processUpload` inserts every row of a period in one statement, so they share a
+timestamp.
+
 ## Per-period aggregates (step 31)
 
 `0007_period_component_totals.sql` adds `period_component_totals`. It is written
