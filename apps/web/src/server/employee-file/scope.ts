@@ -64,6 +64,42 @@ const PeriodRowSchema = z.object({
   employeeCount: IntLike,
 });
 
+/**
+ * `companies.settings.tolerances`, parsed rather than cast.
+ *
+ * It is the one input this feature reads that nobody validates on the way in:
+ * `settings` is jsonb and the only writer is an operator or a future settings
+ * screen. A hand-written `{"netChangePct": null}` used to reach
+ * `detectAnomalies` as-is, where `{...DEFAULT_TOLERANCES, ...tolerances}`
+ * overwrites 20 with `null` and every `Math.abs(delta) > tol.netChangePct`
+ * becomes false — the exceptions panel goes quiet while the card beside it
+ * still says the thresholds came from this company's settings.
+ *
+ * Each threshold is caught on its own, so one bad key falls back to its default
+ * instead of discarding the two good ones. A key that does not survive is
+ * **absent**, never `undefined`: a spread of `{netChangePct: undefined}` wipes
+ * the default just as `null` does.
+ */
+const Threshold = z.number().finite().nonnegative().optional().catch(undefined);
+
+const TolerancesSchema = z
+  .object({
+    netChangePct: Threshold,
+    baseChangePct: Threshold,
+    minAbsolute: Threshold,
+  })
+  .catch({});
+
+export function parseTolerances(raw: unknown): Partial<AnomalyTolerances> {
+  if (raw === null || typeof raw !== "object") return {};
+  const parsed = TolerancesSchema.parse(raw);
+  const out: Partial<AnomalyTolerances> = {};
+  if (parsed.netChangePct !== undefined) out.netChangePct = parsed.netChangePct;
+  if (parsed.baseChangePct !== undefined) out.baseChangePct = parsed.baseChangePct;
+  if (parsed.minAbsolute !== undefined) out.minAbsolute = parsed.minAbsolute;
+  return out;
+}
+
 export interface ScopeOption {
   periodType: PeriodType;
   currency: string;
@@ -89,6 +125,26 @@ export interface EmployeeFileScope {
   latestDataLabel: string | null;
   /** R, for the selected range. */
   expected: ExpectedSlot[];
+  /**
+   * The **whole** fiscal year's slot calendar, whatever the range narrowed
+   * `expected` to — what a period picker has to offer.
+   *
+   * Returned separately because `expected` is the answer to "which slots is
+   * this response about" and a picker needs "which slots could it be about".
+   * Driving the picker off `expected` meant that once a slot was chosen the
+   * control collapsed to the one option already selected, with no way back to
+   * another period.
+   */
+  allSlots: ExpectedSlot[];
+  /**
+   * The slot `range: "slot"` resolved to, and null for every other range.
+   *
+   * The UI shows this rather than guessing, because `range=slot` with no index
+   * is reachable — the list's range control sets `range` alone — and a picker
+   * displaying `expected[0]` over a different slot's figures is a label that
+   * contradicts the money beside it.
+   */
+  slotIndex: number | null;
   /** A full year's slot count for this cadence, with the anchor passed (F7). */
   slotsPerYear: number;
   /** The surviving periods in scope, de-duplicated, placed on slots. */
@@ -187,9 +243,10 @@ export async function resolveEmployeeFileScope(
   const companyRow = companyRows[0];
   const companySettings = (companyRow?.settings ?? {}) as {
     fiscalStartMonth?: number;
-    tolerances?: Partial<AnomalyTolerances>;
+    tolerances?: unknown;
   };
   const fiscalStartMonth = normaliseFiscalStartMonth(companySettings.fiscalStartMonth);
+  const tolerances = parseTolerances(companySettings.tolerances);
 
   const allPeriods = parseRows(PeriodRowSchema, periodRes.rows, "employee file period");
 
@@ -288,10 +345,34 @@ export async function resolveEmployeeFileScope(
   // latest covered slot; a full year shows all of it with the future slots as
   // `missing` rather than forecast, because the file forecasts nothing.
   let expected = fullYear;
+  let slotIndex: number | null = null;
   if (input.range === "ytd" && lastCoveredIndex !== null) {
     expected = fullYear.filter((s) => s.index <= lastCoveredIndex);
-  } else if (input.range === "slot" && input.slotIndex !== undefined) {
-    expected = fullYear.filter((s) => s.index === input.slotIndex);
+  } else if (input.range === "slot") {
+    /**
+     * `range=slot` **defaults its slot** rather than narrowing nothing.
+     *
+     * The old condition was `range === "slot" && slotIndex !== undefined`, and
+     * the list's range control sets `range` with no `slot` — so choosing "One
+     * period" showed a full year of money under a control saying "One period",
+     * and the file page's picker displayed `expected[0]`'s label over it. The
+     * latest covered slot is the one a picker should open on, so it is also the
+     * one the figures are for.
+     *
+     * An index that is not in this year's calendar — a stale link, a hand-typed
+     * `?slot=99` — falls back to that default instead of resolving to an empty
+     * range, which would read as "nothing was paid" rather than "no such
+     * period".
+     */
+    const requested =
+      input.slotIndex !== undefined && fullYear.some((s) => s.index === input.slotIndex)
+        ? input.slotIndex
+        : null;
+    slotIndex = requested ?? lastCoveredIndex;
+    if (slotIndex !== null) {
+      const chosen = slotIndex;
+      expected = fullYear.filter((s) => s.index === chosen);
+    }
   }
 
   /**
@@ -338,6 +419,8 @@ export async function resolveEmployeeFileScope(
     defaultedToLatestData: requestedYear === undefined && latestFiscalYear !== todayFiscalYear,
     latestDataLabel: latestPeriodEnd,
     expected,
+    allSlots: fullYear,
+    slotIndex,
     slotsPerYear,
     periods: periodsInRange,
     periodIdsInRange: periodsInRange.map((p) => p.id),
@@ -352,7 +435,7 @@ export async function resolveEmployeeFileScope(
     coveredSlotIndexes: [...coveredIndexes].sort((a, b) => a - b),
     supersededCount,
     savedCategories,
-    tolerances: companySettings.tolerances ?? {},
+    tolerances,
     lastCoveredIndex,
   };
 }

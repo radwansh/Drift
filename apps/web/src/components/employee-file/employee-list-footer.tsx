@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import {
   excludedByScopeSentence,
+  CURRENTLY_EMPLOYED_UNKNOWN_NOTICE,
   DEPARTMENT_RULE_NOTICE,
 } from "@/components/employee-file/employee-file-text";
 import type { ListScope } from "@/components/employee-file/employee-list-url";
@@ -23,6 +24,7 @@ export function EmployeeListFooter({
   scope,
   rangeLabel,
   excludedByScope,
+  currentlyEmployedKnown,
   coveredSlots,
   supersededCount,
   departmentFiltered,
@@ -35,6 +37,13 @@ export function EmployeeListFooter({
   scope: ListScope;
   rangeLabel: string;
   excludedByScope: number;
+  /**
+   * False when the latest covered slot is outside the selected range, so no row
+   * can be told apart from a leaver. The scope is then unanswerable rather than
+   * empty, and saying which is the difference between a list that dropped
+   * everybody and a list that was asked the wrong question.
+   */
+  currentlyEmployedKnown: boolean;
   coveredSlots: number;
   supersededCount: number;
   departmentFiltered: boolean;
@@ -66,11 +75,18 @@ export function EmployeeListFooter({
       {/* Under `currently_employed`, who is not on screen and how to see them. */}
       {excluded && <p className="text-foreground">{excluded}</p>}
 
+      {/* The scope cannot be answered from this range, which is not the same as
+          nobody matching it. Without this the list reads as "everyone has
+          left". */}
+      {!currentlyEmployedKnown && (
+        <p className="text-foreground">{CURRENTLY_EMPLOYED_UNKNOWN_NOTICE}</p>
+      )}
+
       {scope === "everyone_on_record" && (
         <p>
           Everyone on record ignores the range, so somebody with nothing in {rangeLabel} lists
-          with no last paid slot and a range gross of zero. That is somebody on record with
-          nothing in this range, not a zero payment.
+          with no last paid slot and a dash where the money would be. A dash is &ldquo;nothing
+          in this range&rdquo;, which is not a zero payment.
         </p>
       )}
 

@@ -37,6 +37,12 @@ interface ScopeOption {
   periods: number;
 }
 
+/** One entry of the fiscal year's slot calendar, as the period picker reads it. */
+interface SlotOption {
+  index: number;
+  label: string;
+}
+
 /**
  * The list's filters (step E3).
  *
@@ -47,12 +53,20 @@ interface ScopeOption {
  * values are never mixed, so they sit apart from the things that narrow a set.
  * And the department rule is **stated**, because "latest department" and "in
  * any slot in range" give different answers for anyone who transferred.
+ *
+ * The **period picker** appears beside the range whenever the range is "One
+ * period". Without it that option showed a full year of money under a control
+ * saying "One period" — the user's own requirement was that they "can select
+ * another given period", and the range selector alone cannot express which.
  */
 export function EmployeeListFilters({
   scope,
   onScopeChange,
   range,
   onRangeChange,
+  slots,
+  slotIndex,
+  onSlotChange,
   query,
   onQueryChange,
   departments,
@@ -70,6 +84,11 @@ export function EmployeeListFilters({
   onScopeChange: (scope: ListScope) => void;
   range: RangeKind;
   onRangeChange: (range: RangeKind) => void;
+  /** The whole fiscal year's calendar, never the range's own narrowed slice. */
+  slots: readonly SlotOption[];
+  /** The slot the server resolved, so the trigger never contradicts the data. */
+  slotIndex: number | null;
+  onSlotChange: (slotIndex: number) => void;
   query: string;
   onQueryChange: (query: string) => void;
   departments: readonly string[];
@@ -147,6 +166,34 @@ export function EmployeeListFilters({
             ))}
           </SelectContent>
         </Select>
+
+        {/*
+          Every period in the year, not the range's own slice. Narrowed to the
+          selected slot, the picker collapsed to the one option already chosen
+          with no way back to another period.
+
+          `slotIndex` is the server's resolved value rather than a guess, since
+          Radix only fires `onValueChange` when the value differs: a trigger
+          showing a slot the response is not about makes clicking that slot a
+          no-op, which is how the first period became unreachable.
+        */}
+        {range === "slot" && slots.length > 0 && (
+          <Select
+            value={slotIndex === null ? undefined : String(slotIndex)}
+            onValueChange={(value) => onSlotChange(Number(value))}
+          >
+            <SelectTrigger aria-label="Period" className="w-36">
+              <SelectValue placeholder="Period" />
+            </SelectTrigger>
+            <SelectContent>
+              {slots.map((slot) => (
+                <SelectItem key={slot.index} value={String(slot.index)}>
+                  {slot.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         {/* Not a filter: a scope. Changing it recomputes every figure, and two
             currencies are never mixed in one total. */}

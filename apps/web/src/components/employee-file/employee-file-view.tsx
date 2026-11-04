@@ -134,16 +134,28 @@ export function EmployeeFileView({ externalId }: { externalId: string }) {
             </SelectContent>
           </Select>
 
-          {range === "slot" && data && data.scope.expected.length > 0 && (
+          {/*
+            Driven by the year's whole calendar and the server's resolved slot.
+
+            It used to list `scope.expected` and default its value to
+            `expected[0]`. Both halves were wrong at once: with `range=slot` and
+            no index the server narrowed nothing, so the trigger read "Jan 2026"
+            over a full year of figures — and Radix `useControllableState` only
+            fires `onValueChange` when the value differs, so clicking the
+            displayed "Jan 2026" did nothing and the first period could not be
+            chosen from that state at all. Once a slot *was* chosen, `expected`
+            held only that slot and the picker collapsed to a single option.
+          */}
+          {range === "slot" && data && data.scope.allSlots.length > 0 && (
             <Select
-              value={String(slotIndex ?? data.scope.expected[0]?.index ?? 1)}
+              value={data.scope.slotIndex === null ? undefined : String(data.scope.slotIndex)}
               onValueChange={(value) => setParams({ slot: value })}
             >
               <SelectTrigger aria-label="Period" className="w-36">
-                <SelectValue />
+                <SelectValue placeholder="Period" />
               </SelectTrigger>
               <SelectContent>
-                {data.scope.expected.map((slot) => (
+                {data.scope.allSlots.map((slot) => (
                   <SelectItem key={slot.index} value={String(slot.index)}>
                     {slot.label}
                   </SelectItem>

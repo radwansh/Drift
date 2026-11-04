@@ -59,6 +59,7 @@ interface EmployeeSpec {
   components?: Record<string, number>;
   dimensions?: Record<string, string>;
   terminationDate?: string | null;
+  fte?: number | null;
   /** A second row for the same id in the same period (spec 7.3). */
   duplicate?: boolean;
 }
@@ -101,12 +102,14 @@ async function seedPeriod(
     await db.execute(sql`
       INSERT INTO employee_snapshots
         (payroll_period_id, employee_external_id, employee_name, department,
-         components, gross_salary, net_salary, currency_code, termination_date, dimensions)
+         components, gross_salary, net_salary, currency_code, termination_date, fte,
+         dimensions)
       VALUES (${periodId}, ${e.externalId}, ${e.name ?? `Employee ${e.externalId}`},
               ${e.department ?? "Ops"},
               ${JSON.stringify(e.components ?? { "Base Salary": e.gross })}::jsonb,
               ${e.gross.toFixed(2)}, ${e.net.toFixed(2)}, ${opts.currency},
               ${e.terminationDate ?? null},
+              ${e.fte ?? null},
               ${JSON.stringify(e.dimensions ?? {})}::jsonb)
     `);
   }
@@ -251,28 +254,32 @@ describe("round-trip budget", () => {
    *
    * This is the test that makes an added sequential `await` fail instead of
    * quietly costing a request on the most-viewed screen in the feature.
+   *
+   * `toBe(3)`, not `toBeLessThanOrEqual(3)`, which is what these comments
+   * already claimed. The counter does increment, so a fourth request failed —
+   * but 0 would have passed too, and a change to `pglite-neon.ts` that stopped
+   * counting would have left three green tests asserting nothing.
    */
-  it("resolves the list in at most 3 HTTP requests", async () => {
+  it("resolves the list in exactly 3 HTTP requests", async () => {
     const caller = callerFor(acme, "admin");
     await caller.list({ year: 2026 });
 
     ctx.resetRoundTrips();
     await caller.list({ year: 2026, page: 1, pageSize: 10 });
-    // Measured at exactly 3 when this was written, so the assertion is tight
-    // rather than vacuously true: the user lookup, the scope batch, the data
-    // batch. The six list queries and the log insert ride in the last one.
-    expect(ctx.roundTrips()).toBeLessThanOrEqual(3);
+    // The user lookup, the scope batch, the data batch. The six list queries
+    // and the log insert ride in the last one.
+    expect(ctx.roundTrips()).toBe(3);
   });
 
-  it("resolves a file in at most 3 HTTP requests", async () => {
+  it("resolves a file in exactly 3 HTTP requests", async () => {
     const caller = callerFor(acme, "admin");
     await caller.get({ externalId: "E1", year: 2026 });
 
     ctx.resetRoundTrips();
     await caller.get({ externalId: "E1", year: 2026 });
-    // Also exactly 3: the rows query, the existence probe and the log insert
-    // are one batch. There is no memo, so this is a cold load every time.
-    expect(ctx.roundTrips()).toBeLessThanOrEqual(3);
+    // The rows query, the existence probe and the log insert are one batch.
+    // There is no memo, so this is a cold load every time.
+    expect(ctx.roundTrips()).toBe(3);
   });
 
   it("stays within budget with every filter applied", async () => {
@@ -285,7 +292,20 @@ describe("round-trip budget", () => {
       hasFlag: "critical",
       sort: "range_gross",
     });
-    expect(ctx.roundTrips()).toBeLessThanOrEqual(3);
+    expect(ctx.roundTrips()).toBe(3);
+  });
+
+  /**
+   * The empty-scope path spends its third request on the access-log insert
+   * alone rather than skipping the log, so it is at the budget and not over it.
+   */
+  it("keeps the empty-scope path at 3, log insert included", async () => {
+    const caller = callerFor(acme, "admin");
+    await caller.list({ year: 2019 });
+
+    ctx.resetRoundTrips();
+    await caller.list({ year: 2019 });
+    expect(ctx.roundTrips()).toBe(3);
   });
 });
 
@@ -684,5 +704,298 @@ describe("a scope with no surviving periods", () => {
     expect(list.total).toBe(0);
     expect(list.departments).toEqual([]);
     expect(list.dimensions).toEqual([]);
+  });
+
+  /**
+   * It still logs. The claim that the insert "cannot be skipped by an early
+   * return" was wrong: this return happens before the batch is built, so a read
+   * of a year with no uploads logged nothing at all. Logging reads is a
+   * decision, and a read that found nothing is still a read.
+   */
+  it("logs the read anyway", async () => {
+    const before = await ctx.db.execute(sql`
+      SELECT COUNT(*)::int AS n FROM employee_file_access_log
+      WHERE action = 'view_list' AND fiscal_year = 2019
+    `);
+    await callerFor(acme, "admin").list({ year: 2019 });
+    const after = await ctx.db.execute(sql`
+      SELECT COUNT(*)::int AS n FROM employee_file_access_log
+      WHERE action = 'view_list' AND fiscal_year = 2019
+    `);
+    expect(Number((after.rows[0] as { n: number }).n)).toBe(
+      Number((before.rows[0] as { n: number }).n) + 1,
+    );
+  });
+
+  /**
+   * `everyone_on_record` is defined as ignoring the range, so the range must
+   * not be able to empty it. The guard is on the id list the query reads, not
+   * on the range's own: June 2026 has no upload, and the year's roster is still
+   * four people with no money in that slot.
+   */
+  it("still lists everyone on record when the range itself is empty", async () => {
+    const list = await callerFor(acme, "admin").list({
+      year: 2026,
+      range: "slot",
+      slotIndex: 6,
+      scope: "everyone_on_record",
+      sort: "name",
+    });
+    expect(list.employees.map((e) => e.externalId).sort()).toEqual(["E1", "E2", "E3", "E4"]);
+    expect(list.total).toBe(4);
+    expect(list.counts.everyoneOnRecord).toBe(4);
+    // The figures stay with the range, which here has nothing in it.
+    expect(list.counts.paidInRange).toBe(0);
+    for (const employee of list.employees) {
+      expect(employee.paidPeriods).toBe(0);
+      expect(employee.rangeGross).toBe(0);
+      expect(employee.lastPaidSlotLabel).toBeNull();
+    }
+  });
+});
+
+describe("range=slot resolves a period instead of showing the year (defect 3)", () => {
+  /**
+   * The list's range control sets `range` and nothing else, so `range=slot`
+   * with no index is a reachable state. It used to narrow nothing: a full year
+   * of money under a control saying "One period", with the file page's picker
+   * showing January's label over it.
+   */
+  it("defaults the slot to the latest covered one", async () => {
+    const list = await callerFor(acme, "admin").list({ year: 2026, range: "slot" });
+    expect(list.scope.slotIndex).toBe(4);
+    expect(list.scope.expected.map((s) => s.label)).toEqual(["Apr 2026"]);
+    // April's roster and April's money, not the year's.
+    expect(list.employees.map((e) => e.externalId).sort()).toEqual(["E1", "E4"]);
+    const alice = list.employees.find((e) => e.externalId === "E1");
+    expect(alice?.rangeGross).toBe(5000);
+  });
+
+  it("offers the whole year's calendar so another period can be chosen", async () => {
+    // `expected` is the one slot the response is about; `allSlots` is what the
+    // picker lists. Driven by `expected`, it collapsed to the chosen slot.
+    const list = await callerFor(acme, "admin").list({
+      year: 2026,
+      range: "slot",
+      slotIndex: 2,
+    });
+    expect(list.scope.expected).toHaveLength(1);
+    expect(list.scope.allSlots).toHaveLength(12);
+    expect(list.scope.allSlots[0]?.label).toBe("Jan 2026");
+  });
+
+  it("falls back to the default for a slot index this year does not have", async () => {
+    const list = await callerFor(acme, "admin").list({
+      year: 2026,
+      range: "slot",
+      slotIndex: 99,
+    });
+    expect(list.scope.slotIndex).toBe(4);
+  });
+
+  it("does the same on a file, and leaves slotsPerYear a whole year", async () => {
+    const file = await callerFor(acme, "admin").get({
+      externalId: "E1",
+      year: 2026,
+      range: "slot",
+    });
+    expect(file.scope.slotIndex).toBe(4);
+    expect(file.file.slots).toHaveLength(1);
+    expect(file.scope.allSlots).toHaveLength(12);
+    expect(file.scope.slotsPerYear).toBe(12);
+  });
+});
+
+describe("currently employed is unknown, not false, outside the range (defect 4)", () => {
+  /**
+   * The predicate reads the latest covered slot's rows, and that slot is April.
+   * Asked about February alone, the `FILTER` could never match an id the FROM
+   * clause excludes, so it answered `false` for everybody and the list rendered
+   * `Left Feb 2026` on every row — with an authoritative slot label, from one
+   * URL, for a company whose whole roster is still being paid.
+   */
+  it("answers null for every row when the latest covered slot is out of range", async () => {
+    const list = await callerFor(acme, "admin").list({
+      year: 2026,
+      range: "slot",
+      slotIndex: 2,
+    });
+    expect(list.employees.length).toBeGreaterThan(0);
+    for (const employee of list.employees) {
+      expect(employee.currentlyEmployed).toBeNull();
+    }
+    expect(list.currentlyEmployedKnown).toBe(false);
+  });
+
+  it("states nothing about how many left, rather than all of them", async () => {
+    const list = await callerFor(acme, "admin").list({
+      year: 2026,
+      range: "slot",
+      slotIndex: 2,
+      scope: "currently_employed",
+    });
+    // "N people paid in 2026 are not currently employed" was false for all N.
+    expect(list.excludedByScope).toBe(0);
+    expect(list.currentlyEmployedKnown).toBe(false);
+  });
+
+  it("keeps answering the question when the range does reach that slot", async () => {
+    const list = await callerFor(acme, "admin").list({ year: 2026, range: "full_year" });
+    expect(list.currentlyEmployedKnown).toBe(true);
+    const alice = list.employees.find((e) => e.externalId === "E1");
+    expect(alice?.currentlyEmployed).toBe(true);
+    const bilal = list.employees.find((e) => e.externalId === "E2");
+    expect(bilal?.currentlyEmployed).toBe(false);
+  });
+
+  /**
+   * With no covered slot anywhere in the year there is no slot to be outside
+   * of, so `false` stays the honest answer rather than becoming unknown.
+   */
+  it("stays false, and known, when the year has no covered slot at all", async () => {
+    const list = await callerFor(acme, "admin").list({ year: 2019 });
+    expect(list.currentlyEmployedKnown).toBe(false);
+    expect(list.employees).toEqual([]);
+  });
+});
+
+describe("the list's own defects, one company each", () => {
+  it("projects the latest FTE in range, which is what the column renders", async () => {
+    const company = await seedCompany(ctx.db, {
+      name: "Parttime", slug: "ef-fte", currency: "USD",
+    });
+    await seedPeriod(ctx.db, {
+      companyId: company.companyId, year: 2026, month: 1, currency: "USD",
+      employees: [
+        { externalId: "F1", gross: 1000, net: 800, fte: 1 },
+        { externalId: "F2", gross: 500, net: 400 },
+      ],
+    });
+    await seedPeriod(ctx.db, {
+      companyId: company.companyId, year: 2026, month: 2, currency: "USD",
+      employees: [
+        { externalId: "F1", gross: 500, net: 400, fte: 0.5 },
+        { externalId: "F2", gross: 500, net: 400 },
+      ],
+    });
+
+    const list = await employeeFileRouter
+      .createCaller({ userId: company.users.admin.clerkUserId, db: ctx.db } as never)
+      .list({ year: 2026, sort: "name" });
+
+    const f1 = list.employees.find((e) => e.externalId === "F1");
+    // The latest in range, so the part-time conversion rather than the 1.0 it
+    // started the year on.
+    expect(f1?.fte).toBe(0.5);
+    // A register that maps the column but leaves the cell blank is still null,
+    // never 0 — a 0 FTE is a claim that somebody works no hours.
+    const f2 = list.employees.find((e) => e.externalId === "F2");
+    expect(f2?.fte).toBeNull();
+  });
+
+  /**
+   * `jsonb_object_keys` and `jsonb_each_text` raise 22023 on a jsonb scalar,
+   * and they share one transaction with the page and count queries — so one
+   * such row anywhere in scope blanked the whole list rather than losing a
+   * filter.
+   */
+  it("survives a scalar in the dimensions column", async () => {
+    const company = await seedCompany(ctx.db, {
+      name: "Scalar", slug: "ef-scalar", currency: "USD",
+    });
+    const periodId = await seedPeriod(ctx.db, {
+      companyId: company.companyId, year: 2026, month: 1, currency: "USD",
+      employees: [{ externalId: "S1", gross: 1000, net: 800, dimensions: { Site: "North" } }],
+    });
+    await ctx.db.execute(sql`
+      INSERT INTO employee_snapshots
+        (payroll_period_id, employee_external_id, employee_name, components,
+         gross_salary, net_salary, currency_code, dimensions)
+      VALUES (${periodId}, 'S2', 'Scalar Person', '{"Base Salary": 900}'::jsonb,
+              '900.00', '700.00', 'USD', '"north"'::jsonb)
+    `);
+
+    const list = await employeeFileRouter
+      .createCaller({ userId: company.users.admin.clerkUserId, db: ctx.db } as never)
+      .list({ year: 2026, sort: "name" });
+
+    expect(list.employees.map((e) => e.externalId).sort()).toEqual(["S1", "S2"]);
+    // The object-valued row still yields its key; the scalar yields none.
+    expect(list.dimensions.map((d) => d.key)).toEqual(["Site"]);
+  });
+
+  /**
+   * Two people sharing a display name, ordered by name alone, come back in
+   * whatever order Postgres finds cheapest — which it is free to change between
+   * the two requests that fetch page 1 and page 2. One appears twice and the
+   * other not at all, silently, in a list somebody is counting.
+   */
+  it("pages a shared display name without repeating or losing a row", async () => {
+    const company = await seedCompany(ctx.db, {
+      name: "Namesakes", slug: "ef-namesakes", currency: "USD",
+    });
+    await seedPeriod(ctx.db, {
+      companyId: company.companyId, year: 2026, month: 1, currency: "USD",
+      employees: [
+        { externalId: "N1", name: "Mohamad Ali", gross: 1000, net: 800 },
+        { externalId: "N2", name: "Mohamad Ali", gross: 1000, net: 800 },
+        { externalId: "N3", name: "Mohamad Ali", gross: 1000, net: 800 },
+      ],
+    });
+
+    const caller = employeeFileRouter.createCaller({
+      userId: company.users.admin.clerkUserId,
+      db: ctx.db,
+    } as never);
+
+    const seen: string[] = [];
+    for (const page of [1, 2, 3]) {
+      const res = await caller.list({ year: 2026, sort: "name", pageSize: 1, page });
+      expect(res.employees).toHaveLength(1);
+      seen.push(res.employees[0]!.externalId);
+    }
+    expect(seen).toEqual(["N1", "N2", "N3"]);
+
+    // Every sort, not only the one the tie-break was noticed on.
+    for (const sort of ["flags", "range_gross", "latest_gross", "paid_periods"] as const) {
+      const first = await caller.list({ year: 2026, sort, pageSize: 1, page: 1 });
+      const second = await caller.list({ year: 2026, sort, pageSize: 1, page: 2 });
+      expect(first.employees[0]?.externalId).not.toBe(second.employees[0]?.externalId);
+    }
+  });
+
+  /**
+   * `companies.settings` is jsonb written by an operator, and this is the one
+   * input the feature read without zod. `{"netChangePct": null}` spread over
+   * `DEFAULT_TOLERANCES` replaces 20 with null, every threshold comparison
+   * becomes false, and the exceptions panel goes quiet while the card beside it
+   * says the thresholds came from the company's settings.
+   */
+  it("ignores a malformed tolerance rather than disabling every threshold", async () => {
+    const company = await seedCompany(ctx.db, {
+      name: "Tolerance", slug: "ef-tolerance", currency: "USD",
+    });
+    await ctx.db.execute(sql`
+      UPDATE companies
+      SET settings = '{"tolerances": {"netChangePct": null, "baseChangePct": "lots"}}'::jsonb
+      WHERE id = ${company.companyId}
+    `);
+    await seedPeriod(ctx.db, {
+      companyId: company.companyId, year: 2026, month: 1, currency: "USD",
+      employees: [{ externalId: "T1", gross: 1000, net: 800 }],
+    });
+    // Net halves: beyond the default 20% threshold, and beyond nothing at all.
+    await seedPeriod(ctx.db, {
+      companyId: company.companyId, year: 2026, month: 2, currency: "USD",
+      employees: [{ externalId: "T1", gross: 1000, net: 400 }],
+    });
+
+    const file = await employeeFileRouter
+      .createCaller({ userId: company.users.admin.clerkUserId, db: ctx.db } as never)
+      .get({ externalId: "T1", year: 2026 });
+
+    expect(file.file.flags.map((f) => f.type)).toContain("net_change_beyond_tolerance");
+    // And the card does not claim a company threshold it could not read.
+    expect(file.file.tolerancesSource).toBe("default");
   });
 });

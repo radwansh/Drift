@@ -158,6 +158,17 @@ export function excludedByScopeSentence(excluded: number, rangeLabel: string): s
 }
 
 /**
+ * When "currently employed" cannot be answered from the selected range.
+ *
+ * The predicate reads the latest covered slot's roster, so a range that stops
+ * before that slot — one period in the middle of the year, a previous year —
+ * cannot tell a leaver from anybody else. Said plainly, because the alternative
+ * is a list that silently reports the entire company as having left.
+ */
+export const CURRENTLY_EMPLOYED_UNKNOWN_NOTICE =
+  "Whether these people are still employed cannot be told from this range: the latest uploaded period is outside it. Switch to Full year or Year to date to use that scope.";
+
+/**
  * Said once under the list title.
  *
  * Clarivo stores no reporting line, so "manager" cannot mean "my team" — and

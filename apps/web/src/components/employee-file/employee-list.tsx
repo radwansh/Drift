@@ -20,7 +20,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useEmployeeColumns } from "@/hooks/use-employee-columns";
-import { formatCount, formatMoney } from "@/components/annual/annual-utils";
+import { formatCount, formatMoney, formatRatio } from "@/components/annual/annual-utils";
 import { EmployeeColumnPicker } from "@/components/employee-file/employee-column-picker";
 import { EmployeeListFilters } from "@/components/employee-file/employee-list-filters";
 import { EmployeeListFooter } from "@/components/employee-file/employee-list-footer";
@@ -212,6 +212,9 @@ export function EmployeeList() {
         onScopeChange={(next) => setParams({ scope: next, page: null })}
         range={range}
         onRangeChange={(next) => setParams({ range: next, page: null })}
+        slots={data?.scope.allSlots ?? []}
+        slotIndex={data?.scope.slotIndex ?? null}
+        onSlotChange={(next) => setParams({ slot: String(next), page: null })}
         query={text}
         onQueryChange={setText}
         departments={data?.departments ?? []}
@@ -254,9 +257,28 @@ export function EmployeeList() {
                     {columnDefs.map((column) => {
                       const active = sort === column.sort && !clientSort;
                       const clientActive = clientSort?.key === column.key;
+                      /**
+                       * The sort direction, for a screen reader.
+                       *
+                       * The arrows are `aria-hidden`, so without `aria-sort`
+                       * the only indication of which column the table is
+                       * ordered by, and which way, was a glyph announced to
+                       * nobody. Name sorts ascending; every other server sort
+                       * is "biggest first".
+                       */
+                      const ariaSort = clientActive
+                        ? clientSort.desc
+                          ? ("descending" as const)
+                          : ("ascending" as const)
+                        : active
+                          ? column.sort === "name"
+                            ? ("ascending" as const)
+                            : ("descending" as const)
+                          : ("none" as const);
                       return (
                         <TableHead
                           key={column.key}
+                          aria-sort={ariaSort}
                           className={cn(column.align === "right" && "text-right")}
                         >
                           <button
@@ -389,7 +411,16 @@ export function EmployeeList() {
                                 <span className="text-muted-foreground">—</span>
                               ))}
                             {column.key === "fte" &&
-                              (row.fte === null || row.fte === undefined ? "—" : row.fte)}
+                              (row.fte === null || row.fte === undefined ? (
+                                <span
+                                  className="text-muted-foreground"
+                                  title="No register in range carries an FTE for this employee"
+                                >
+                                  —
+                                </span>
+                              ) : (
+                                formatRatio(row.fte)
+                              ))}
                           </TableCell>
                         ))}
                         {dimensionCols.map((dimension) => (
@@ -415,6 +446,7 @@ export function EmployeeList() {
         scope={scope}
         rangeLabel={rangeLabel}
         excludedByScope={data?.excludedByScope ?? 0}
+        currentlyEmployedKnown={data?.currentlyEmployedKnown ?? true}
         coveredSlots={data?.scope.coveredSlotIndexes.length ?? 0}
         supersededCount={data?.scope.supersededCount ?? 0}
         departmentFiltered={(departments?.length ?? 0) > 0}

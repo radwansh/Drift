@@ -35,17 +35,27 @@ export interface EmployeeListRow {
   netExceedsGrossRows: number;
   negativeNetRows: number;
   hasDuplicateRows: boolean;
-  currentlyEmployed: boolean;
+  /**
+   * Null means **unknown for this range**, not "has left".
+   *
+   * The predicate reads the latest covered slot's rows, and that slot can sit
+   * outside the selected range, in which case the question cannot be answered
+   * from what was queried. `listStatus` renders the three cases separately.
+   */
+  currentlyEmployed: boolean | null;
   paidInRange: boolean;
   /**
-   * Columns 11 and 12 of spec 3.2, both N and both deferred (finding F9).
+   * Column 11 of spec 3.2 — now projected by `employeeFile.list` as one more
+   * aggregate in the page query, which is what makes the availability rule
+   * below a real condition rather than a permanently false one.
    *
-   * They are optional on the row rather than absent from the model so the
-   * availability rule below is real and tested: the day `employeeFile.list`
-   * projects `fte` or a dimension value per employee, the column appears
-   * because the data arrived, not because somebody remembered to unhide it.
+   * Still optional on the row so the rule stays testable in both directions.
    */
   fte?: number | null;
+  /**
+   * Column 12, still deferred (finding F9): no register in the product carries
+   * a dimension today, and `employeeFile.list` projects no per-employee value.
+   */
   dimensions?: Readonly<Record<string, string>>;
 }
 
@@ -157,7 +167,7 @@ export const EMPLOYEE_COLUMNS: readonly EmployeeColumnDef[] = [
   {
     key: "fte",
     label: "FTE",
-    note: "Only when a register in scope maps an FTE column.",
+    note: "The latest in range. Only when a register in scope maps an FTE column.",
     align: "right",
     defaultVisible: false,
     availableWhen: (rows) => rows.some((row) => row.fte !== null && row.fte !== undefined),
@@ -226,7 +236,7 @@ export const DEFAULT_COLUMN_KEYS: EmployeeColumnKey[] = EMPLOYEE_COLUMNS.filter(
  * slot's rows in Node on every list view, which is the cost finding F5 exists to
  * avoid. Both appear on the file page, where the series is already built.
  */
-export type EmployeeListStatusKind = "active" | "left" | "not_paid_in_range";
+export type EmployeeListStatusKind = "active" | "left" | "not_paid_in_range" | "unknown";
 
 export function listStatus(row: EmployeeListRow): {
   kind: EmployeeListStatusKind;
@@ -234,6 +244,17 @@ export function listStatus(row: EmployeeListRow): {
 } {
   if (row.paidPeriods === 0) return { kind: "not_paid_in_range", label: "Not paid in range" };
   if (row.currentlyEmployed) return { kind: "active", label: "Active" };
+  /**
+   * Unknown is its own status, and it is the one that was wrong.
+   *
+   * Whether somebody is still employed is read off the latest covered slot, so
+   * where the range does not reach that slot the router answers null rather
+   * than false. Rendering null as `Left Feb 2026` put a leaving date on every
+   * employee in the company, label and all, from one URL.
+   */
+  if (row.currentlyEmployed === null) {
+    return { kind: "unknown", label: "Not known for this range" };
+  }
   // Always naming the slot the status came from, never implying it.
   return {
     kind: "left",

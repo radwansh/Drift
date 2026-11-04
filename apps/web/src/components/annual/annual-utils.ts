@@ -67,6 +67,19 @@ export function formatDays(value: number | null | undefined): string {
   return `${text} ${rounded === 1 ? "day" : "days"}`;
 }
 
+/**
+ * A ratio that is **not money** — an FTE, a headcount equivalent.
+ *
+ * It exists so the change log and the list stop reaching for `formatMoney` on
+ * an FTE, which printed a part-time conversion as
+ * `USD 1.00 → USD 0.50 (USD -0.50)`. Up to three decimals, because an FTE is
+ * written as 0.5, 0.75 or 0.875 and never with a currency's minor units.
+ */
+export function formatRatio(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 3 }).format(value);
+}
+
 export function formatPct(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
   return `${value.toFixed(1)}%`;

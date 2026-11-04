@@ -71,7 +71,16 @@ const ListRowSchema = z.object({
   negativeNetRows: IntLike,
   hasDuplicateRows: z.boolean(),
   terminationDate: z.union([z.string(), z.date()]).transform(toIsoDate).nullable(),
-  currentlyEmployed: z.boolean(),
+  /**
+   * Null means **unknown for this range**, not "has left".
+   *
+   * The predicate needs the latest covered slot's rows, and that slot can sit
+   * outside the selected range — at `?range=slot&slot=2` it always does. SQL
+   * NULL is the third answer, and the status column renders it as one.
+   */
+  currentlyEmployed: z.boolean().nullable(),
+  /** The latest FTE in range, or null where no row in range carries one. */
+  fte: Numeric.nullable(),
 });
 
 const CountRowSchema = z.object({
@@ -145,9 +154,15 @@ type LogAction = "view_list" | "view_file";
 /**
  * The access-log insert, as a member of the data batch.
  *
- * **It therefore costs zero extra round trips, and it cannot be skipped** by an
- * early return or forgotten on a new code path, because it is a member of the
- * array the procedure is built from.
+ * **It therefore costs zero extra round trips** on either procedure's normal
+ * path, because it is a member of the array that path is built from.
+ *
+ * It is not free of the need to be called, though, and the claim that it
+ * "cannot be skipped by an early return" was wrong: the list's empty-scope
+ * return happens before the batch is built, so a read of a year with no
+ * uploads logged nothing at all. Both empty paths now spend one request on the
+ * insert alone — logging reads is a decision, and a read that found nothing is
+ * still a read.
  *
  * Two consequences, both deliberate:
  *
@@ -199,6 +214,10 @@ function scopeResponse(scope: EmployeeFileScope) {
     defaultedToLatestData: scope.defaultedToLatestData,
     latestDataLabel: scope.latestDataLabel,
     expected: scope.expected,
+    // The whole year's calendar and the resolved slot, so a period picker
+    // offers every period rather than collapsing to the one already chosen.
+    allSlots: scope.allSlots,
+    slotIndex: scope.slotIndex,
     slotsPerYear: scope.slotsPerYear,
     coveredSlotIndexes: scope.coveredSlotIndexes,
     supersededCount: scope.supersededCount,
@@ -230,22 +249,6 @@ export const employeeFileRouter = router({
     .query(async ({ ctx, input }) => {
       const scope = await resolveEmployeeFileScope(ctx, input);
 
-      // `IN ()` is a Postgres syntax error, so a scope with no surviving
-      // periods returns before any SQL runs.
-      if (scope.periodIdsInRange.length === 0) {
-        return {
-          scope: scopeResponse(scope),
-          employees: [],
-          total: 0,
-          page: input.page,
-          pageSize: input.pageSize,
-          departments: [],
-          dimensions: [],
-          counts: { everyoneOnRecord: 0, paidInRange: 0, currentlyEmployed: 0 },
-          excludedByScope: 0,
-        };
-      }
-
       /**
        * Two id lists, because the three scopes list over different row sets.
        *
@@ -256,13 +259,56 @@ export const employeeFileRouter = router({
        * employee with nothing in range lists with blank money rather than a
        * total borrowed from a different window.
        */
-      const rangeIds = periodIdBinds(scope.periodIdsInRange);
       const baseIdList =
         input.scope === "everyone_on_record" && scope.allScopePeriodIds.length > 0
           ? scope.allScopePeriodIds
           : scope.periodIdsInRange;
+
+      /**
+       * `IN ()` is a Postgres syntax error, so a scope with nothing to read
+       * returns before the data SQL runs.
+       *
+       * The guard is on `baseIdList`, not on the range: under
+       * `everyone_on_record` a range with no surviving periods — a single empty
+       * slot, a year-to-date range before the first upload — still has a full
+       * year of rows to list, and returning zeros there made the range govern a
+       * scope defined as ignoring it.
+       *
+       * The log insert happens anyway. It records the **attempt**, this path is
+       * an attempt, and `get` handles the same case the same way at the cost of
+       * the one request the early return saves.
+       */
+      if (baseIdList.length === 0) {
+        await ctx.db.batch([
+          accessLogInsert(ctx, scope, {
+            action: "view_list",
+            range: input.range,
+            slotIndex: input.slotIndex,
+          }),
+        ]);
+
+        return {
+          scope: scopeResponse(scope),
+          employees: [],
+          total: 0,
+          page: input.page,
+          pageSize: input.pageSize,
+          departments: [],
+          dimensions: [],
+          counts: { everyoneOnRecord: 0, paidInRange: 0, currentlyEmployed: 0 },
+          currentlyEmployedKnown: false,
+          excludedByScope: 0,
+        };
+      }
+
       const ids = periodIdBinds(baseIdList);
-      const inRange = sql`r.payroll_period_id IN (${rangeIds})`;
+      // `false` rather than `IN ()` when the range itself is empty but the
+      // scope is not: every FILTER then contributes nothing, which is exactly
+      // "on record, nothing in this range".
+      const inRange =
+        scope.periodIdsInRange.length === 0
+          ? sql`false`
+          : sql`r.payroll_period_id IN (${periodIdBinds(scope.periodIdsInRange)})`;
       const offset = (input.page - 1) * input.pageSize;
 
       /**
@@ -275,13 +321,29 @@ export const employeeFileRouter = router({
        * rows without saying how many" failure the footer count exists to
        * prevent, one level down.
        *
-       * With no covered slot at all nobody is currently employed, which is the
-       * honest answer rather than everybody.
+       * **Intersected with the ids this query actually reads.**
+       * `scope.latestSlotPeriodIds` is the latest covered slot of the whole
+       * fiscal year, which can sit outside the selected range — at
+       * `?range=slot&slot=2` it always does. A `FILTER` over ids the FROM
+       * clause excludes can never match, so the predicate answered `false` for
+       * every employee and `employee-columns.ts` rendered `Left <lastPaidSlot>`
+       * on every row, with an authoritative slot label attached.
+       *
+       * Three answers, not two. With no covered slot anywhere in the year,
+       * `false` is the honest one rather than everybody. With a covered slot the
+       * range does not reach, the honest one is **unknown**: SQL NULL, which
+       * `COUNT(*) FILTER` does not count and the status column names rather
+       * than rounding down to "has left".
        */
-      const latestIds = scope.latestSlotPeriodIds;
+      const baseIdSet = new Set(baseIdList);
+      const latestIds = scope.latestSlotPeriodIds.filter((id) => baseIdSet.has(id));
+      const currentlyEmployedKnown =
+        latestIds.length > 0 || scope.latestSlotPeriodIds.length === 0;
       const currentlyEmployed =
         latestIds.length === 0
-          ? sql`false`
+          ? scope.latestSlotPeriodIds.length === 0
+            ? sql`false`
+            : sql`NULL::boolean`
           : sql`(
               COUNT(*) FILTER (WHERE r.payroll_period_id IN (${periodIdBinds(latestIds)})) > 0
               AND (
@@ -358,19 +420,28 @@ export const employeeFileRouter = router({
       const flagFilter =
         having.length > 0 ? sql`HAVING ${sql.join(having, sql` AND `)}` : sql``;
 
-      // Default sort is "critical first, then name", and the column header says
-      // which flags it counts. Money sorts on the numeric column, never on a
-      // formatted string.
+      /**
+       * Default sort is "critical first, then name", and the column header says
+       * which flags it counts. Money sorts on the numeric column, never on a
+       * formatted string.
+       *
+       * **Every order ends on the external id**, which is the GROUP BY key and
+       * therefore unique per row. Ordering by name alone leaves two people
+       * called Mohamad Ali in an order Postgres is free to change between the
+       * page query and the next page's: one of them appears on both pages and
+       * the other on neither, silently, in a list a payroll admin is counting.
+       */
+      const tieBreak = sql`r.employee_external_id ASC`;
       const order =
         input.sort === "name"
-          ? sql`ORDER BY 2 ASC`
+          ? sql`ORDER BY 2 ASC, ${tieBreak}`
           : input.sort === "range_gross"
-            ? sql`ORDER BY "rangeGross" DESC`
+            ? sql`ORDER BY "rangeGross" DESC, ${tieBreak}`
             : input.sort === "latest_gross"
-              ? sql`ORDER BY "latestGross" DESC`
+              ? sql`ORDER BY "latestGross" DESC, ${tieBreak}`
               : input.sort === "paid_periods"
-                ? sql`ORDER BY "paidPeriods" DESC`
-                : sql`ORDER BY ((${criticalFlagCount}) > 0) DESC, 2 ASC`;
+                ? sql`ORDER BY "paidPeriods" DESC, ${tieBreak}`
+                : sql`ORDER BY ((${criticalFlagCount}) > 0) DESC, 2 ASC, ${tieBreak}`;
 
       /**
        * Latest name and latest department via `array_agg(... ORDER BY ...)[1]`,
@@ -404,7 +475,15 @@ export const employeeFileRouter = router({
                    (${hasDuplicate}) AS "hasDuplicateRows",
                    (array_agg(r.termination_date ORDER BY p.period_end DESC, p.created_at DESC))[1]
                      AS "terminationDate",
-                   (${currentlyEmployed}) AS "currentlyEmployed"
+                   (${currentlyEmployed}) AS "currentlyEmployed",
+                   -- The latest FTE in range, one more aggregate in a SELECT
+                   -- that is already running. The column's availability rule
+                   -- ("only when a register in scope maps an FTE column") was
+                   -- unfalsifiable while nothing projected it: permanently
+                   -- unavailable, including for a company whose register does
+                   -- map FTE and whose file page shows it one click away.
+                   (array_agg(r.fte ORDER BY p.period_end DESC, p.created_at DESC)
+                    FILTER (WHERE ${inRange} AND r.fte IS NOT NULL))[1]::numeric AS "fte"
             FROM employee_snapshots r
             JOIN payroll_periods p ON p.id = r.payroll_period_id
             WHERE r.payroll_period_id IN (${ids})
@@ -444,11 +523,23 @@ export const employeeFileRouter = router({
             WHERE payroll_period_id IN (${ids})
             ORDER BY 1
           `),
+          /**
+           * `jsonb_object_keys` and `jsonb_each_text` raise `22023` on a jsonb
+           * scalar — `'"x"'::jsonb`, `'3'::jsonb`, `'null'::jsonb` — and these
+           * two share the one transaction with the page and the count queries,
+           * so one such row anywhere in scope would blank the whole list rather
+           * than lose a filter. The column is jsonb with no shape constraint,
+           * and `toDimensionMap` already treats a non-object as `{}`.
+           *
+           * The guard is a restriction on `r` alone, so it is applied at the
+           * scan and the lateral function never sees the row.
+           */
           ctx.db.execute(sql`
             SELECT DISTINCT k AS key
             FROM employee_snapshots r
             CROSS JOIN LATERAL jsonb_object_keys(r.dimensions) k
             WHERE r.payroll_period_id IN (${ids})
+              AND jsonb_typeof(r.dimensions) = 'object'
             ORDER BY 1
           `),
           // Values per key, with a per-key cap so a high-cardinality key
@@ -464,6 +555,7 @@ export const employeeFileRouter = router({
                 FROM employee_snapshots r
                 CROSS JOIN LATERAL jsonb_each_text(r.dimensions) k
                 WHERE r.payroll_period_id IN (${ids})
+                  AND jsonb_typeof(r.dimensions) = 'object'
               ) d
             ) ranked
             WHERE rn <= ${DIMENSION_VALUE_LIMIT + 1}
@@ -513,6 +605,7 @@ export const employeeFileRouter = router({
           negativeNetRows: row.negativeNetRows,
           hasDuplicateRows: row.hasDuplicateRows,
           currentlyEmployed: row.currentlyEmployed,
+          fte: row.fte,
           paidInRange: row.paidPeriods > 0,
         };
       });
@@ -554,8 +647,14 @@ export const employeeFileRouter = router({
          * many is how a payroll total gets signed off short.
          */
         counts: counts,
+        /**
+         * False when the latest covered slot is outside the range, so the UI
+         * can say "not known for this range" instead of a count that would read
+         * as "none of them is still employed".
+         */
+        currentlyEmployedKnown,
         excludedByScope:
-          input.scope === "currently_employed"
+          input.scope === "currently_employed" && currentlyEmployedKnown
             ? counts.paidInRange - counts.currentlyEmployed
             : 0,
       };
@@ -658,6 +757,13 @@ export const employeeFileRouter = router({
           FROM employee_snapshots r
           WHERE r.employee_external_id = ${input.externalId}
             AND r.payroll_period_id IN (${ids})
+          -- Deterministic arrival order. employee/slots.ts picks the slot's
+          -- name, department, dimensions, FTE and hire date by the order the
+          -- rows arrive in, so without this the department attributed to a
+          -- slot with duplicate rows could differ between two identical
+          -- requests. Unordered is not stable, even for the same plan.
+          -- (No backticks in here: this is inside a template literal.)
+          ORDER BY r.payroll_period_id, r.id
         `),
         /**
          * The existence probe, which answers the case the spec never states
