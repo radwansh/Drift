@@ -311,10 +311,22 @@ export function suppressed<T>(reason: KpiSuppression): Kpi<T> {
   return { ok: false, reason };
 }
 
+/**
+ * Why a paid slot is not comparable with its neighbours (spec 7.3, 7.6, 7.7).
+ *
+ * The one set K5-K8 exclude. It is a named type rather than three booleans so
+ * the mean's denominator and the labels printed beside it are derived from the
+ * same thing — they were computed separately once, and disagreed.
+ */
+export type SlotExclusionReason = "duplicate" | "final_settlement" | "possibly_prorated";
+
 /** K5: the mean, and the slots it had to leave out. */
 export interface AverageGross {
   mean: number;
-  /** |P(e)| excluding `duplicate` slots — the denominator actually used. */
+  /**
+   * The denominator actually used: |P(e)| minus every slot in `excludedLabels`
+   * — duplicates **and** the final settlement and possibly prorated slots.
+   */
   periods: number;
   excludedLabels: string[];
 }
@@ -328,7 +340,19 @@ export interface AtSlot {
 
 /** K7: the base rate per slot, and the movements in it. */
 export interface BaseRateHistory {
-  perSlot: { slotLabel: string; slotIndex: number; total: number }[];
+  perSlot: {
+    slotLabel: string;
+    slotIndex: number;
+    total: number;
+    /**
+     * Null when the slot is comparable. Otherwise why it is not: the slot stays
+     * in the history, because the history's job is "what was the base before
+     * July" and dropping the final month answers that question wrongly, but
+     * nothing may read a run rate or an "largest increase" ranking off a marked
+     * entry (§7.6, §7.7).
+     */
+    excluded: SlotExclusionReason | null;
+  }[];
   changes: ChangeLogEntry[];
 }
 

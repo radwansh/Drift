@@ -23,6 +23,7 @@ import {
   type Kpi,
   type PresenceResult,
   type Ratio,
+  type SlotExclusionReason,
 } from "./types";
 
 /**
@@ -100,44 +101,51 @@ function bridgeOf(paid: readonly EmployeeSlotRow[], decimals: number): GrossToNe
 }
 
 /**
- * K6's p*: the latest paid slot that is clean enough to read a run rate off.
+ * The slots K5-K8 must leave out, each with the reason it is out.
  *
- * Neither `duplicate` (summing two rows looks like a doubling), nor possibly
- * prorated (a part first month reads as a pay rise the following month), nor a
- * final settlement (severance, notice and a leave payout read as a 300% rise).
+ * Spec 7.6 and 7.7 both say "Exclude it from K5-K8": a `duplicate` slot
+ * (summing two rows looks like a doubling), a possibly prorated first slot (a
+ * part month reads as a pay rise the following month) and a final settlement
+ * (severance, notice and a leave payout read as a 300% rise).
+ *
+ * **One set, computed once, with the labels derived from it.** The exclusion set
+ * and the list of names shown beside the figure used to be two functions:
+ * K6's p* excluded all three kinds while K5's denominator excluded only
+ * duplicates, so a file whose January was clean, February duplicated and March
+ * a settlement printed a mean of 1,750 over 2 periods directly underneath the
+ * sentence "excluding Feb 2025, Mar 2025" — 75% above the honest 1,000 over 1.
+ * Deriving one from the other is what makes that disagreement unrepresentable.
  */
-function cleanLatestSlot(
+function exclusionsFor(
   slots: readonly EmployeeSlotRow[],
   presence: PresenceResult,
-): EmployeeSlotRow | undefined {
-  const excluded = new Set<number>();
-  if (presence.finalSettlementIndex !== null) excluded.add(presence.finalSettlementIndex);
-  if (presence.possiblyProratedIndex !== null) excluded.add(presence.possiblyProratedIndex);
-
-  const candidates = cleanPaidSlots(slots).filter((s) => !excluded.has(s.slot.index));
-  return candidates[candidates.length - 1];
-}
-
-/** The slots K5-K8 must leave out, with their labels for the UI to name. */
-function excludedLabels(
-  slots: readonly EmployeeSlotRow[],
-  presence: PresenceResult,
-): string[] {
-  const labels: string[] = [];
+): Map<number, SlotExclusionReason> {
+  const excluded = new Map<number, SlotExclusionReason>();
   for (const slot of slots) {
+    // Duplicate first: a slot can be both, and the duplicate rows are the
+    // reason the figure cannot be read at all.
     if (slot.kind === "duplicate") {
-      labels.push(slot.slot.label);
+      excluded.set(slot.slot.index, "duplicate");
       continue;
     }
     if (slot.kind !== "actual") continue;
-    if (
-      slot.slot.index === presence.finalSettlementIndex ||
-      slot.slot.index === presence.possiblyProratedIndex
-    ) {
-      labels.push(slot.slot.label);
+    if (slot.slot.index === presence.finalSettlementIndex) {
+      excluded.set(slot.slot.index, "final_settlement");
+    } else if (slot.slot.index === presence.possiblyProratedIndex) {
+      excluded.set(slot.slot.index, "possibly_prorated");
     }
   }
-  return labels;
+  return excluded;
+}
+
+/** Those slots' labels, in calendar order, for the UI to name beside a figure. */
+function excludedLabelsOf(
+  slots: readonly EmployeeSlotRow[],
+  excluded: ReadonlyMap<number, SlotExclusionReason>,
+): string[] {
+  return slots
+    .filter((slot) => excluded.has(slot.slot.index))
+    .map((slot) => slot.slot.label);
 }
 
 function ratio(
@@ -189,7 +197,13 @@ export function buildEmployeeKpis(opts: BuildEmployeeKpisOptions): EmployeeKpis 
   });
 
   const paid = paidSlots(slots);
+  // `clean` is P(e) minus duplicates; `comparable` is `clean` minus the final
+  // settlement and the possibly prorated slot — the set K5 to K8 are allowed to
+  // read. Both are needed: which of the two is empty is what tells
+  // `duplicate_slots_excluded` from `no_clean_slot`.
   const clean = cleanPaidSlots(slots);
+  const excluded = exclusionsFor(slots, presence);
+  const comparable = clean.filter((slot) => !excluded.has(slot.slot.index));
   const status: EmployeeStatus = presence.status;
 
   const exceptions: ExceptionCounts = { critical: 0, warning: 0, info: 0 };
@@ -229,25 +243,29 @@ export function buildEmployeeKpis(opts: BuildEmployeeKpisOptions): EmployeeKpis 
   const gross = sumSlots(paid, (s) => s.gross, decimals);
   const net = sumSlots(paid, (s) => s.net, decimals);
 
-  // K5. The denominator excludes `duplicate` slots from both halves, and the
-  // excluded slots come back by name so the UI can show the mean beside the
-  // recurring figure with the one-off periods named. It is never presented alone
-  // as "monthly salary": on samples/2025 E0002's twelve-month mean of 23,016.84
-  // sits 16.53% above the Jan-Jun run rate.
+  // K5. **The denominator is the same set the excluded labels name**, so the
+  // figure and the sentence beside it cannot contradict each other: numerator
+  // and denominator both come from `comparable`, and the labels from the set
+  // that produced it. It is never presented alone as "monthly salary": on
+  // samples/2025 E0002's twelve-month mean of 23,016.84 sits 16.53% above the
+  // Jan-Jun run rate.
   const averageGross: Kpi<AverageGross> =
-    clean.length === 0
-      ? suppressed("duplicate_slots_excluded")
+    comparable.length === 0
+      ? // Every paid slot duplicated is a different fact from "the only clean
+        // slot is a leaver's final run", and the reason has to say which.
+        suppressed(clean.length === 0 ? "duplicate_slots_excluded" : "no_clean_slot")
       : kpi<AverageGross>({
           mean: roundToMinorUnits(
-            sumSlots(clean, (s) => s.gross, decimals) / clean.length,
+            sumSlots(comparable, (s) => s.gross, decimals) / comparable.length,
             decimals,
           ),
-          periods: clean.length,
-          excludedLabels: excludedLabels(slots, presence),
+          periods: comparable.length,
+          excludedLabels: excludedLabelsOf(slots, excluded),
         });
 
-  // K6. The run rate, from a clean slot, with the slot named.
-  const pStar = cleanLatestSlot(slots, presence);
+  // K6. The run rate, from a clean slot, with the slot named. The latest member
+  // of the one exclusion set, never a second rule.
+  const pStar = comparable[comparable.length - 1];
   const recurringLatest: Kpi<AtSlot> = pStar
     ? kpi<AtSlot>({
         value: pStar.recurring,
@@ -260,11 +278,19 @@ export function buildEmployeeKpis(opts: BuildEmployeeKpisOptions): EmployeeKpis 
   // from gross: spec 8.1's July event is base +4.20%, housing +4.20%, transport
   // and meal flat, recurring +4.06%. The run-rate percentage is not the
   // increase percentage.
+  //
+  // §7.6 and §7.7 say "exclude it from K5-K8", and K7 is the one of the four
+  // where exclusion cannot mean omission: it is a **history**, answering "what
+  // was the base before July", and a base-rate audit that silently drops the
+  // final month is worse than one that labels it. So every paid slot stays and
+  // each carries the reason it is not comparable with its neighbours, which is
+  // what any later ranking or run rate has to read before it uses the series.
   const baseRate: Kpi<BaseRateHistory> = kpi<BaseRateHistory>({
     perSlot: paid.map((slot) => ({
       slotLabel: slot.slot.label,
       slotIndex: slot.slot.index,
       total: slot.byCategory.base_salary ?? 0,
+      excluded: excluded.get(slot.slot.index) ?? null,
     })),
     changes: changeLog.filter((entry) => entry.kind === "base_rate"),
   });

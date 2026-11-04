@@ -75,10 +75,55 @@ describe("K3 coverage, and the denominator every other figure uses", () => {
     expect(coverage.notUploaded).toBe(0);
 
     const mean = value(file.kpis.averageGrossPerPaidPeriod);
-    expect(mean.periods).toBe(11);
     expect(mean.mean).toBeCloseTo(4567.5, 1);
     // The wrong answer, kept here so the difference is on the record.
     expect(value(file.kpis.grossInRange) / 12).toBeCloseTo(4186.88, 1);
+
+    /**
+     * Ten, not eleven, and this is §7.6 rather than a denominator bug.
+     *
+     * December was uploaded and E0001 is not in it, so rule (c) — "the employee
+     * does not appear in the next covered slot" — marks November a final
+     * settlement, and §7.6 says to exclude it from K5-K8. K6's p* has always
+     * been October for this fixture; before this fix K5 alone still counted
+     * November, which is the disagreement the mean is now derived to prevent.
+     *
+     * The spec's own 8.2 arithmetic is unaffected: the gross is flat, so the
+     * mean is 4,567.50 over either denominator, and the point of the example —
+     * that the divisor is |P(e)| and never |R| = 12 — holds at 10 as it did at
+     * 11. The slot is named on screen rather than silently dropped.
+     */
+    expect(file.presence.finalSettlementIndex).toBe(11);
+    expect(mean.periods).toBe(10);
+    expect(mean.excludedLabels).toEqual(["Nov 2025"]);
+  });
+
+  /**
+   * The same arithmetic with nothing to exclude: twelve expected slots, eleven
+   * uploaded and paid, December never uploaded — so no rule of §7.6 fires and
+   * the denominator is the spec's eleven. |P(e)| = 11 against |R| = 12.
+   */
+  it("divides by eleven when the twelfth slot was never uploaded", () => {
+    const monthly = 50242.51 / 11;
+    const file = fileFor({
+      coveredMonths: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+      paid: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((m) =>
+        pay(m, {
+          gross: Number(monthly.toFixed(2)),
+          net: Number((monthly * 0.8).toFixed(2)),
+          components: { "Base Salary": Number(monthly.toFixed(2)) },
+        }),
+      ),
+    });
+
+    expect(file.kpis.coverage.expected).toBe(12);
+    expect(file.kpis.coverage.notUploaded).toBe(1);
+    expect(file.presence.finalSettlementIndex).toBeNull();
+
+    const mean = value(file.kpis.averageGrossPerPaidPeriod);
+    expect(mean.periods).toBe(11);
+    expect(mean.excludedLabels).toEqual([]);
+    expect(mean.mean).toBeCloseTo(4567.5, 1);
   });
 
   it("names the slots nobody uploaded, and keeps them out of covered", () => {
@@ -302,8 +347,18 @@ describe("KPI suppression is part of the return type", () => {
   });
 });
 
-describe("K5 names the slots it excluded", () => {
-  it("lists the duplicate and the final settlement by label", () => {
+describe("K5 names the slots it excluded, and divides by what is left", () => {
+  /**
+   * The exclusion set and the denominator are one thing, not two.
+   *
+   * This assertion was `periods: 2` under a comment reading "which leaves
+   * January alone as the honest denominator": `excludedLabels` named the
+   * duplicate **and** the settlement while the mean divided only duplicates
+   * out, so the card printed 1,750 over 2 periods directly beneath the sentence
+   * "excluding Feb 2025, Mar 2025" — 75% above the 1,000 the sentence claims.
+   * Spec 7.6 and 7.7 both say "Exclude it from K5-K8".
+   */
+  it("lists the duplicate and the final settlement, and counts neither", () => {
     const file = fileFor({
       coveredMonths: [1, 2, 3],
       paid: [
@@ -321,8 +376,87 @@ describe("K5 names the slots it excluded", () => {
 
     const mean = value(file.kpis.averageGrossPerPaidPeriod);
     expect(mean.excludedLabels.sort()).toEqual(["Feb 2025", "Mar 2025"]);
-    // Which leaves January alone as the honest denominator.
+    // January alone is the honest denominator, and 1,000 the honest mean.
+    expect(mean.periods).toBe(1);
+    expect(mean.mean).toBe(1000);
+    // The denominator can no longer disagree with the list beside it.
+    expect(mean.periods).toBe(file.kpis.coverage.paid - mean.excludedLabels.length);
+  });
+
+  it("excludes a possibly prorated first slot from the mean too (§7.7)", () => {
+    // A joiner hired on the 18th: January is "possibly prorated", so counting
+    // it in the mean reads a part month as this person's normal pay.
+    const file = fileFor({
+      coveredMonths: [1, 2, 3],
+      paid: [
+        pay(1, { gross: 580, net: 464, components: { "Base Salary": 580 }, hireDate: "2025-01-18" }),
+        pay(2),
+        pay(3),
+      ],
+    });
+
+    expect(file.presence.possiblyProratedIndex).toBe(1);
+    const mean = value(file.kpis.averageGrossPerPaidPeriod);
+    expect(mean.excludedLabels).toEqual(["Jan 2025"]);
     expect(mean.periods).toBe(2);
+    // 1,000, not the 860 that counting the part month gives.
+    expect(mean.mean).toBe(1000);
+  });
+
+  /**
+   * "Every paid period here has duplicate rows" and "the only clean period is a
+   * leaver's final run" are different facts, so they get different reasons —
+   * and K5 now shares K6's, because it now shares K6's exclusion set.
+   */
+  it("says no_clean_slot, not duplicate_slots_excluded, for a lone settlement", () => {
+    const file = fileFor({
+      coveredMonths: [1],
+      paid: [
+        pay(1, {
+          gross: 2500, net: 2300,
+          components: { "Base Salary": 1000, "Notice Pay": 1500, "Income Tax": 200 },
+        }),
+      ],
+    });
+    expect(reason(file.kpis.averageGrossPerPaidPeriod)).toBe("no_clean_slot");
+    expect(reason(file.kpis.recurringLatest)).toBe("no_clean_slot");
+  });
+});
+
+describe("K7 keeps the history whole and marks what is not comparable", () => {
+  /**
+   * §7.6 and §7.7 say "exclude it from K5-K8". For K7 that cannot mean
+   * omission: the history answers "what was the base before July", and one that
+   * silently drops the final month answers it wrongly. So the slot stays and
+   * carries its reason, which is what a later ranking has to read.
+   */
+  it("marks the duplicate and the final settlement without dropping either", () => {
+    const file = fileFor({
+      coveredMonths: [1, 2, 3],
+      paid: [
+        pay(1),
+        {
+          ...pay(2),
+          extraRows: [{ gross: 1000, net: 800, components: { "Base Salary": 1000 } }],
+        },
+        pay(3, {
+          gross: 2500, net: 2300,
+          components: { "Base Salary": 1000, "Notice Pay": 1500, "Income Tax": 200 },
+        }),
+      ],
+    });
+
+    const history = value(file.kpis.baseRate);
+    expect(history.perSlot.map((s) => s.slotLabel)).toEqual([
+      "Jan 2025",
+      "Feb 2025",
+      "Mar 2025",
+    ]);
+    expect(history.perSlot.map((s) => s.excluded)).toEqual([
+      null,
+      "duplicate",
+      "final_settlement",
+    ]);
   });
 });
 

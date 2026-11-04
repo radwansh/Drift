@@ -24,6 +24,21 @@ import type { ChangeLogEntry, ChangeLogKind, EmployeeSlotRow } from "./types";
  * noise standing in for a fact that is already on the page.
  */
 
+/**
+ * FTE is a ratio, not money, so its threshold is fixed rather than the
+ * currency's smallest unit.
+ *
+ * `smallestUnit(0)` is **1** on JPY, KRW, VND and XAF, so a full-time to
+ * half-time conversion — a delta of 0.5 — did not clear the bar and was never
+ * logged at all on those currencies. Three decimals is finer than any register
+ * writes an FTE in and coarse enough to swallow the float residue of
+ * `1 - 0.9`.
+ */
+const FTE_EPSILON = 0.001;
+
+/** Minor units are for money; an FTE delta is rounded on its own scale. */
+const FTE_DECIMALS = 3;
+
 function pct(current: number, previous: number, decimals: number): number | null {
   if (previous === 0) return null;
   return roundToMinorUnits(((current - previous) / Math.abs(previous)) * 100, decimals);
@@ -171,15 +186,18 @@ export function buildChangeLog(opts: BuildChangeLogOptions): ChangeLogEntry[] {
     }
 
     if (previous.fte !== null && current.fte !== null) {
-      const delta = current.fte - previous.fte;
-      if (Math.abs(delta) > q) {
+      const delta = roundToMinorUnits(current.fte - previous.fte, FTE_DECIMALS);
+      if (Math.abs(delta) > FTE_EPSILON) {
         entries.push({
           ...at("fte"),
           key: null,
           previous: previous.fte,
           current: current.fte,
           absolute: delta,
-          percentage: pct(current.fte, previous.fte, decimals),
+          // A percentage of a ratio is still a percentage, so it is rounded on
+          // the percentage's own scale and not the currency's: on JPY,
+          // `decimals` is 0 and a 1.0 -> 0.875 change printed as -13%.
+          percentage: pct(current.fte, previous.fte, FTE_DECIMALS),
         });
       }
     } else if (previous.fte === null && current.fte !== null) {

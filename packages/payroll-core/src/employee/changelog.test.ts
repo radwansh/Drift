@@ -207,6 +207,45 @@ describe("what counts as a change", () => {
     expect(appeared?.current).toBe(0.8);
   });
 
+  /**
+   * FTE is a ratio, not money, so it is compared against a fixed epsilon.
+   *
+   * Against the currency's smallest unit, `smallestUnit(0)` is **1** on JPY,
+   * KRW, VND and XAF — so `|1 - 0.5| > 1` was false and a full-time to
+   * half-time conversion was never logged at all on those currencies.
+   */
+  it("logs an FTE change on a zero-decimal currency, where q is 1", () => {
+    const jpy = minorUnits("JPY");
+    expect(jpy).toBe(0);
+
+    const { periods } = buildYear(2025, [pay(1), pay(2)], "E1");
+    const rows = [
+      ...monthRows(2025, { ...pay(1), fte: 1, currency: "JPY" }, "E1"),
+      ...monthRows(2025, { ...pay(2), fte: 0.5, currency: "JPY" }, "E1"),
+    ];
+    const slots = buildEmployeeSlots({
+      expected, periods, cadence: "monthly", rows,
+      resolve: resolveEmployeeCategory(), decimals: jpy,
+    });
+
+    const entry = buildChangeLog({ slots, decimals: jpy }).find((e) => e.kind === "fte");
+    expect(entry?.previous).toBe(1);
+    expect(entry?.current).toBe(0.5);
+    expect(entry?.absolute).toBe(-0.5);
+    // The percentage is on the percentage's own scale, not the currency's:
+    // rounded to whole yen it came back as -50 either way, but a 1.0 -> 0.875
+    // change rounded to -13%.
+    expect(entry?.percentage).toBe(-50);
+  });
+
+  it("ignores a float residue below the FTE epsilon", () => {
+    const entries = logFor({
+      coveredMonths: [1, 2],
+      paid: [pay(1, { fte: 0.3 }), pay(2, { fte: 0.1 + 0.2 })],
+    });
+    expect(entries.some((e) => e.kind === "fte")).toBe(false);
+  });
+
   it("logs a dimension change on either side", () => {
     const log = logFor({
       coveredMonths: [1, 2],
