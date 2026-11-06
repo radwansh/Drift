@@ -1,10 +1,8 @@
-import { auth } from "@clerk/nextjs/server";
-import { requireDb } from "@saas/db";
 import { Sidebar } from "@/components/shared/sidebar";
 import { Navbar } from "@/components/shared/navbar";
 import { PayrollStoreProvider } from "@/lib/payroll-store";
 import { SidebarProvider } from "@/lib/sidebar-context";
-import { ensureUser } from "@/server/ensure-user";
+import { currentAccount } from "@/server/current-account";
 
 // Every page below this layout is tenant-specific and auth-dependent. Without this
 // they build as static pages, which previously caused a cached-auth incident.
@@ -22,13 +20,14 @@ export const dynamic = "force-dynamic";
  * hides the gated link rather than showing one that throws FORBIDDEN on click.
  * It never redirects: the pages below handle an unusable account themselves,
  * and a redirect from a layout would hide the reason.
+ *
+ * Through `currentAccount`, which is `cache()`d per request — so this and the
+ * page it wraps resolve the same user once between them instead of once each.
  */
 async function resolveRole(): Promise<string | null> {
   try {
-    const { userId } = await auth();
-    if (!userId) return null;
-    const account = await ensureUser(requireDb(), userId);
-    return account.role;
+    const account = await currentAccount();
+    return account?.role ?? null;
   } catch {
     return null;
   }

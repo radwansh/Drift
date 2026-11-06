@@ -1,13 +1,11 @@
 import { redirect } from "next/navigation";
-import { auth, currentUser } from "@clerk/nextjs/server";
-import { requireDb } from "@saas/db";
 import { EmployeeList } from "@/components/employee-file/employee-list";
 import {
   AccountUnavailable,
   NotAvailableForRole,
 } from "@/components/employee-file/employee-file-panels";
 import { canReadPayDetail } from "@/lib/roles";
-import { ensureUser } from "@/server/ensure-user";
+import { currentAccount } from "@/server/current-account";
 
 /**
  * The employee list (step E1 of docs/EMPLOYEE_FILE_PLAN.md).
@@ -20,24 +18,29 @@ import { ensureUser } from "@/server/ensure-user";
 export const dynamic = "force-dynamic";
 
 export default async function EmployeesPage() {
-  const authResult = await auth();
-  // The only redirect: genuinely not signed in.
-  if (!authResult.userId) redirect("/login");
-
-  const db = requireDb();
-  const clerk = await currentUser();
-
+  /**
+   * One account lookup per request, shared with `(main)/layout.tsx`.
+   *
+   * The layout resolves the same user to gate the sidebar, so this page used to
+   * cost a second identical query plus a second `currentUser()` call to Clerk
+   * for a profile `ensureUser` only reads on the create path. `currentAccount`
+   * is `cache()`d per request, so the two now share one lookup and no Clerk
+   * request at all on the common path.
+   *
+   * `redirect()` throws a control-flow error, so it stays **outside** the
+   * `catch` — inside, the catch would swallow it and render the unavailable
+   * panel to somebody who is merely signed out.
+   */
   let account;
   try {
-    account = await ensureUser(db, authResult.userId, {
-      email:
-        clerk?.primaryEmailAddress?.emailAddress ?? clerk?.emailAddresses[0]?.emailAddress ?? null,
-      name: [clerk?.firstName, clerk?.lastName].filter(Boolean).join(" ") || null,
-    });
+    account = await currentAccount();
   } catch (error) {
     console.error("Employee File: could not resolve the signed-in account:", error);
     return <AccountUnavailable />;
   }
+
+  // The only redirect: genuinely not signed in.
+  if (!account) redirect("/login");
 
   // The server-side role check. `payDetailProcedure` refuses the data anyway,
   // so this is about what a viewer *reads* when they follow a stale bookmark.

@@ -1,6 +1,4 @@
 import { redirect } from "next/navigation";
-import { auth, currentUser } from "@clerk/nextjs/server";
-import { requireDb } from "@saas/db";
 import { EmployeeFileView } from "@/components/employee-file/employee-file-view";
 import {
   AccountUnavailable,
@@ -8,7 +6,7 @@ import {
 } from "@/components/employee-file/employee-file-panels";
 import { decodeEmployeeId } from "@/components/employee-file/employee-id-url";
 import { canReadPayDetail } from "@/lib/roles";
-import { ensureUser } from "@/server/ensure-user";
+import { currentAccount } from "@/server/current-account";
 
 /** Set again rather than inherited from the layout, for the reason in `page.tsx`. */
 export const dynamic = "force-dynamic";
@@ -18,23 +16,17 @@ export default async function EmployeeFilePage({
 }: {
   params: Promise<{ externalId: string }>;
 }) {
-  const authResult = await auth();
-  if (!authResult.userId) redirect("/login");
-
-  const db = requireDb();
-  const clerk = await currentUser();
-
+  // Shared with the layout's own lookup, for the reason in `page.tsx`, and
+  // `redirect()` stays outside the catch for the same one.
   let account;
   try {
-    account = await ensureUser(db, authResult.userId, {
-      email:
-        clerk?.primaryEmailAddress?.emailAddress ?? clerk?.emailAddresses[0]?.emailAddress ?? null,
-      name: [clerk?.firstName, clerk?.lastName].filter(Boolean).join(" ") || null,
-    });
+    account = await currentAccount();
   } catch (error) {
     console.error("Employee File: could not resolve the signed-in account:", error);
     return <AccountUnavailable />;
   }
+
+  if (!account) redirect("/login");
 
   if (!canReadPayDetail(account.role)) return <NotAvailableForRole />;
 
