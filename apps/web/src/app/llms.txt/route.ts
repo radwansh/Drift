@@ -12,6 +12,7 @@ import {
   SITE,
   money,
 } from "@/components/marketing/content";
+import { POSTS } from "@/components/marketing/posts";
 import { launch } from "@/config/launch";
 
 /**
@@ -131,16 +132,42 @@ function body(): string {
   push(
     "## Policies",
     "",
-    "These four pages are published and reachable, but the documents themselves are still being",
-    "written and will go up before Clarivo leaves beta. For a procurement review, a DPA or a",
-    `security questionnaire now, Clarivo sends the current position in writing: ${SITE.email}.`,
-    "",
-    `- [Security](${url("/security")}): Where payroll data is hosted, how it is encrypted and separated between companies, who can reach it, and how deletion works.`,
+    `- [Security](${url("/security")}): Where payroll data is hosted, how it is encrypted and separated between companies, who can reach it, and how deletion works. Written in full.`,
     `- [Privacy policy](${url("/privacy")}): How Clarivo handles the payroll data you upload.`,
     `- [Terms](${url("/terms")}): The terms on which Clarivo is provided during the beta and afterwards.`,
     `- [Data processing agreement](${url("/dpa")}): The data processing agreement between Clarivo and your company.`,
     "",
+    "The security page states Clarivo's current position in full. The other three are published and",
+    "reachable, but the documents themselves are still being written and will go up before Clarivo",
+    "leaves beta. For a procurement review, a DPA or a security questionnaire now, Clarivo sends the",
+    `current position in writing: ${SITE.email}.`,
+    "",
   );
+
+  /**
+   * The posts, from the same `POSTS` registry the listing, each post's metadata
+   * and the sitemap read. Listing them here is the point of the section: an
+   * assistant asked how to compare two payroll periods has a page to cite, and
+   * without this it has the home page and nothing else.
+   *
+   * Reading titles and descriptions from the registry rather than restating
+   * them means a reworded post cannot end up described two ways on one site —
+   * the failure this file is otherwise wide open to, because nothing would
+   * catch it.
+   *
+   * No per-post prose beyond the description: `## Writing` is a pointer, not a
+   * summary of each argument. An assistant that wants the argument has the URL.
+   */
+  push("## Writing", "");
+  push(
+    `Payroll articles, written for the people who check a register rather than for search engines.`,
+    "",
+    `- [All posts](${url("/blog")}): The index.`,
+  );
+  POSTS.forEach((post) => {
+    push(`- [${post.title}](${url(`/blog/${post.slug}`)}): ${post.description}`);
+  });
+  push("");
 
   push("## How it works", "");
   HOW_IT_WORKS.steps.forEach((step, index) => {
@@ -232,9 +259,13 @@ function body(): string {
   confirmedSecurityPoints.forEach((point) => push(`- **${point.title}.** ${point.copy}`));
   push(
     "",
-    "Clarivo states only the points above today. Anything further — hosting location, sign-in",
-    "verification, role-based access and deletion on request — is covered by the security page and",
-    "the data processing agreement once those are published, or in writing on request before then.",
+    "Clarivo states the points above and nothing beyond them. The security page explains each one in",
+    `detail — where the data sits, and what separation means on each request: ${url("/security")}.`,
+    "",
+    "A claim appears on this list only once it is true end to end, so the absence of a point is not a",
+    "statement that the control is missing; several are built and waiting on review. Anything not",
+    "listed is unclaimed rather than denied. The data processing agreement covers the rest once it is",
+    `published, and until then Clarivo sends its current position in writing: ${SITE.email}.`,
     "",
   );
 
