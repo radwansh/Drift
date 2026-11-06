@@ -65,6 +65,15 @@ describe("migration idempotency (finding B2, step 30)", () => {
    * just 0004 — because drizzle keys applied migrations on a hash of the file,
    * so editing any migration makes it run again on a database that already had
    * it. Guarding all of them means that is always a no-op rather than an outage.
+   *
+   * The explicit timeout matches the `beforeAll` below, and for the same
+   * reason. This applies every migration in the folder three times over, so its
+   * cost grows with the folder: measured alone it is ~2,000ms, but inside
+   * `turbo typecheck lint test --continue --force`, with three vitest projects
+   * running in parallel, it exceeded the 30,000ms this package sets as its
+   * default and failed a gate that had nothing to do with migrations. The
+   * timeout is here to catch a migration that hangs, not to bound how long
+   * replaying the whole folder is allowed to take under load.
    */
   it("re-runs every migration as a no-op", async () => {
     const pg = new PGlite();
@@ -77,7 +86,7 @@ describe("migration idempotency (finding B2, step 30)", () => {
     } finally {
       await pg.close();
     }
-  });
+  }, 180_000);
 });
 
 /**
