@@ -144,10 +144,19 @@ export async function ensureUser(
     where: eq(users.clerkUserId, clerkUserId),
   });
   if (!row) {
-    // The insert was dropped and no row exists for this Clerk id, so the
-    // collision was on `email` against a row belonging to someone else.
+    /**
+     * The insert was dropped and no row exists for this Clerk id, so the
+     * collision was on `email` against a row belonging to someone else.
+     *
+     * **The address is not in the message.** Three call sites log this error
+     * with `console.error`, so putting it here publishes an email address into
+     * the server log of every page view that hits this branch — against
+     * CLAUDE.md's rule, and for no gain: the Clerk id identifies the account,
+     * and the one query that resolves it to an address is available to whoever
+     * is debugging.
+     */
     throw new Error(
-      `Could not provision a user for Clerk user ${clerkUserId}: the address ${email} is already in use by another account.`,
+      `Could not provision a user for Clerk user ${clerkUserId}: its email address is already in use by another account.`,
     );
   }
   return row;

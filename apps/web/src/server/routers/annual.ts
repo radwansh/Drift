@@ -26,8 +26,8 @@ import {
   normaliseFiscalStartMonth,
 } from "@saas/payroll-core";
 import { generateAnnualInsights, DEFAULT_MODEL, isAiAvailable, type AnnualInsightPayload } from "@saas/ai";
-import { memberProcedure, editorProcedure, adminProcedure, router, type MemberContext } from "../trpc";
-import { parseRows } from "../parse-rows";
+import { memberProcedure, editorProcedure, payDetailProcedure, router, type MemberContext } from "../trpc";
+import { parseRows, Numeric, IntLike, toIsoDate, toIsoTimestamp } from "../parse-rows";
 import { CategoryEnum } from "../categories";
 import { buildAnnualWorkbook, annualWorkbookSheets } from "../export/annual-workbook";
 import { limitInsightGeneration } from "../rate-limit";
@@ -53,8 +53,12 @@ const CurrencyCodeSchema = z
 // written, so every query below aliases snake_case to camelCase and parses the
 // result with one of these schemas. Never cast a raw row with `as unknown as`: the
 // keys and the declared type drift apart silently, which is finding C1.
-const Numeric = z.union([z.string(), z.number()]).transform(Number);
-const IntLike = z.union([z.string(), z.number()]).transform((v) => Math.trunc(Number(v)));
+//
+// `Numeric`, `IntLike`, `toIsoDate` and `toIsoTimestamp` moved to
+// `server/parse-rows.ts`: the Employee File's queries need all four, and a
+// second copy is a second thing to keep in step with the alias-and-parse rule.
+// Re-exported here so nothing that reached for them through this module breaks.
+export { Numeric, IntLike, toIsoDate, toIsoTimestamp };
 
 const PeriodRowSchema = z.object({
   id: z.string(),
@@ -106,25 +110,6 @@ const SetupRowSchema = z.object({
   currencyCode: z.string(),
   periodEnd: z.union([z.string(), z.date()]).transform(toIsoDate),
 });
-
-function toIsoDate(v: string | Date): string {
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
-  // Postgres `date` arrives as "YYYY-MM-DD"; keep it verbatim rather than passing
-  // it through Date, which would shift it by the local timezone offset.
-  return v.length >= 10 ? v.slice(0, 10) : v;
-}
-
-function toIsoTimestamp(v: string | Date): string {
-  if (v instanceof Date) return v.toISOString();
-  const parsed = new Date(v);
-  if (Number.isNaN(parsed.getTime())) {
-    throw new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
-      message: `Unparseable timestamp from database: ${JSON.stringify(v)}`,
-    });
-  }
-  return parsed.toISOString();
-}
 
 // `parseRows` moved to `server/parse-rows.ts`: step 4's check badge on the
 // periods list needs the same guarantee, and a second copy would be a second
@@ -1097,7 +1082,15 @@ export const annualRouter = router({
    * gated on the admin role rather than the editor roles — a manager can change
    * company settings without being able to read every salary.
    */
-  drillDownEmployees: adminProcedure
+  /**
+   * Admin and manager (step A2 of docs/EMPLOYEE_FILE_PLAN.md).
+   *
+   * Was `adminProcedure`. Leaving it there would reproduce the Employee File's
+   * seam one screen over, for the same data: a manager who may read a full year
+   * of one person's gross, net and every component cannot sensibly be refused a
+   * drill-down showing a subset of it.
+   */
+  drillDownEmployees: payDetailProcedure
     .input(z.object({
       year: z.number().int().min(2000).max(2100),
       periodType: PeriodTypeSchema,

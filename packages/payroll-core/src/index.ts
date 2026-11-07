@@ -9,5 +9,6 @@ export * from "./anomaly-detector";
 export * from "./aggregator";
 export * from "./comparator";
 export * from "./annual";
+export * from "./employee";
 export * from "./ingest";
 export * from "./reconcile";

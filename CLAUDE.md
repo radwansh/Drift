@@ -4,10 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Drift — multi-tenant SaaS for payroll. Two features share one data model:
+Drift — multi-tenant SaaS for payroll. Three features share one data model:
 
 - **Comparison** — upload a payroll file per period; the app matches employees across two periods, diffs salary components, flags anomalies, and renders a dashboard with an AI-written narrative.
 - **Annual salaries** — calendar- or fiscal-year totals for one company, with a forecast for the rest of the year, department and statutory breakdowns, a budget, and written insights.
+- **Employee File** — a read-only per-person payroll record assembled across periods, keyed on `employee_snapshots.employee_external_id`: every slot in the range with its kind, the gross-to-net bridge, the reconciliation tie-outs, the component history and the KPIs. It forecasts nothing and writes nothing, and there is **no AI narrative on it** — see `docs/EMPLOYEE_FILE_PLAN.md`.
 
 pnpm workspaces + Turborepo. Node >= 22, pnpm pinned to 11.8.0 via `packageManager`.
 
@@ -105,6 +106,8 @@ fiscal.ts     fiscal-year boundaries; every year rule goes through here
 
 **`kind` on a period row is four-valued**: `actual`, `estimated` (a past slot with no upload, projected), `forecast` (the future), `missing` (a past gap left unestimated). The UI draws each differently; a missing month must never silently vanish from a chart.
 
+The Employee File's `kind` is also four-valued and is a **different** four: `actual`, `duplicate`, `not_paid`, `missing` (`packages/payroll-core/src/employee/types.ts`). There is no `estimated`, because estimating one person's missing month is inventing a payment to an individual; and no `forecast`, because the file forecasts nothing. The two types are deliberately not shared — they look alike, and a substitution between them is exactly how an invented figure would reach one employee's record.
+
 ### Request flow
 
 ```
@@ -113,6 +116,9 @@ upload  -> apps/web/src/app/api/upload/route.ts
         -> employee_snapshots rows + period_component_totals aggregates
 compare -> tRPC comparisons.run -> runComparison() -> comparison_runs + comparison_results
 annual  -> tRPC annual.getSummary -> computeSummary() -> rendered by components/annual/*
+employee file
+        -> tRPC employeeFile.list / employeeFile.get
+        -> packages/payroll-core/src/employee/* -> components/employee-file/*
 ```
 
 tRPC is the only app API surface (`/api/trpc/[trpc]`); routers live in `apps/web/src/server/routers/`. The `api/webhooks/*` and `api/test-*` routes are the exceptions.
@@ -127,7 +133,12 @@ Every tenant-scoped table carries `companyId`. There is **no row-level security 
 | `protectedProcedure` | signed in | when you only need `ctx.userId` and `ctx.db` |
 | `memberProcedure` | signed in | **the default.** Resolves the user once and puts `ctx.companyId` and `ctx.currentUser` on the context |
 | `editorProcedure` | admin, manager | any company-wide write (categories, budget, settings, AI generation) |
-| `adminProcedure` | admin | individual employee data |
+| `payDetailProcedure` | admin, manager | reading an individual's pay detail (`employees.*`, `annual.drillDownEmployees`, `employeeFile.*`) |
+| `adminProcedure` | admin | reserved; nothing uses it after the Employee File change |
+
+`payDetailProcedure` is deliberately not `editorProcedure`, even though the two role lists are identical today: `EDITOR_ROLES` means "may change company-wide settings", and sharing the constant would make a later change to who sets the budget silently change who reads every salary.
+
+**`comparisons.getById` is the widest employee-level surface in the product, and it is a `memberProcedure`.** It returns every `comparison_results` row — employee name, gross, net, per-component deltas — to any signed-in member, viewers included, and the Dashboard and Detailed View are built on it. So the role table above describes `employees.*` and the annual drill-down, not the product's actual exposure of individual pay. Narrowing `comparisons.getById` would remove the Dashboard and Detailed View from viewers, which is a product decision rather than a tidy-up; do not change it as part of unrelated work.
 
 Prefer `memberProcedure` over `protectedProcedure` in new code: it supplies `companyId` and saves a query. Forgetting to scope by `companyId` is a cross-tenant data leak, not just a bug.
 
@@ -147,11 +158,31 @@ Prefer `memberProcedure` over `protectedProcedure` in new code: it supplies `com
 
 The summary is memoised per inputs for 30s per instance, keyed including `companyId`. `apps/web/test/annual-router.test.ts` asserts the round-trip budget, so a new sequential `await` in that path will fail the test rather than quietly costing a request.
 
+`employeeFile.list` and `employeeFile.get` cost **3 each** on the same pattern: the middleware's user lookup, one scope batch (`server/employee-file/scope.ts`), and one data batch — with the access-log insert riding inside the data batch, so logging the read costs nothing on the normal path. It is **not** immune to being skipped, though: both procedures have an early return for a scope with no periods to read (`IN ()` is a Postgres syntax error), and the list's used to return before the batch was built and log nothing at all. Each empty path now spends its third request on the insert alone, which keeps it at the budget rather than over it. `apps/web/test/employee-file-router.test.ts` asserts `toBe(3)` for all four paths, counting the middleware lookup, which is the convention `annual-router.test.ts` uses even though the prose above counts only the batches — exact rather than `<=`, since 0 passed a `<=` assertion too and a shim that stopped counting would have left the tests green. Neither Employee File procedure is memoised, deliberately: the list and the file are different pages with different inputs, so a memo would add a cache-invalidation surface and save nothing.
+
 ### Per-period aggregates, with a fallback
 
 `period_component_totals` holds per-period, per-department component totals (with sign-split row counts). It is written at upload by `rebuildPeriodComponentTotals()`, before the period is marked `ready`, so a period is never visible without its aggregates.
 
 The annual queries read that table and **fall back to aggregating `employee_snapshots` live** for any period with no rows in it. Keep the fallback: it is what makes a deploy safe before `pnpm db:backfill-period-totals` has caught up, and keeps periods written by older builds correct. Both halves must stay numerically identical — there is a test that takes a summary on each path and compares them.
+
+**That dual path is specific to the annual feature. Do not copy it into the Employee File.** `period_component_totals` is per-period, per-**department**: it has no employee dimension and no gross or net columns, so it cannot answer a per-person question at all. The Employee File reads `employee_snapshots` exclusively — one path, nothing to write, and nothing to keep numerically identical.
+
+### Duplicate employee rows: three answers, on purpose
+
+One employee with two rows in one period is handled **three different ways** in this repo, and the inconsistency is recorded rather than fixed:
+
+| Where | What it does |
+|---|---|
+| `comparator.ts:35` | **refuses** — throws `DuplicateEmployeeIdsError` |
+| `routers/annual.ts:162` and `packages/db/src/aggregates/periodComponentTotals.ts:29` | keeps **one** row, via `DISTINCT ON (...) ORDER BY created_at DESC` |
+| Employee File (`packages/payroll-core/src/employee/`) | **sums every row** and flags the slot `duplicate`, excluding it from every average and delta |
+
+The fact that makes the middle answer indefensible: `processUpload` inserts every row of a period in **one statement** and `created_at` defaults to transaction time, so all the rows of a period share a timestamp and the `created_at DESC` tie-break picks an arbitrary row — possibly a different one between runs. There is no `DISTINCT ON` anywhere in the Employee File for that reason.
+
+`payroll_periods.total_gross` is the sum of **every** row (`processor.ts:195` and `:225`), so summing duplicates is what ties to the register. **The Employee File is authoritative for the register tie-out**, and where duplicates exist it and the annual dashboard now disagree by design, by the value of the dropped rows. The file states that gap, its cause and which figure reconciles; do not "fix" one side without reading `docs/EMPLOYEE_FILE_PLAN.md` decision 5 first.
+
+One more thing worth knowing before chasing this: **duplicate rows can no longer be uploaded.** `validateRows` treats a repeated employee id as an error and `payrollPeriods.ingest` refuses before writing, so duplicates in `employee_snapshots` are data from before that gate existed. `apps/web/test/employee-file-fixtures.test.ts` pins both halves.
 
 ### Testing against a database
 
@@ -187,13 +218,23 @@ The same shape applies elsewhere, and new features should follow it:
 
 Postgres `numeric` -> Drizzle returns **strings**. Conversion happens at the boundary: `Number(s.grossSalary)` going into `payroll-core`, `String(gross)` coming back. `payroll-core` works in `number` throughout.
 
-On screen, use the formatters in `apps/web/src/components/annual/annual-utils.ts` — `formatMoney`, `formatCompact`, `formatAxisMoney`, `formatDays`, `formatPct`. They all use `currencyDisplay: "code"`, so it is always `USD 1,234.56` and never `$1,234.56`; mixing the two in one card is the bug they exist to prevent. `formatCompact` has a billions step (an LBP company otherwise shows a clipped `600000.0M`), and `formatDays` rounds to one decimal (absence days are summed from floats and print as `44.540000000000006` raw).
+On screen, use the formatters in `apps/web/src/components/annual/annual-utils.ts` — `formatMoney`, `formatCompact`, `formatAxisMoney`, `formatDays`, `formatPct`, `formatRatio`. They all use `currencyDisplay: "code"`, so it is always `USD 1,234.56` and never `$1,234.56`; mixing the two in one card is the bug they exist to prevent. `formatCompact` has a billions step (an LBP company otherwise shows a clipped `600000.0M`), and `formatDays` rounds to one decimal (absence days are summed from floats and print as `44.540000000000006` raw).
+
+**Not every number on a payroll screen is money.** `formatRatio` is for the ones that are not — an FTE above all. The Employee File's change log ran `formatMoney` over every numeric value, so a part-time conversion printed as `USD 1.00 → USD 0.50 (USD -0.50, -50.0%)`. For the same reason an FTE movement in `employee/changelog.ts` is compared against a fixed `0.001` epsilon and not `smallestUnit(decimals)`: on JPY, KRW, VND and XAF that unit is **1**, so a 1.0 → 0.5 change never cleared it and was never logged at all. A tooltip is a figure too — pass it through a formatter rather than `toFixed(2)`, which drops the fils on KWD and invents two decimals on JPY.
 
 ### Charts and accessibility
 
 Wrap every chart in `components/annual/chart-frame.tsx`: it supplies `role="img"`, a label, and a visually hidden data table carrying the same numbers. Recharts emits an SVG with no semantics of its own.
 
 Set chart colours with explicit `fill`/`stroke` props, **not** a Tailwind `className` — Recharts does not apply classes to legend marks, so they render black and disappear in dark mode.
+
+`components/annual/chart-frame.tsx` and `annual-utils.ts` are **shared presentation primitives, not part of the gated annual dashboard** — the Employee File imports both in place rather than copying or moving them.
+
+### `saved_views` is dead schema
+
+Nothing in the app reads or writes `saved_views`. The only references are the table definition, its export from `packages/db/src/schema/index.ts`, and migration `0000`. **Column preferences actually live in `localStorage`** — `drift_saved_views` for the detailed view (`apps/web/src/hooks/use-saved-views.ts`) and `drift_employee_columns` for the Employee File list (`use-employee-columns.ts`). Persisting a new preference there is the pattern to follow; wiring `saved_views` up is a migration-shaped decision, not a tidy-up.
+
+The detailed view's column picker is also not reusable as a component: its model is `{component, visible, mode}` where `mode` is `current | previous | side_by_side | delta_only`, which is comparison semantics. Reusing it for a list renders four meaningless mode buttons per column, which is why the Employee File has its own.
 
 ### No build step for library packages
 
@@ -223,7 +264,13 @@ Steps 1–47 are done. Outstanding: **step 48** (the release itself — needs Gi
 
 `.github/workflows/deploy.yml` should be deleted (it duplicates Vercel's Git integration and fails); the removal was blocked locally.
 
+## The Employee File plan and its spec
+
+`docs/EMPLOYEE_FILE_PLAN.md` is a 34-step implementation plan in seven phases; `docs/EMPLOYEE_FILE_SPEC.md` is the payroll spec it checks against. Read it the same way as the annual review: **most of the shapes in this feature are the result of a numbered finding**, and the plan's section 1 lists eleven places where the spec and the codebase disagreed, each with what was done instead. Commit messages cite them (`feat(employee-file): …`, findings `F1`-`F11`).
+
+The narrowings worth knowing before changing anything here: the list's flag column is the three SQL-expressible flags only (F5 — the identity breaches need the classifier and live on the file page); there is **no AI narrative and no "all clear" badge** (F11, spec section 10); the export, the dimension columns and filters, and the §7.4 id-change badge are deferred, each with its reason; and `annual.ts:1113`'s `MAX(employee_name)` is the **alphabetical** maximum rather than the latest, so do not copy it — use `(array_agg(employee_name ORDER BY period_end DESC, created_at DESC))[1]`.
+
 ## Other directories
 
-- `samples/` — `payroll_june_2026.csv` / `payroll_july_2026.csv`, usable as upload fixtures
+- `samples/` — upload fixtures, with a README: `payroll_june_2026.csv` / `payroll_july_2026.csv` for the comparison (**July does not reconcile and the upload gate refuses it**, by design — see `samples/README.md`), `2025/` for the annual year, and `employee-file/` for the Employee File's duplicate-row and re-upload cases
 - `Drift Website/` — standalone static landing page, unrelated to the Next.js app and outside the pnpm workspace

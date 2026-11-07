@@ -1,6 +1,7 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import { auth } from "@clerk/nextjs/server";
 import { db, requireDb } from "@saas/db";
+import { EDITOR_ROLES, PAY_DETAIL_ROLES } from "@/lib/roles";
 import { ensureUser } from "./ensure-user";
 
 export async function createContext() {
@@ -24,8 +25,16 @@ const isAuthenticated = t.middleware(async ({ ctx, next }) => {
 
 export const protectedProcedure = t.procedure.use(isAuthenticated);
 
-/** Roles that may change company-wide settings. Viewers are read-only. */
-export const EDITOR_ROLES = ["admin", "manager"] as const;
+/**
+ * Both role sets come from `lib/roles.ts` and are re-exported here, so every
+ * existing `from "../trpc"` import keeps working.
+ *
+ * They live in a dependency-free module because `lib/constants.ts` needs
+ * `PAY_DETAIL_ROLES` to gate the sidebar entry, and `lib/constants.ts` is
+ * imported by a client component — importing this file from there would pull
+ * Clerk's server SDK and the Neon driver into the client bundle.
+ */
+export { EDITOR_ROLES, PAY_DETAIL_ROLES };
 
 /**
  * Loads the caller's user row once and attaches it to the context.
@@ -72,15 +81,55 @@ export const editorProcedure = memberProcedure.use(async ({ ctx, next }) => {
 });
 
 /**
- * Admin-only (step 44). Stricter than editor: employee-level pay is the one
- * thing the annual feature exposes about individuals, so a manager who can edit
- * company settings should not automatically be able to read every salary.
+ * Admin and manager, both full pay detail (Employee File, step A1).
+ *
+ * `PAY_DETAIL_ROLES` is defined in `lib/roles.ts` and re-exported above.
+ *
+ * Replaces `adminProcedure` on `employees.*` and `annual.drillDownEmployees`.
+ * The rule it relaxes was never actually a rule: `comparisons.getById` is a
+ * `memberProcedure` that returns every `comparison_results` row — name, gross,
+ * net, per-component deltas — to any signed-in member, viewers included, and
+ * the Dashboard and Detailed View are built on it. So admin-only here protected
+ * nothing while costing coherence.
+ *
+ * "Manager" cannot mean "my team": Clarivo stores no reporting line, so a
+ * manager reads the whole company. `employee_file_access_log` is the control
+ * that makes that defensible, which is why the Employee File's reads are logged
+ * inside the same batch as their data queries.
+ *
+ * The message must not contain the words "admin role" on its own: two existing
+ * suites match a refusal on /FORBIDDEN|admin role/i and this one has to be
+ * distinguishable from `adminProcedure`'s.
+ */
+export const payDetailProcedure = memberProcedure.use(async ({ ctx, next }) => {
+  if (!PAY_DETAIL_ROLES.includes(ctx.currentUser.role as (typeof PAY_DETAIL_ROLES)[number])) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Reading individual pay detail requires the admin or manager role.",
+    });
+  }
+  return next({ ctx });
+});
+
+/**
+ * Admin-only. Reserved: nothing in the app uses it after the Employee File
+ * change moved `employees.*` and `annual.drillDownEmployees` onto
+ * `payDetailProcedure`.
+ *
+ * Kept rather than deleted because user and role administration belongs behind
+ * it and currently is not — `auth.inviteUser` hand-rolls its own
+ * `role !== "admin"` check — so removing the export would widen that change.
+ *
+ * Its previous comment claimed employee-level pay was admin-only because "a
+ * manager who can edit company settings should not automatically be able to
+ * read every salary". That is the policy `payDetailProcedure` reverses; the
+ * comment is corrected here rather than left to contradict the code.
  */
 export const adminProcedure = memberProcedure.use(async ({ ctx, next }) => {
   if (ctx.currentUser.role !== "admin") {
     throw new TRPCError({
       code: "FORBIDDEN",
-      message: "Employee-level figures require the admin role.",
+      message: "This action requires the admin role.",
     });
   }
   return next({ ctx });

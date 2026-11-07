@@ -3,6 +3,7 @@ import { authRouter } from "./auth";
 import { payrollPeriodsRouter } from "./payroll-periods";
 import { comparisonsRouter } from "./comparisons";
 import { employeesRouter } from "./employees";
+import { employeeFileRouter } from "./employee-file";
 import { columnMappingsRouter } from "./column-mappings";
 import { exportsRouter } from "./exports";
 import { integrationsRouter } from "./integrations";
@@ -16,6 +17,7 @@ export const appRouter = router({
   payrollPeriods: payrollPeriodsRouter,
   comparisons: comparisonsRouter,
   employees: employeesRouter,
+  employeeFile: employeeFileRouter,
   columnMappings: columnMappingsRouter,
   exports: exportsRouter,
   integrations: integrationsRouter,

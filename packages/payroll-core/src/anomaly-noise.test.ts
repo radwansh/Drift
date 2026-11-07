@@ -119,5 +119,21 @@ describe("anomaly volume across samples/2025", () => {
     // Raising a tenth of the old volume is the point; if a future change puts
     // it back, this is the assertion that should fail.
     expect(total).toBeLessThan(3166 / 4);
-  });
+    /**
+     * An explicit timeout, because vitest's default of 5,000ms is the wrong
+     * constraint for this test rather than a generous one.
+     *
+     * It reads twelve CSV registers off disk and runs eleven full comparisons
+     * over 1,660 rows. Measured alone: ~530ms. Measured inside
+     * `turbo typecheck lint test --continue --force`, where three vitest
+     * projects run in parallel: ~8,000ms, so it timed out and failed a gate
+     * that had nothing to do with it.
+     *
+     * A timeout is meant to catch a hang, not to assert performance — and a
+     * flake that fails on unrelated pull requests teaches people to merge past
+     * red, which is the expensive outcome. Set per test rather than raising
+     * `testTimeout` in the config, so the other ~580 tests in this package keep
+     * a tight bound and a genuine hang still surfaces quickly.
+     */
+  }, 60_000);
 });
