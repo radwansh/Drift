@@ -6,14 +6,14 @@ import { SITE } from "@/components/marketing/content";
  * The euro page, and the canonical home of the site.
  *
  * `/` keeps the euro prices, the accumulated authority, the Search Console
- * verification and `x-default`. `/us/` is the dollar page. The two are
+ * verification and `x-default`. `/us` is the dollar page. The two are
  * separate URLs rather than one URL serving by visitor IP: Googlebot crawls
  * predominantly from US addresses, so IP-switching would mean only the dollar
  * version is ever indexed, and it breaks the hreflang mesh.
  *
  * Malta is the one euro-area market in the first campaign; the United States,
  * Australia and New Zealand are not. Australia and New Zealand currently fall
- * back here through `x-default` rather than to `/us/`, because dollars are not
+ * back here through `x-default` rather than to `/us`, because dollars are not
  * their currency either and `x-default` is the honest answer until AUD and NZD
  * prices exist. See `HREFLANG` in `components/marketing/landing.tsx`.
  */

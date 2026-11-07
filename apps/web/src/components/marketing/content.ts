@@ -18,7 +18,7 @@ import type { IconName } from "./ui";
  *
  * The first campaign targets the United States, Australia, New Zealand and
  * Malta. Of those only Malta is in the euro area, so the landing page exists at
- * two URLs — `/` in euro and `/us/` in dollars — each crawlable, each carrying
+ * two URLs — `/` in euro and `/us` in dollars — each crawlable, each carrying
  * the full hreflang mesh. They are separate URLs on purpose: serving different
  * content at one URL by visitor IP would mean Googlebot, which crawls mostly
  * from US addresses, only ever indexes one version.

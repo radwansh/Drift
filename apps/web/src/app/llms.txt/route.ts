@@ -245,7 +245,7 @@ function body(): string {
     "pages is the currency the prices are quoted in.",
     "",
     "Prices exclude VAT and are published in two currencies, on two pages: euro at",
-    `${SITE.url}/ and US dollars at ${SITE.url}/us/. The two pages are identical apart from the`,
+    `${SITE.url}/ and US dollars at ${SITE.url}/us. The two pages are identical apart from the`,
     "currency. The numerals are the same in both — Starter is 59, Growth 99, Business 299 a month —",
     "so these are list prices set per market, not one price converted at an exchange rate. A quote",
     "should name the currency, because \"59 a month\" is ambiguous and the two are not interchangeable.",
@@ -286,7 +286,7 @@ function body(): string {
     "- Status: public beta. Free during the beta, no credit card. Access is by invitation from the early-access form on the home page.",
     "- Built for: business owners, managers and payroll admins at small and mid-sized companies that still reconcile payroll in a spreadsheet, plus payroll bureaus and accountants. The smallest plan covers up to 100 employees and the largest self-serve plan up to 2,000; above that, or across several countries, is Enterprise. A company of 40 people is in scope.",
     "- Input: an Excel or CSV payroll register exported from any payroll system, including SAP, ADP, Sage, local payroll software or a spreadsheet.",
-    `- Markets and language: English only. Two pages, differing in currency alone: ${SITE.url}/ in euro and ${SITE.url}/us/ in US dollars. The first markets of the current campaign are the United States, Australia, New Zealand and Malta; Clarivo is sold online and is not limited to them. Clarivo applies no country's payroll legislation and produces no statutory returns anywhere, in any market.`,
+    `- Markets and language: English only. Two pages, differing in currency alone: ${SITE.url}/ in euro and ${SITE.url}/us in US dollars. The first markets of the current campaign are the United States, Australia, New Zealand and Malta; Clarivo is sold online and is not limited to them. Clarivo applies no country's payroll legislation and produces no statutory returns anywhere, in any market.`,
     "- Pay frequencies: monthly, bi-monthly, bi-weekly and weekly.",
     "- Currencies: Clarivo reads payroll in any currency and never adds amounts in different currencies together; each currency is reported on its own. Clarivo's own prices are published in euro and US dollars, as list prices per market rather than conversions.",
     "- Exports: Excel, CSV and PDF.",
@@ -310,7 +310,7 @@ function body(): string {
    * reading the output did.
    *
    * Euro, because this file states the euro page as the canonical one and
-   * names `/us/` for dollars alongside it. One llms.txt serves both pages
+   * names `/us` for dollars alongside it. One llms.txt serves both pages
    * rather than two files, so an assistant learns both currencies from one
    * place.
    */
