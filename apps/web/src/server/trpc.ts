@@ -3,16 +3,66 @@ import { auth } from "@clerk/nextjs/server";
 import { db, requireDb } from "@saas/db";
 import { EDITOR_ROLES, PAY_DETAIL_ROLES } from "@/lib/roles";
 import { ensureUser } from "./ensure-user";
+import { scrubSchemaDriftShape, translateSchemaDriftError } from "./schema-drift";
 
 export async function createContext() {
   const authResult = await auth();
   return { userId: authResult.userId, db };
 }
 
-const t = initTRPC.context<typeof createContext>().create();
+/**
+ * The schema-drift guard is wired in here, in the two places that see every
+ * tRPC error, rather than in the two pages that happened to render one.
+ *
+ * A preview deployment ran migration-0011 code against an 0008 database and put
+ * `column "control_total_gross" does not exist` on the user's screen, because
+ * `payroll-periods/page.tsx:210` and `dashboard/page.tsx:127` both render
+ * `{error.message}` into an `AlertDescription`. `server/schema-drift.ts` has the
+ * detection, the reasoning and the message.
+ *
+ * It takes two halves because `errorFormatter` is **synchronous** — in
+ * @trpc/server 11.18 `ErrorFormatter` is `(opts) => TShape`, not
+ * `(opts) => Promise<TShape>` — so it cannot await the applied-migration count
+ * that makes the message worth reading:
+ *
+ * - `schemaDriftGuard`, below, is a middleware on every exported procedure. It
+ *   can await, so it produces the message naming the pending tags.
+ * - `errorFormatter` is the backstop. It cannot name the tags, but it
+ *   guarantees the invariant — no driver string reaches a client — for any
+ *   drift error that did not pass through the middleware chain.
+ */
+const t = initTRPC.context<typeof createContext>().create({
+  errorFormatter: ({ error, shape }) => scrubSchemaDriftShape(error, shape),
+});
 
 export const router = t.router;
-export const publicProcedure = t.procedure;
+
+/**
+ * Costs nothing on the happy path: `next()` has already succeeded, and the
+ * lookup runs only for a failure whose SQLSTATE says the database is behind the
+ * code. That matters because `test/annual-router.test.ts` and
+ * `test/employee-file-router.test.ts` assert exact round-trip budgets (2, and
+ * 3 with `toBe`), which a query added here on success would fail — correctly.
+ *
+ * A middleware returns `{ ok: false, error }` rather than throwing, so the
+ * failed result is inspected and either replaced or passed through untouched.
+ */
+const schemaDriftGuard = t.middleware(async ({ ctx, next }) => {
+  const result = await next();
+  if (result.ok) return result;
+  const translated = await translateSchemaDriftError(result.error, ctx.db);
+  if (translated) throw translated;
+  return result;
+});
+
+/**
+ * Every exported procedure is built from this, so the guard covers the whole
+ * API surface. `t` itself is not exported, which is what keeps a new router
+ * from accidentally building on a bare `t.procedure` and slipping past it.
+ */
+const baseProcedure = t.procedure.use(schemaDriftGuard);
+
+export const publicProcedure = baseProcedure;
 
 const isAuthenticated = t.middleware(async ({ ctx, next }) => {
   if (!ctx.userId) throw new TRPCError({ code: "UNAUTHORIZED" });
@@ -23,7 +73,7 @@ const isAuthenticated = t.middleware(async ({ ctx, next }) => {
   return next({ ctx: { userId: ctx.userId, db: ctx.db ?? requireDb() } });
 });
 
-export const protectedProcedure = t.procedure.use(isAuthenticated);
+export const protectedProcedure = baseProcedure.use(isAuthenticated);
 
 /**
  * Both role sets come from `lib/roles.ts` and are re-exported here, so every
@@ -61,7 +111,7 @@ const withCurrentUser = isAuthenticated.unstable_pipe(async ({ ctx, next }) => {
   return next({ ctx: { ...ctx, currentUser, companyId: currentUser.companyId } });
 });
 
-export const memberProcedure = t.procedure.use(withCurrentUser);
+export const memberProcedure = baseProcedure.use(withCurrentUser);
 
 /**
  * Editor-only (step 22, finding A4).
