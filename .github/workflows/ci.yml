@@ -18,6 +18,30 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+
+      # Preview and production databases hold only what a user uploads. The
+      # preview workflow used to run the seed script, and a past local run of
+      # that same script is why three fictional companies - Acme Corp,
+      # GlobalTech Ltd and EuroSoft GmbH - sat in the shared
+      # preview/development database for five months. The rule is easy to
+      # re-break by copying a step out of an older workflow, so it is checked
+      # here rather than only written down. It stays available as a local
+      # script; what is banned is a workflow calling it.
+      - name: No workflow may seed a database
+        run: |
+          # The pattern is assembled from two pieces so this step cannot match
+          # itself, and comment lines are dropped so that the preview
+          # workflow's note about why it has no seeding step is not read as
+          # seeding.
+          pattern='db:''seed'
+          if grep -rnE --include=*.yml --include=*.yaml -- "$pattern" .github/workflows \
+            | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#'; then
+            echo "The workflow line above calls the seed script." >&2
+            echo "Deployed databases hold only what a user uploads." >&2
+            exit 1
+          fi
+          echo "No workflow seeds a database."
+
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test

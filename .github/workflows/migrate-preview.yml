@@ -1,0 +1,174 @@
+name: Migrate preview database
+
+# W8: previews used to share whatever database their environment pointed at, and
+# migrations were run by hand. This gives every pull request its own Neon branch
+# and migrates it in CI, so a preview exercises the migration rather than
+# assuming it.
+#
+# It was removed in 00f7697 because it had never once succeeded. `NEON_API_KEY`
+# was never set, so `neondatabase/create-branch-action` failed before any
+# migration ran and every pull request carried a red `migrate` check. Restored
+# here with the three things that were actually wrong fixed, and without the
+# seeding.
+#
+# `NEON_API_KEY` and `NEON_PROJECT_ID` are **still unset**: the repository has
+# one secret, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, and these jobs declare no
+# `environment:`, so repository secrets are the only ones they can read -
+# `Production`'s `PRODUCTION_DATABASE_URL` is not reachable from here and is not
+# what this workflow wants anyway. So it will not do anything useful until the
+# owner sets them. That is expected and theirs to do; the guard step is what
+# makes the failure say so, rather than leaving it to the Neon action.
+
+on:
+  pull_request:
+    # `closed` is new, and it is what lets the cleanup job below run at all.
+    # The types were [opened, reopened, synchronize] while cleanup was gated on
+    # `github.event.action == 'closed'` - an action this workflow was never
+    # triggered on - so that condition could never be true, the job never ran,
+    # and every pull request's Neon branch would have outlived the pull request.
+    types: [opened, reopened, synchronize, closed]
+
+concurrency:
+  group: preview-db-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    # Two conditions, and the first is the other half of adding `closed` above:
+    # without it every closing pull request would create a Neon branch and then
+    # immediately delete it. The fork check was the only condition here before.
+    #
+    # Secrets are not available to forks, so a fork's pull request skips rather
+    # than failing confusingly.
+    if: >-
+      github.event.action != 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # Fail here rather than inside the Neon action, the same way
+      # migrate-production.yml checks `PRODUCTION_DATABASE_URL` before calling
+      # the migrator. An unset secret reaches `create-branch-action` as an empty
+      # API key, and what it reports is an authentication failure against Neon -
+      # an error about the integration rather than about the configuration, and
+      # the reason this workflow looked broken for months instead of
+      # unconfigured. Both of these are repository secrets: this job has no
+      # `environment:`, so it cannot read an environment's secrets.
+      - name: Check the Neon credentials are configured
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+        run: |
+          missing=""
+          if [ -z "$NEON_API_KEY" ]; then missing="$missing NEON_API_KEY"; fi
+          if [ -z "$NEON_PROJECT_ID" ]; then missing="$missing NEON_PROJECT_ID"; fi
+          if [ -n "$missing" ]; then
+            echo "Not set as repository secrets:$missing" >&2
+            for name in $missing; do
+              echo "Set it with: gh secret set $name" >&2
+            done
+            exit 1
+          fi
+          echo "Neon credentials are present."
+
+      - name: Create or reset the Neon branch for this PR
+        id: branch
+        uses: neondatabase/create-branch-action@v5
+        with:
+          project_id: ${{ secrets.NEON_PROJECT_ID }}
+          branch_name: preview/pr-${{ github.event.pull_request.number }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+
+      - name: Apply migrations
+        env:
+          DATABASE_URL: ${{ steps.branch.outputs.db_url }}
+        run: pnpm db:migrate
+
+      # There is deliberately no seeding step, and nothing may add one back.
+      #
+      # The original ran `pnpm db:seed` here and the comment below promised a
+      # database "migrated and seeded". Preview and production databases are to
+      # hold only what a user uploads. A past local run of that same script is
+      # why three fictional companies - Acme Corp, GlobalTech Ltd and EuroSoft
+      # GmbH - sat in the shared preview/development database for five months:
+      # Vercel's Preview and Development environments share one `DATABASE_URL`,
+      # so demo rows written from a laptop are what the preview serves. No
+      # workflow may call `pnpm db:seed`; `ci.yml` has a step that fails if one
+      # does.
+
+      - name: Comment the branch connection details
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- preview-db -->';
+            const body = [
+              marker,
+              'Preview database ready on Neon branch `preview/pr-${{ github.event.pull_request.number }}`, migrated and **empty**.',
+              '',
+              'It holds no data at all, not even demo rows. Upload a payroll period in the preview to put something in it.',
+              '',
+              'Point the Vercel preview at it by setting `DATABASE_URL` for this deployment.',
+            ].join('\n');
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find((c) => c.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                comment_id: existing.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: context.issue.number, body,
+              });
+            }
+
+  cleanup:
+    runs-on: ubuntu-latest
+    # The fork check is new here too. Without it a fork's pull request closing
+    # would reach the delete action with no API key, which is the obscure
+    # failure the guard exists to replace - on a job that has nothing to delete.
+    if: >-
+      github.event.action == 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      # The same guard as `migrate`, repeated because a `run:` step cannot be
+      # shared between jobs without extracting a composite action. It fails
+      # rather than skipping: an unset secret means no branch was created and so
+      # none needs deleting, but "cleanup quietly did nothing" is the exact
+      # shape of the bug being fixed here, and a Neon branch that outlives its
+      # pull request costs money until someone notices.
+      - name: Check the Neon credentials are configured
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+        run: |
+          missing=""
+          if [ -z "$NEON_API_KEY" ]; then missing="$missing NEON_API_KEY"; fi
+          if [ -z "$NEON_PROJECT_ID" ]; then missing="$missing NEON_PROJECT_ID"; fi
+          if [ -n "$missing" ]; then
+            echo "Not set as repository secrets:$missing" >&2
+            for name in $missing; do
+              echo "Set it with: gh secret set $name" >&2
+            done
+            exit 1
+          fi
+          echo "Neon credentials are present."
+
+      - name: Delete the PR's Neon branch
+        uses: neondatabase/delete-branch-action@v3
+        with:
+          project_id: ${{ secrets.NEON_PROJECT_ID }}
+          branch: preview/pr-${{ github.event.pull_request.number }}
+          api_key: ${{ secrets.NEON_API_KEY }}
