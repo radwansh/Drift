@@ -52,9 +52,11 @@ Drizzle + Neon serverless Postgres. Scripts live in `@saas/db`, exposed at the r
 ```bash
 pnpm db:generate                  # drizzle-kit generate -> packages/db/src/migrations
 pnpm db:migrate
-pnpm db:seed
+pnpm db:seed                      # LOCAL ONLY — see "How a deployed database gets its schema"
 pnpm db:backfill-period-totals    # rebuild per-period aggregates for existing history
 ```
+
+`db:seed` writes three fictional companies. Check what `DATABASE_URL` resolves to before running it: Vercel's Preview and Development environments share one, so pointing at it from a laptop puts demo data in what every preview serves.
 
 ## Environment
 
@@ -66,6 +68,19 @@ pnpm db:backfill-period-totals    # rebuild per-period aggregates for existing h
 So DB/migration/seed scripts and the web app read different files. `DATABASE_URL` must be set in both for everything to work.
 
 Only `DATABASE_URL` is needed to do real work. Clerk, Anthropic, Stripe, R2, Zoho, Resend and Upstash keys gate their own features, and each degrades rather than failing — see "Optional services degrade" below.
+
+### How a deployed database gets its schema
+
+**Nothing migrates at deploy time.** Vercel runs `next build` and nothing else — there is no build step, start-up hook or middleware that applies a migration. So a deploy can ship code that expects a schema its database does not have, and nothing notices on its own.
+
+- **Production** is migrated deliberately, through `.github/workflows/migrate-production.yml`: `workflow_dispatch` only, gated twice — you type the word `migrate`, and the job names the **existing** `Production` environment so its required reviewer has to approve. The name must match repository settings exactly; naming an environment that does not exist makes GitHub create it on first run with no reviewers, which silently removes the gate. The run applies the migrations and then applies them again, and the second pass failing is a real failure — that is the only check that catches a migration which cannot survive a re-run.
+- **Preview** gets its own Neon branch per pull request — created, migrated, and deleted when the pull request closes — through `.github/workflows/migrate-preview.yml`, **once `NEON_API_KEY` and `NEON_PROJECT_ID` are set as repository secrets.** They are not set today, so the workflow's guard step fails and names the missing secret and the command that sets it. It fails loudly on purpose: the first version of that workflow had no guard, never once succeeded, and spent months looking broken rather than unconfigured.
+
+Until those secrets exist, a preview points at whatever `DATABASE_URL` its Vercel environment holds and migrating it is a manual act someone has to remember. Forgetting is what produced `column "control_total_gross" does not exist` on the periods list and the dashboard: the code was at migration 0011 and the database at 0008. That column arrives in `0009_snapshot_dimensions_and_minor_units` and is declared in `packages/db/src/schema/payrollPeriods.ts`, so drizzle names it in **every** generated SELECT against `payroll_periods` — one missing column broke every query on the table, not just the control-total feature.
+
+**Nothing may run `pnpm db:seed` against a deployed database.** Vercel's Preview and Development environments share **one** `DATABASE_URL`, so that script run from a laptop writes into what preview serves — which is why Acme Corp, GlobalTech Ltd and EuroSoft GmbH sat in the shared preview/development database for five months. A preview or production database holds only what a user uploaded, and nothing else, ever. The preview workflow's seeding step is gone and `ci.yml` fails if any workflow calls the script: the rule is one copied step away from being re-broken, so it is checked rather than only written down.
+
+**When drift happens anyway**, `apps/web/src/server/schema-drift.ts`, wired into `server/trpc.ts`, replaces the driver's sentence with "9 of 12 migrations are applied; … are not". It has to be, because `payroll-periods/page.tsx:210` and `dashboard/page.tsx:127` both render `{error.message}` into an alert, so a raw Postgres string is a user-facing string. `GET /api/schema-status` reports the same applied-versus-expected without waiting for anyone to hit an error — 200 in step, 503 behind — and is the thing to check after a deploy and after a migration. Both work out *which* migrations are pending from the **row count** in `drizzle.__drizzle_migrations`, because that table stores a hash and a timestamp and **not** the tag, so there is nothing to join on by name; drizzle applies strictly in journal order and writes one row each, so N rows means the first N entries of `migrations/meta/_journal.json` are applied and the rest are not.
 
 ## Architecture
 
