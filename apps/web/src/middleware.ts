@@ -6,7 +6,7 @@ import { NextResponse } from "next/server";
  * form, the tRPC endpoint (which does its own authorisation per procedure) and
  * the webhooks. Everything else is behind sign-in.
  */
-const isPublicRoute = createRouteMatcher([
+export const PUBLIC_ROUTE_PATTERNS = [
   "/",
   /**
    * The dollar landing page. It must be listed, unlike `/llms.txt`,
@@ -38,7 +38,25 @@ const isPublicRoute = createRouteMatcher([
   "/signup(.*)",
   "/api/trpc(.*)",
   "/api/webhooks(.*)",
-]);
+  /**
+   * The schema-drift status route, and it has to be listed for the same reason
+   * `/us` does: no dot in the path, so it reaches this middleware.
+   *
+   * Without this line the route redirects to `/sign-in`, which defeats the only
+   * reason it exists. It reports whether this deployment's migrations have been
+   * applied, and the case it is for is a database so far behind that *every*
+   * query against it fails — including the ones the sign-in path makes. An
+   * endpoint that needs a session cannot answer a question about a database
+   * that is too broken to establish a session.
+   *
+   * It is safe to expose: the body is migration counts, migration tags and a
+   * reason enum. No tenant data, nothing enumerable, and the tags are already
+   * public in this repository.
+   */
+  "/api/schema-status",
+] as const;
+
+const isPublicRoute = createRouteMatcher([...PUBLIC_ROUTE_PATTERNS]);
 
 /** The old paths, kept working. */
 const REDIRECTS: Record<string, string> = {

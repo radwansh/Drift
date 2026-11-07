@@ -35,6 +35,18 @@ concurrency:
 jobs:
   migrate:
     runs-on: ubuntu-latest
+    # This repository's default workflow token is read-only
+    # (`gh api repos/:owner/:repo/actions/permissions/workflow` reports
+    # "default_workflow_permissions": "read"), and the last step of this job
+    # posts the branch's connection details as a pull request comment through
+    # `actions/github-script`. Without `pull-requests: write` that call fails
+    # with 403 "Resource not accessible by integration" — so the branch would be
+    # created and migrated and the job would still finish red, at the one step
+    # whose output a reviewer actually needs. `contents: read` is named
+    # explicitly because declaring any permission drops the rest to none.
+    permissions:
+      contents: read
+      pull-requests: write
     # Two conditions, and the first is the other half of adding `closed` above:
     # without it every closing pull request would create a Neon branch and then
     # immediately delete it. The fork check was the only condition here before.
