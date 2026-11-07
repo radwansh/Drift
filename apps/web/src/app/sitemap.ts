@@ -5,19 +5,21 @@ import { POSTS } from "@/components/marketing/posts";
 /**
  * The public pages. Everything else is behind sign-in.
  *
- * `/us/` is the dollar landing page. It is a near-duplicate of `/` by design —
+ * `/us` is the dollar landing page. It is a near-duplicate of `/` by design —
  * the only difference is the currency symbol — so the hreflang mesh in
  * `components/marketing/landing.tsx` is what tells a search engine which to
  * serve. Both must be listed: a page absent from the sitemap but named in a
  * hreflang set is a weaker signal than one present in both.
  *
  * `/au/` and `/nz/` are deliberately not here. They are target markets, but a
- * page that differs from `/us/` in nothing would be a duplicate; add them with
+ * page that differs from `/us` in nothing would be a duplicate; add them with
  * their hreflang entries when Australian and New Zealand dollar prices exist.
  */
 const PUBLIC_PAGES = [
   { path: "/", priority: 1, changes: "weekly" },
-  { path: "/us/", priority: 1, changes: "weekly" },
+  // `/us`, never `/us/`. The slashed form 308s to this one, and a sitemap that
+  // lists a redirect asks Google to index an address that does not serve.
+  { path: "/us", priority: 1, changes: "weekly" },
   { path: "/security", priority: 0.6, changes: "yearly" },
   { path: "/privacy", priority: 0.3, changes: "yearly" },
   { path: "/terms", priority: 0.3, changes: "yearly" },
@@ -39,7 +41,7 @@ const PUBLIC_PAGES = [
  */
 const LAST_MODIFIED: Record<string, string> = {
   "/": "2026-10-30",
-  "/us/": "2026-10-30",
+  "/us": "2026-10-30",
   "/security": "2026-10-14",
   "/privacy": "2026-10-14",
   "/terms": "2026-10-14",

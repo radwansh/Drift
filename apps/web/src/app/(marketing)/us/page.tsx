@@ -3,7 +3,7 @@ import { Landing, HREFLANG, structuredData } from "@/components/marketing/landin
 import { SITE } from "@/components/marketing/content";
 
 /**
- * The dollar page: `/us/`.
+ * The dollar page: `/us`.
  *
  * Identical to `/` in every word except the currency symbol, because the only
  * thing that genuinely differs between the two markets today is the price
@@ -34,12 +34,16 @@ export const metadata: Metadata = {
   title: SITE.title,
   description: SITE.description,
   alternates: {
-    canonical: `${SITE.url}/us/`,
+    // `/us`, not `/us/`: the server 308s the slashed form to this one, and a
+    // canonical that redirects tells Google the preferred address is somewhere
+    // it cannot index. This page was reported as a redirect error for exactly
+    // that reason.
+    canonical: `${SITE.url}/us`,
     languages: HREFLANG,
   },
   openGraph: {
     type: "website",
-    url: `${SITE.url}/us/`,
+    url: `${SITE.url}/us`,
     siteName: SITE.name,
     title: SITE.socialTitle,
     description: SITE.socialDescription,
@@ -60,7 +64,7 @@ export default function UsLandingPage() {
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData("USD", "/us/")) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData("USD", "/us")) }}
       />
       <Landing currency="USD" />
     </>

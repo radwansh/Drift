@@ -11,7 +11,7 @@ import { FinalCta } from "@/components/marketing/sections/final-cta";
 import { FAQ, SITE, money, type Currency } from "@/components/marketing/content";
 
 /**
- * The landing page body, shared by `/` (euro) and `/us/` (dollars).
+ * The landing page body, shared by `/` (euro) and `/us` (dollars).
  *
  * One component rather than two pages so the two markets cannot drift in
  * anything except the currency. Everything that differs between them is
@@ -60,14 +60,22 @@ export function Landing({ currency }: { currency: Currency }) {
  * the dollar page.
  *
  * Australia and New Zealand are deliberately absent. They are target markets,
- * but a page annotated `en-AU` that differs from `/us/` in nothing at all is a
+ * but a page annotated `en-AU` that differs from `/us` in nothing at all is a
  * near-duplicate, and the honest answer for an Australian buyer is a page in
  * Australian dollars. Add `en-AU` and `en-NZ` here, and to the sitemap, when
  * AUD and NZD list prices exist — not before.
  */
+/**
+ * No trailing slash on `/us`. `next.config.ts` leaves `trailingSlash` at its
+ * default of `false`, so the server answers `/us/` with a 308 to `/us` — and an
+ * hreflang annotation naming a URL that redirects is not a valid annotation.
+ * Google needs the final address here, as does the canonical in `us/page.tsx`.
+ * The home page's `/` is the site root and is served as-is, which is why it
+ * keeps its slash.
+ */
 export const HREFLANG: Record<string, string> = {
   en: `${SITE.url}/`,
-  "en-US": `${SITE.url}/us/`,
+  "en-US": `${SITE.url}/us`,
   "x-default": `${SITE.url}/`,
 };
 
