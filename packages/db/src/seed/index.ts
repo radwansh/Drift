@@ -6,7 +6,58 @@ import { payrollPeriods } from "../schema/payrollPeriods";
 import { employeeSnapshots } from "../schema/employeeSnapshots";
 import { companies as demoCompanies, generateComponentValue, type DemoCompany, type EmployeeSnapshot } from "./demo-data";
 
+/**
+ * Hosts this script will write to without being told twice.
+ *
+ * Neon's hostnames all end in `.neon.tech`, so anything not on this list is
+ * assumed to be a database somebody else can see.
+ */
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", "host.docker.internal"]);
+
+/**
+ * Refuse to seed a database that is not local, unless `ALLOW_SEED=1`.
+ *
+ * This script inserts three fictional companies with admin users and four
+ * months of payroll each. Run once against the wrong `DATABASE_URL`, that is
+ * exactly what happened: Acme Corp, GlobalTech Ltd and EuroSoft GmbH sat in the
+ * shared preview/development database for five months, and were only found when
+ * somebody went looking for something else.
+ *
+ * The repo-root `.env` this reads is the same file a developer points at a
+ * deployed database to run a migration or inspect something, so "check what
+ * DATABASE_URL resolves to first" is a rule that depends on remembering. This
+ * does not. It prints the host either way, so the answer is on screen before
+ * anything is written rather than in a file somebody has to go and open.
+ *
+ * `ci.yml` separately forbids any workflow from calling this script, but that
+ * check greps workflow files — it cannot see a laptop, which is where the
+ * damage was actually done.
+ */
+function assertSafeToSeed(): void {
+  const url = process.env.DATABASE_URL;
+  if (!url) return; // requireDb() below reports a missing URL better than this can.
+
+  let host: string;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    console.error("DATABASE_URL is not a URL this script can read. Refusing to seed.");
+    process.exit(1);
+  }
+
+  const local = LOCAL_HOSTS.has(host) || host.endsWith(".localhost");
+  console.log(`Seed target: ${host}${local ? " (local)" : ""}`);
+
+  if (local || process.env.ALLOW_SEED === "1") return;
+
+  console.error(`Refusing to seed ${host}: it is not a local database.`);
+  console.error("This writes three demo companies and four months of payroll each.");
+  console.error("If that is genuinely what you want here, re-run with ALLOW_SEED=1.");
+  process.exit(1);
+}
+
 async function seed() {
+  assertSafeToSeed();
   const db = requireDb();
   console.log("Seeding database...");
 

@@ -1,44 +1,8 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { PUBLIC_ROUTE_PATTERNS } from "@/lib/public-routes";
 
-/**
- * Public routes: the five marketing pages, the auth screens, the waiting-list
- * form, the tRPC endpoint (which does its own authorisation per procedure) and
- * the webhooks. Everything else is behind sign-in.
- */
-const isPublicRoute = createRouteMatcher([
-  "/",
-  /**
-   * The dollar landing page. It must be listed, unlike `/llms.txt`,
-   * `/robots.txt` and `/sitemap.xml`: the matcher below excludes any path
-   * containing a dot, so those three never reach this middleware at all, while
-   * `/us` has no dot and does.
-   *
-   * Without this line every visitor to `/us` is redirected to sign-in — which
-   * is what happened when the page was first added, and what the whole US
-   * campaign would have landed on. Any future market page (`/au`, `/nz`) needs
-   * an entry here too.
-   */
-  "/us",
-  /**
-   * The blog index and every post. Same reason as `/us`: no dot in the path,
-   * so these do reach this middleware and would otherwise redirect a reader
-   * who followed a link from search straight to a sign-in form.
-   */
-  "/blog",
-  "/blog/(.*)",
-  "/privacy",
-  "/terms",
-  "/security",
-  "/dpa",
-  "/sign-in(.*)",
-  "/sign-up(.*)",
-  "/waitlist",
-  "/login(.*)",
-  "/signup(.*)",
-  "/api/trpc(.*)",
-  "/api/webhooks(.*)",
-]);
+const isPublicRoute = createRouteMatcher([...PUBLIC_ROUTE_PATTERNS]);
 
 /** The old paths, kept working. */
 const REDIRECTS: Record<string, string> = {
