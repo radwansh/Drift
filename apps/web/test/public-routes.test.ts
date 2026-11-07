@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createRouteMatcher } from "@clerk/nextjs/server";
 import { NextRequest } from "next/server";
-import { PUBLIC_ROUTE_PATTERNS } from "@/middleware";
+import { PUBLIC_ROUTE_PATTERNS } from "@/lib/public-routes";
 
 /**
  * What reaches `clerkMiddleware` without a session.
