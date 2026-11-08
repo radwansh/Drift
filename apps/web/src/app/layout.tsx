@@ -1,10 +1,24 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
-import { Inter } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { Providers } from "./providers";
 
-const inter = Inter({ subsets: ["latin"] });
+/**
+ * Self-hosted, for the reason given at length in `(marketing)/layout.tsx`:
+ * `next/font/google` fetches at compile time, so it made every `next build`
+ * depend on reaching fonts.googleapis.com, and twice it failed there on
+ * changes that had nothing to do with fonts.
+ *
+ * `latin` subset, matching the `subsets: ["latin"]` this replaces. Inter is a
+ * variable font, so the one file covers the range.
+ */
+const inter = localFont({
+  src: "./fonts/inter-latin.woff2",
+  weight: "400 700",
+  style: "normal",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Clarivo - Payroll Variance Analysis",
