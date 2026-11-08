@@ -6,6 +6,7 @@ import { createTestDb, type TestDb } from "./pglite-neon";
 import { router, publicProcedure } from "@/server/trpc";
 import {
   SCHEMA_DRIFT_GENERIC_MESSAGE,
+  explainsSchemaDrift,
   describeMigrationStatus,
   readMigrationStatus,
   schemaDriftSqlState,
@@ -61,9 +62,29 @@ const driftRouter = router({
       await c.db!.execute(sql`SELECT 1 FROM a_table_no_migration_creates`);
       return null;
     } catch (cause) {
+      throw explainsSchemaDrift(
+        new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "This database is missing tables. Nothing was saved.",
+          cause,
+        }),
+      );
+    }
+  }),
+
+  /**
+   * The shape `withCurrentUser` has, and the reason the marker exists: a
+   * wrapper that puts one generic sentence over whatever failed beneath it,
+   * without knowing or caring what that was. It must **not** be deferred to.
+   */
+  genericallyWrappedFailure: publicProcedure.query(async ({ ctx: c }) => {
+    try {
+      await c.db!.execute(sql`SELECT 1 FROM a_table_no_migration_creates`);
+      return null;
+    } catch (cause) {
       throw new TRPCError({
         code: "INTERNAL_SERVER_ERROR",
-        message: "This database is missing tables. Nothing was saved.",
+        message: "Could not resolve your account.",
         cause,
       });
     }
@@ -138,7 +159,6 @@ describe("schemaDriftSqlState", () => {
   it("recognises undefined_table and undefined_function, and nothing else", () => {
     const withCode = (code: string) => Object.assign(new Error("x"), { code });
     expect(schemaDriftSqlState(withCode("42P01"))).toBe("42P01");
-    expect(schemaDriftSqlState(withCode("42883"))).toBe("42883");
     // Ordinary failures must pass through untouched: a syntax error, a unique
     // violation and a refused connection are not schema drift.
     expect(schemaDriftSqlState(withCode("42601"))).toBeNull();
@@ -148,6 +168,45 @@ describe("schemaDriftSqlState", () => {
     expect(schemaDriftSqlState(new TRPCError({ code: "INTERNAL_SERVER_ERROR" }))).toBeNull();
     expect(schemaDriftSqlState(null)).toBeNull();
     expect(schemaDriftSqlState("42703")).toBeNull();
+  });
+
+  /**
+   * `42883` is two different failures wearing one code, and only one is drift.
+   * Probed against real Postgres:
+   *
+   *     SELECT * FROM t WHERE uuid_col = 1  -> operator does not exist: uuid = integer
+   *     SELECT sum(uuid_col) FROM t         -> function sum(uuid) does not exist
+   *
+   * The second is a function a migration may yet install. The first is a bind
+   * parameter compared against a column of another type — an ordinary bug, and
+   * a live one here because `routers/annual.ts` and `routers/employee-file.ts`
+   * build raw `sql` templates where every `${}` is a bind. Reporting that as
+   * drift would strip the real message out of the response.
+   */
+  it("treats a missing function as drift and an operator mismatch as not", () => {
+    const pg = (code: string, message: string) => Object.assign(new Error(message), { code });
+
+    expect(schemaDriftSqlState(pg("42883", "function sum(uuid) does not exist"))).toBe("42883");
+    expect(schemaDriftSqlState(pg("42883", "function nosuchfn(integer) does not exist"))).toBe("42883");
+
+    expect(schemaDriftSqlState(pg("42883", "operator does not exist: uuid = integer"))).toBeNull();
+    expect(schemaDriftSqlState(pg("42883", "operator does not exist: numeric = text"))).toBeNull();
+  });
+
+  /**
+   * An operator mismatch must not shadow a real drift error deeper in the
+   * chain — the walk continues past it rather than returning early.
+   */
+  it("keeps walking past an operator mismatch to find real drift", () => {
+    const realDrift = Object.assign(new Error('column "control_total_gross" does not exist'), {
+      code: "42703",
+    });
+    const operatorMismatch = Object.assign(
+      new Error("operator does not exist: uuid = integer"),
+      { code: "42883", cause: realDrift },
+    );
+
+    expect(schemaDriftSqlState(operatorMismatch)).toBe("42703");
   });
 
   it("does not follow a self-referencing cause chain forever", () => {
@@ -218,6 +277,30 @@ describe("the error the user sees", () => {
     const error = await failureOf(caller().explainedFailure());
 
     expect(error.message).toBe("This database is missing tables. Nothing was saved.");
+    expect(schemaDriftSqlState(error.cause)).toBe("42P01");
+  });
+
+  /**
+   * The counterpart, and the reason deferral is an explicit mark rather than
+   * an inference.
+   *
+   * It used to be inferred — "the outer message differs from the driver's, so
+   * somebody chose it" — which detects that *a* message was set, never that a
+   * **better** one was. `withCurrentUser` wraps every `ensureUser` failure as
+   * "Could not resolve your account." and runs on every `memberProcedure`, so
+   * drift touching `users` or `companies` — what migration 0008 did — would
+   * have made the whole app report an account problem while this guard stayed
+   * silent. That is the original incident's shape on the path every request
+   * takes.
+   */
+  it("translates a generic wrapper rather than deferring to it", async () => {
+    await seedJournalTable(APPLIED_AT_INCIDENT);
+    const error = await failureOf(caller().genericallyWrappedFailure());
+
+    expect(error.message).not.toBe("Could not resolve your account.");
+    expect(error.message).toMatch(/newer database schema/i);
+    expect(error.message).toContain(MIGRATION_TAGS[APPLIED_AT_INCIDENT]!);
+    // The real failure still reaches the server log.
     expect(schemaDriftSqlState(error.cause)).toBe("42P01");
   });
 
@@ -362,13 +445,36 @@ describe("the synchronous errorFormatter backstop", () => {
       code: "42P01",
     });
     const written = "This database is missing tables that the application needs.";
-    const error = new TRPCError({
-      code: "INTERNAL_SERVER_ERROR",
-      message: written,
-      cause: driver,
-    });
+    const error = explainsSchemaDrift(
+      new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: written,
+        cause: driver,
+      }),
+    );
     const shape = { message: written, data: {} };
     expect(scrubSchemaDriftShape(error, shape)).toBe(shape);
+  });
+
+  /**
+   * And the unmarked generic wrapper, at the formatter layer too — this is
+   * where `createCaller` never reaches, so the middleware test above could not
+   * catch a regression here.
+   */
+  it("scrubs a generic wrapper that was never marked", () => {
+    const driver = Object.assign(new Error('relation "users" does not exist'), { code: "42P01" });
+    const generic = "Could not resolve your account.";
+    const error = new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: generic,
+      cause: driver,
+    });
+
+    const scrubbed = scrubSchemaDriftShape(error, { message: generic, data: { stack: "at x" } });
+    expect(scrubbed.message).toBe(SCHEMA_DRIFT_GENERIC_MESSAGE);
+    // Set to undefined rather than deleted, which is what matters: the stack's
+    // first line is the driver's message, and `JSON.stringify` drops the key.
+    expect(scrubbed.data.stack).toBeUndefined();
   });
 
   it("does not overwrite a message the middleware already translated", async () => {

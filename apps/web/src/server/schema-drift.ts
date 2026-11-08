@@ -50,21 +50,38 @@ import { MIGRATION_TAGS, type DbClient } from "@saas/db";
  * - `42703` undefined_column — what the incident actually raised.
  * - `42P01` undefined_table — the same drift one migration earlier, when a
  *   whole table is missing rather than a column.
- * - `42883` undefined_function — included. The argument against it is that it
- *   also fires on a genuine programming error, like calling a Postgres function
- *   that never existed; the argument for it is that this repo's migrations do
- *   create database objects beyond tables and columns, so a build calling
- *   something a pending migration installs would land here, and a developer who
- *   wrote a bad function call reads "the database may be behind" and checks
- *   `/api/schema-status`, which tells them in one request that it is not. A
- *   slightly wrong hint on a developer's own bug is a much smaller cost than a
- *   raw driver string on a user's screen, so it is in.
+ * - `42883` undefined_function — included, but **only for a missing function**,
+ *   see `isDriftingFunctionError` below.
  *
  * `42804` (datatype_mismatch) and `42P07` are deliberately out: the first fires
  * on ordinary bad SQL far more often than on drift, and the second only ever
  * happens while migrating.
  */
 const SCHEMA_DRIFT_SQLSTATES: ReadonlySet<string> = new Set(["42703", "42P01", "42883"]);
+
+/**
+ * Postgres files **operator** resolution failures under `42883` as well.
+ *
+ * Probed against real Postgres:
+ *
+ *     SELECT * FROM t WHERE uuid_col = 1   -> 42883 operator does not exist: uuid = integer
+ *     SELECT sum(uuid_col) FROM t          -> 42883 function sum(uuid) does not exist
+ *     SELECT nosuchfn(1)                   -> 42883 function nosuchfn(integer) does not exist
+ *
+ * Only the last two are drift. The first is a type mismatch — overwhelmingly a
+ * bind parameter compared against a column of another type, which is a live
+ * risk here because `routers/annual.ts` and `routers/employee-file.ts` build
+ * raw `sql` templates where every `${}` is a bind. Treating that as drift tells
+ * the user the deployment expects a newer schema and **removes the real message
+ * from the response**, which is the same failure this module exists to prevent,
+ * pointed the other way.
+ *
+ * This is the reason `42804` is already excluded, applied to the half of
+ * `42883` that behaves like it.
+ */
+function isDriftingFunctionError(driverMessage: string): boolean {
+  return /function\s.*does not exist/i.test(driverMessage);
+}
 
 /** How far down a `cause` chain to look before giving up. */
 const MAX_CAUSE_DEPTH = 8;
@@ -86,8 +103,15 @@ function findSchemaDrift(error: unknown): { sqlState: string; driverMessage: str
     if (current === null || typeof current !== "object") return null;
     const code = (current as { code?: unknown }).code;
     if (typeof code === "string" && SCHEMA_DRIFT_SQLSTATES.has(code)) {
-      const driverMessage = (current as { message?: unknown }).message;
-      return { sqlState: code, driverMessage: typeof driverMessage === "string" ? driverMessage : "" };
+      const raw = (current as { message?: unknown }).message;
+      const driverMessage = typeof raw === "string" ? raw : "";
+      // `42883` covers both a missing function and a failed operator lookup,
+      // and only the first is drift. Keep walking rather than returning: an
+      // operator mismatch is not what we are looking for, but a real drift
+      // error may still be further down the chain.
+      if (code !== "42883" || isDriftingFunctionError(driverMessage)) {
+        return { sqlState: code, driverMessage };
+      }
     }
     current = (current as { cause?: unknown }).cause;
   }
@@ -111,20 +135,52 @@ export function schemaDriftSqlState(error: unknown): string | null {
  * holding the spreadsheet needs to hear exactly that.
  * `test/provision-and-ingest.test.ts` pins it.
  *
- * The test for "already written" is that the outermost error's message is not
- * the driver's own. tRPC's `TRPCError` falls back to `cause.message` when it is
- * given no message of its own, so a driver string that bubbled up untouched
- * arrives here with the two identical — and a message a router chose arrives
- * with them different. Nothing needs to be marked or registered for that to
- * hold.
+ * A router says so by calling `explainsSchemaDrift()` on the error it throws.
+ *
+ * This used to be inferred instead — "the outer message differs from the
+ * driver's, so somebody chose it" — which is true but far too broad. It
+ * detects that *a* message was set, never that a **better** one was. Two
+ * wrappers in this codebase set a generic message over any failure beneath
+ * them:
+ *
+ *   - `withCurrentUser` in `trpc.ts` — "Could not resolve your account."
+ *   - `comparisons.run` — "Comparison failed"
+ *
+ * `withCurrentUser` is the dangerous one: it runs on every `memberProcedure`,
+ * so drift touching `users` or `companies` — which is what migration `0008`
+ * did — would make every page in the app report an account problem while this
+ * guard stayed silent, and the real cause would never reach the screen. That
+ * is the original incident's shape, on the one path every request takes.
+ *
+ * An explicit marker inverts the default: a message survives only when its
+ * author decided it should, and anything generic gets translated.
  */
-function needsMessage(error: unknown, drift: { driverMessage: string }): boolean {
-  const outer = typeof error === "object" && error !== null
-    ? (error as { message?: unknown }).message
-    : undefined;
-  if (typeof outer !== "string" || outer.length === 0) return true;
-  return outer === drift.driverMessage;
+function needsMessage(error: unknown): boolean {
+  return !explainsSchemaDrift.isMarked(error);
 }
+
+/**
+ * Mark an error as carrying a message that is better than anything this module
+ * can write, so the guard leaves it alone.
+ *
+ * The one caller today is `payrollPeriods.ingest`, whose
+ * `describeIngestFailure` says "Apply the pending migrations, then import
+ * again. **Nothing was saved.**" Only the ingest path knows that last part,
+ * and it is the only part that matters to whoever is holding the spreadsheet.
+ * `test/provision-and-ingest.test.ts` pins it.
+ *
+ * Non-enumerable, like `TRANSLATED` below, so it cannot be serialised into a
+ * response.
+ */
+const EXPLAINED = Symbol.for("clarivo.schemaDriftExplained");
+
+export function explainsSchemaDrift<E extends object>(error: E): E {
+  Object.defineProperty(error, EXPLAINED, { value: true, enumerable: false });
+  return error;
+}
+
+explainsSchemaDrift.isMarked = (error: unknown): boolean =>
+  typeof error === "object" && error !== null && EXPLAINED in error;
 
 export type MigrationStatus =
   | { kind: "behind"; applied: number; expected: number; pending: readonly string[] }
@@ -278,7 +334,7 @@ export async function translateSchemaDriftError(
   db: DbClient | null,
 ): Promise<TRPCError | null> {
   const drift = findSchemaDrift(error);
-  if (!drift || !needsMessage(error, drift)) return null;
+  if (!drift || !needsMessage(error)) return null;
   let message: string;
   try {
     message = describeMigrationStatus(await readMigrationStatus(db));
@@ -312,7 +368,7 @@ export function scrubSchemaDriftShape<
 >(error: unknown, shape: TShape): TShape {
   if (isTranslated(error)) return shape;
   const drift = findSchemaDrift(error);
-  if (!drift || !needsMessage(error, drift)) return shape;
+  if (!drift || !needsMessage(error)) return shape;
   return {
     ...shape,
     message: SCHEMA_DRIFT_GENERIC_MESSAGE,
