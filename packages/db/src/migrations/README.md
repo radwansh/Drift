@@ -1,7 +1,23 @@
 # Migrations
 
-`pnpm db:migrate` runs `drizzle-orm/neon-http/migrator` over this folder, in the
-order given by `meta/_journal.json`.
+`pnpm db:migrate` is `drizzle-kit migrate`, which applies this folder in the
+order given by `meta/_journal.json` and records what it applied in
+**`drizzle.__drizzle_migrations`** — the `drizzle` schema, not `public`.
+
+That table's location is load-bearing now: `apps/web/src/server/schema-drift.ts`
+and `GET /api/schema-status` both read its row count to work out which
+migrations are pending. A migrator writing somewhere else leaves them reporting
+a fully migrated database as behind.
+
+This README used to describe a hand-written `migrate.ts` in this folder that
+called `drizzle-orm/neon-http/migrator` and pre-created `__drizzle_migrations`
+in `public`. Nothing ran it — `pnpm db:migrate` has been `drizzle-kit migrate`
+throughout — so following these instructions put rows where the real migrator
+never looks. It has been deleted. Its other difference mattered too: that
+migrator runs every statement and only then inserts every journal row, with no
+transaction, so a mid-run failure leaves zero rows on a partly-migrated
+database. `drizzle-kit` wraps the whole loop in one transaction, which is what
+makes "N rows means the first N migrations are applied" true.
 
 ## Every migration here is idempotent, on purpose
 

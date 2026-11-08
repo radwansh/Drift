@@ -21,6 +21,7 @@ import {
   type ProtectedContext,
 } from "../trpc";
 import { parseRows } from "../parse-rows";
+import { explainsSchemaDrift } from "../schema-drift";
 import { CategoryEnum } from "../categories";
 import { validateRows } from "../upload/validate";
 import { processUpload } from "../upload/processor";
@@ -316,11 +317,18 @@ export const payrollPeriodsRouter = router({
         };
       } catch (cause) {
         console.error("payrollPeriods.ingest failed:", cause);
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: describeIngestFailure(cause),
-          cause,
-        });
+        // Marked so the schema-drift guard in `server/trpc.ts` leaves this
+        // message alone. `describeIngestFailure` says "Nothing was saved",
+        // which only this path knows and which is the only part that matters
+        // to whoever just uploaded a register. Without the mark the guard
+        // replaces it with a migration count.
+        throw explainsSchemaDrift(
+          new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: describeIngestFailure(cause),
+            cause,
+          }),
+        );
       }
     }),
 
