@@ -88,6 +88,23 @@ jobs:
             done
             exit 1
           fi
+          # Set, but is it a project id? Neon's API rejects anything outside
+          # this character class with
+          #   invalid input: operation ListProjectBranches: decode params:
+          #   path: "project_id": string: no regex match: ^[a-z0-9-]{1,60}$
+          # which names a Neon API operation rather than the secret, from a
+          # step whose failure looks like the integration is broken. The value
+          # wanted is the project **id** (Neon console, Settings -> General),
+          # something like `wispy-forest-12345678` - not the project name, not
+          # the endpoint id from a connection string (`ep-...`), not a URL. A
+          # trailing newline is enough to fail it.
+          if ! printf '%s' "$NEON_PROJECT_ID" | grep -qE '^[a-z0-9-]{1,60}$'; then
+            echo "NEON_PROJECT_ID is not a Neon project id." >&2
+            echo "It must match ^[a-z0-9-]{1,60}\$ - lower case, digits and hyphens." >&2
+            echo "Find it in the Neon console under Settings -> General, then:" >&2
+            echo "  gh secret set NEON_PROJECT_ID" >&2
+            exit 1
+          fi
           echo "Neon credentials are present."
 
       - name: Create or reset the Neon branch for this PR
@@ -97,6 +114,17 @@ jobs:
           project_id: ${{ secrets.NEON_PROJECT_ID }}
           branch_name: preview/pr-${{ github.event.pull_request.number }}
           api_key: ${{ secrets.NEON_API_KEY }}
+          # `username` and `database` are what the action turns into
+          # `neonctl cs --role-name ... --database-name ...` to build the
+          # connection string it hands to the next step. Without `username` it
+          # runs that command with an empty `--role-name`, and `db_url` comes
+          # back unusable — `pnpm db:migrate` then gets an empty `DATABASE_URL`
+          # and drizzle falls back to the `postgresql://localhost:5432/drift`
+          # in `drizzle.config.ts`, failing with a connection error that says
+          # nothing about the real cause. Both values match this project's
+          # Neon defaults, which the production connection string also uses.
+          username: neondb_owner
+          database: neondb
 
       - name: Apply migrations
         env:
@@ -174,6 +202,23 @@ jobs:
             for name in $missing; do
               echo "Set it with: gh secret set $name" >&2
             done
+            exit 1
+          fi
+          # Set, but is it a project id? Neon's API rejects anything outside
+          # this character class with
+          #   invalid input: operation ListProjectBranches: decode params:
+          #   path: "project_id": string: no regex match: ^[a-z0-9-]{1,60}$
+          # which names a Neon API operation rather than the secret, from a
+          # step whose failure looks like the integration is broken. The value
+          # wanted is the project **id** (Neon console, Settings -> General),
+          # something like `wispy-forest-12345678` - not the project name, not
+          # the endpoint id from a connection string (`ep-...`), not a URL. A
+          # trailing newline is enough to fail it.
+          if ! printf '%s' "$NEON_PROJECT_ID" | grep -qE '^[a-z0-9-]{1,60}$'; then
+            echo "NEON_PROJECT_ID is not a Neon project id." >&2
+            echo "It must match ^[a-z0-9-]{1,60}\$ - lower case, digits and hyphens." >&2
+            echo "Find it in the Neon console under Settings -> General, then:" >&2
+            echo "  gh secret set NEON_PROJECT_ID" >&2
             exit 1
           fi
           echo "Neon credentials are present."
