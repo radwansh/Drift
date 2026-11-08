@@ -21,7 +21,7 @@ pnpm install --frozen-lockfile    # lockfile is committed; keep it authoritative
 pnpm dev                          # turbo dev -> next dev on apps/web (port 3000)
 pnpm build                        # effectively just `next build`; see "No build step" below
 pnpm typecheck                    # tsc --noEmit in all 5 packages; currently 0 errors
-pnpm lint                         # eslint; currently 0 errors, ~41 warnings
+pnpm lint                         # eslint; currently 0 errors, 34 warnings
 pnpm test                         # all three test projects
 pnpm format                       # prettier --write across the repo
 ```
