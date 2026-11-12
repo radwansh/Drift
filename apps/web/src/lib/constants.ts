@@ -1,5 +1,7 @@
 export const APP_NAME = "Clarivo";
 export const APP_TAGLINE = "Payroll variance analysis, simplified";
+/** Shown at the foot of the side menu. */
+export const APP_RELEASE_LABEL = "Clarivo 1.0 · Beta";
 export const COMPANY_EMPLOYEE_RANGES = [
   { label: "1-50 employees", value: "1-50" },
   { label: "51-200 employees", value: "51-200" },
@@ -8,11 +10,23 @@ export const COMPANY_EMPLOYEE_RANGES = [
   { label: "2000+ employees", value: "2000+" },
 ] as const;
 
+/**
+ * The four cadences, in the product's words (design system, Voice and content):
+ * Monthly, Bi-monthly, Bi-weekly, Weekly. The explanation of the two "bi-" cadences
+ * moves to PERIOD_TYPE_HINTS so a select or segmented control can stay short.
+ */
 export const PERIOD_TYPE_LABELS: Record<string, string> = {
   monthly: "Monthly",
+  bi_monthly: "Bi-monthly",
+  bi_weekly: "Bi-weekly",
   weekly: "Weekly",
-  bi_monthly: "Bi-Monthly (Twice a Month)",
-  bi_weekly: "Bi-Weekly (Every 2 Weeks)",
+};
+
+export const PERIOD_TYPE_HINTS: Record<string, string> = {
+  monthly: "Once a month",
+  bi_monthly: "Twice a month",
+  bi_weekly: "Every two weeks",
+  weekly: "Every week",
 };
 
 import { PAY_DETAIL_ROLES } from "./roles";
@@ -32,6 +46,9 @@ export interface NavItem {
 /**
  * Sidebar navigation. Employee File is first, above Dashboard.
  *
+ * Labels follow the design system: sentence case, with the product's own names kept
+ * as names (Employee File, Dashboard, Detailed View).
+ *
  * `NAV_ITEMS` had no gating at all, so every item rendered for every signed-in
  * user. That was harmless while no screen was role-restricted; a viewer who
  * sees an Employee File link gets a FORBIDDEN error on click, so gating has to
@@ -45,10 +62,10 @@ export interface NavItem {
  */
 export const NAV_ITEMS: readonly NavItem[] = [
   { label: "Employee File", href: "/employees", icon: "Users", roles: PAY_DETAIL_ROLES },
-  { label: "Dashboard", href: "/dashboard", icon: "LayoutDashboard" },
-  { label: "Annual Salaries", href: "/annual-salaries", icon: "CalendarRange" },
-  { label: "Detailed View", href: "/detailed", icon: "Table" },
-  { label: "Payroll Periods", href: "/payroll-periods", icon: "Calendar" },
+  { label: "Dashboard", href: "/dashboard", icon: "BarChart3" },
+  { label: "Annual salaries", href: "/annual-salaries", icon: "CalendarRange" },
+  { label: "Detailed View", href: "/detailed", icon: "Columns3" },
+  { label: "Payroll periods", href: "/payroll-periods", icon: "Layers" },
   { label: "Integrations", href: "/integrations", icon: "Plug" },
   { label: "Settings", href: "/settings", icon: "Settings" },
 ];

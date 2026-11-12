@@ -1,27 +1,23 @@
 "use client";
 import { SignIn } from "@clerk/nextjs";
-import { useTheme } from "next-themes";
-import { dark } from "@clerk/themes";
+import { AuthFrame } from "@/components/shared/auth-frame";
+import { useIsDark } from "@/components/shared/theme-toggle";
+import { getClerkAppearance } from "@/lib/clerk-appearance";
 
 /**
- * /sign-in — Clerk's prebuilt screen.
+ * /sign-in — Clerk's prebuilt screen, framed and themed to Ink & Signal.
  *
  * The canonical sign-in path from here on. /login redirects to it in
  * middleware, so existing links and bookmarks keep working.
  */
 export default function SignInPage() {
-  const { theme } = useTheme();
+  const isDark = useIsDark();
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
-      <div className="w-full max-w-md p-8">
-        <div className="mb-8 text-center">
-          <img src="/brand/clarivo-lockup.svg" alt="Clarivo" className="mx-auto mb-4 h-10" />
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Payroll variance analysis for your business
-          </p>
-        </div>
-        <SignIn appearance={{ baseTheme: theme === "dark" ? dark : undefined }} />
-      </div>
-    </div>
+    <AuthFrame
+      title="See what changed in your payroll, by how much, and where."
+      lede="Compare two payroll periods and every change in net pay and salary components is in one place, with the employee and the amount."
+    >
+      <SignIn appearance={getClerkAppearance(isDark)} />
+    </AuthFrame>
   );
 }

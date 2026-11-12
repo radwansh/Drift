@@ -1,6 +1,14 @@
 import type { LucideIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, EmptyState as CvEmptyState } from "@/components/cv";
 
+/**
+ * The old shared EmptyState API ({ icon, title, description, action: { label, onClick } }),
+ * kept so existing call sites compile, drawn with the design system's EmptyState.
+ *
+ * The big icon in a grey circle is gone: the design system's empty state is the calm
+ * drift strip. A passed `icon` is shown small, in ink-subtle, instead of the strip.
+ * New code uses EmptyState from "@/components/cv" directly.
+ */
 interface EmptyStateProps {
   icon?: LucideIcon;
   title: string;
@@ -13,21 +21,17 @@ interface EmptyStateProps {
 
 export function EmptyState({ icon: Icon, title, description, action }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border bg-card py-16">
-      {Icon && (
-        <div className="rounded-full bg-muted p-4">
-          <Icon className="h-8 w-8 text-muted-foreground" />
-        </div>
-      )}
-      <h3 className="mt-4 text-lg font-semibold">{title}</h3>
-      {description && (
-        <p className="mt-1 text-sm text-muted-foreground max-w-sm text-center">{description}</p>
-      )}
-      {action && (
-        <Button className="mt-4" onClick={action.onClick}>
-          {action.label}
-        </Button>
-      )}
-    </div>
+    <CvEmptyState
+      title={title}
+      description={description}
+      visual={Icon ? <Icon className="h-5 w-5 text-cv-ink-subtle" aria-hidden="true" /> : undefined}
+      action={
+        action ? (
+          <Button variant="primary" onClick={action.onClick}>
+            {action.label}
+          </Button>
+        ) : undefined
+      }
+    />
   );
 }

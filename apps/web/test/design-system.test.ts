@@ -21,24 +21,8 @@ import path from "node:path";
 const WEB_ROOT = path.resolve(import.meta.dirname, "..");
 const SRC = path.join(WEB_ROOT, "src");
 
-/**
- * Screens still to migrate. Remove a line when its file is clean.
- *
- * The kit shipped this list holding only phase 4's screens, because its
- * author measured the tree with every phase applied at once and never saw
- * phase 2 standing alone. The eight entries below — the two auth pages and
- * six of `components/dashboard/*` — are **phase 3's**, and they belong here
- * until phase 3 replaces them, because the list is the true to-do list at
- * every commit and those files genuinely still carry legacy colours.
- *
- * Phase 3 deletes these eight lines along with the colours. The second guard
- * below is what makes that safe to rely on: a file listed here that no longer
- * has a legacy colour fails until its line goes, so the list cannot quietly
- * grow stale.
- */
+/** Screens still to migrate (phase 4 of the brief). Remove a line when its file is clean. */
 const LEGACY_FILES = new Set<string>([
-  "src/app/(auth)/sign-in/[[...sign-in]]/page.tsx",
-  "src/app/(auth)/sign-up/[[...sign-up]]/page.tsx",
   "src/app/(main)/settings/column-mappings/page.tsx",
   "src/components/annual/annual-bridge.tsx",
   "src/components/annual/annual-budget.tsx",
@@ -50,12 +34,6 @@ const LEGACY_FILES = new Set<string>([
   "src/components/annual/annual-statutory.tsx",
   "src/components/annual/annual-warnings.tsx",
   "src/components/annual/category-manager.tsx",
-  "src/components/dashboard/ai-summary-banner.tsx",
-  "src/components/dashboard/anomaly-flags-panel.tsx",
-  "src/components/dashboard/component-breakdown.tsx",
-  "src/components/dashboard/department-breakdown.tsx",
-  "src/components/dashboard/kpi-card.tsx",
-  "src/components/dashboard/top-movers.tsx",
   "src/components/detailed-view/column-picker.tsx",
   "src/components/detailed-view/comparison-table.tsx",
   "src/components/detailed-view/employee-detail-row.tsx",
