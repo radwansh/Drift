@@ -9,6 +9,7 @@ import { ComparisonTable } from "@/components/detailed-view/comparison-table";
 import { ColumnPicker, type ColumnConfig } from "@/components/detailed-view/column-picker";
 import { SavedViews } from "@/components/detailed-view/saved-views";
 import { ExportButton } from "@/components/detailed-view/export-button";
+import { Icon, Notice, PageHeader } from "@/components/cv";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -17,7 +18,6 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-import { Search, Filter } from "lucide-react";
 import { usePayrollStore } from "@/lib/payroll-store";
 
 function extractAllComponents(results: ComparisonOutput[]): string[] {
@@ -29,14 +29,26 @@ function extractAllComponents(results: ComparisonOutput[]): string[] {
   return Array.from(comps).sort();
 }
 
-function buildColumnConfig(results: ComparisonOutput[], visibility: Record<string, boolean>): ColumnConfig[] {
+function buildColumnConfig(
+  results: ComparisonOutput[],
+  visibility: Record<string, boolean>,
+): ColumnConfig[] {
   const components = extractAllComponents(results);
-  const specials = results.length > 0
-    ? [
-        { component: "gross_salary", visible: visibility["gross_salary"] !== false, mode: "side_by_side" as const },
-        { component: "net_salary", visible: visibility["net_salary"] !== false, mode: "side_by_side" as const },
-      ]
-    : [];
+  const specials =
+    results.length > 0
+      ? [
+          {
+            component: "gross_salary",
+            visible: visibility["gross_salary"] !== false,
+            mode: "side_by_side" as const,
+          },
+          {
+            component: "net_salary",
+            visible: visibility["net_salary"] !== false,
+            mode: "side_by_side" as const,
+          },
+        ]
+      : [];
   return [
     ...specials,
     ...components.map((component) => ({
@@ -48,10 +60,26 @@ function buildColumnConfig(results: ComparisonOutput[], visibility: Record<strin
 }
 
 /**
- * Step 3.4 of docs/ANNUAL_PAGE_FIX_PLAN.md: the comparison runs server-side
- * through `comparisons.run` instead of over employee records held in an
- * in-memory store, so this page works for any period the company has, not
- * only ones uploaded in the current tab.
+ * The Detailed View — the Ink & Signal rebuild (canvas board "Detailed View").
+ *
+ * Step 3.4 of docs/ANNUAL_PAGE_FIX_PLAN.md still holds: the comparison runs
+ * server-side through `comparisons.run` instead of over employee records held
+ * in an in-memory store, so this page works for any period the company has,
+ * not only ones uploaded in the current tab. `comparisons.getById` and
+ * `comparisons.run` are `memberProcedure`s and this screen is built on them,
+ * viewers included — CLAUDE.md records that as a product decision, so nothing
+ * here gates on a role.
+ *
+ * The rebuild is presentation only. Same mutation, same preselection effect,
+ * same filters, same `buildColumnConfig`, same export handler.
+ *
+ *   PageHeader ("July 2026 vs June 2026")
+ *   PeriodSelector — the Dashboard's toolbar, with Saved views, Export and
+ *                    Columns in its `actions` slot (the prop it was given in
+ *                    phase 3 for exactly this screen)
+ *   filter row     — search and department, in the same bordered surface row
+ *                    the Employee File list uses
+ *   ComparisonTable in a Panel
  */
 export default function DetailedViewPage() {
   const { componentVisibility } = usePayrollStore();
@@ -121,14 +149,25 @@ export default function DetailedViewPage() {
     console.log(`Exporting ${format} with ${filteredResults.length} rows`);
   };
 
+  // The title names the comparison on screen, current period first, the way the
+  // Dashboard does — the two screens read the same pair of periods.
+  const currentLabel = periods.find((p) => p.id === currentPeriodId)?.label ?? "";
+  const previousLabel = periods.find((p) => p.id === previousPeriodId)?.label ?? "";
+  const comparisonLabel =
+    currentLabel && previousLabel ? `${currentLabel} vs ${previousLabel}` : "";
+  const hasResults = results.length > 0;
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Detailed View</h2>
-        <p className="text-muted-foreground mt-1">
-          Compare employee salary components side by side across periods
-        </p>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        eyebrow="Detailed View"
+        title={hasResults && comparisonLabel ? comparisonLabel : "Every employee, side by side"}
+        lede={
+          hasResults
+            ? `Every pay component for every employee, with the change since ${previousLabel || "the previous period"}. Open a row for its components and anomaly flags.`
+            : "Pick a current and a previous period, then compare. Every employee and every pay component lands here, with the change between them."
+        }
+      />
 
       <PeriodSelector
         periodType={periodType}
@@ -140,27 +179,47 @@ export default function DetailedViewPage() {
         onPreviousPeriodChange={setPreviousPeriodId}
         onCompare={runComparisonHandler}
         loading={loading}
+        actions={
+          hasResults ? (
+            <>
+              <SavedViews currentColumns={columnConfig} onApplyView={setColumnConfig} />
+              <ExportButton hasData={filteredResults.length > 0} onExport={handleExport} />
+              <ColumnPicker columns={columnConfig} onChange={setColumnConfig} />
+            </>
+          ) : undefined
+        }
       />
 
-      {results.length > 0 && (
+      {/* The run's own failure, said once. It used to clear the table and
+          leave no explanation on screen at all. */}
+      {comparison.error && (
+        <Notice tone="danger" title="Could not run the comparison">
+          {comparison.error.message}
+        </Notice>
+      )}
+
+      {hasResults && (
         <>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative w-full sm:flex-1 sm:min-w-[200px] sm:max-w-sm">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <div className="flex flex-wrap items-center gap-3 rounded-cv-lg border border-cv-line bg-cv-surface px-4 py-3">
+            <div className="relative min-w-[16rem] flex-1">
+              <Icon
+                name="search"
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-cv-ink-subtle"
+              />
               <Input
-                placeholder="Search by name or ID..."
+                placeholder="Search by name or ID"
+                aria-label="Search by name or ID"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
               />
             </div>
             <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-              <SelectTrigger className="w-full sm:w-44">
-                <Filter className="h-4 w-4 mr-2 shrink-0" />
+              <SelectTrigger aria-label="Department" className="w-full sm:w-56">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Departments</SelectItem>
+                <SelectItem value="all">All departments</SelectItem>
                 {departments.map((dept) => (
                   <SelectItem key={dept} value={dept}>
                     {dept}
@@ -168,15 +227,6 @@ export default function DetailedViewPage() {
                 ))}
               </SelectContent>
             </Select>
-            <ColumnPicker columns={columnConfig} onChange={setColumnConfig} />
-            <SavedViews
-              currentColumns={columnConfig}
-              onApplyView={setColumnConfig}
-            />
-            <ExportButton
-              hasData={filteredResults.length > 0}
-              onExport={handleExport}
-            />
           </div>
 
           <ComparisonTable
