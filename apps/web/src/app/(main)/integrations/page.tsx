@@ -1,7 +1,22 @@
 "use client";
 
 import { useState } from "react";
+import { PageHeader } from "@/components/cv";
 import { IntegrationCard } from "@/components/integrations/integration-card";
+
+/**
+ * Integrations — board "Integrations", screen 7 of the Ink & Signal rebuild.
+ *
+ * `PageHeader` and a two-column grid of `Panel`s, one per system. Nothing about
+ * what this screen does has changed, which is worth stating plainly: **it does
+ * nothing.** The five systems below are a hard-coded fixture, the three handlers
+ * move local `useState` and no more, and `handleSync` waits two seconds and
+ * stamps the clock. There is a real `integrations` tRPC router
+ * (`server/routers/integrations.ts`, reading and writing `companies.settings`)
+ * and this page has never called it. So "Last sync" is a literal from the array
+ * below, or the moment Connect was clicked — never a sync, because no sync
+ * exists. The rebuild keeps it that way; wiring the router up is a feature.
+ */
 
 interface Integration {
   id: string;
@@ -68,7 +83,12 @@ export default function IntegrationsPage() {
     setIntegrations((prev) =>
       prev.map((i) =>
         i.provider === provider
-          ? { ...i, connected: true, lastSyncAt: new Date().toISOString(), syncSchedule: "Daily at 2:00 AM" }
+          ? {
+              ...i,
+              connected: true,
+              lastSyncAt: new Date().toISOString(),
+              syncSchedule: "Daily at 2:00 AM",
+            }
           : i,
       ),
     );
@@ -88,29 +108,25 @@ export default function IntegrationsPage() {
     await new Promise((r) => setTimeout(r, 2000));
     setIntegrations((prev) =>
       prev.map((i) =>
-        i.provider === provider
-          ? { ...i, lastSyncAt: new Date().toISOString() }
-          : i,
+        i.provider === provider ? { ...i, lastSyncAt: new Date().toISOString() } : i,
       ),
     );
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Integrations</h2>
-        <p className="text-muted-foreground mt-1">
-          Connect your HR and payroll systems for automatic data synchronization
-        </p>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        eyebrow="Integrations"
+        title="Systems you can connect"
+        lede="Connect your HR and payroll systems for automatic data synchronization."
+      />
 
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-2">
         {integrations.map((integration) => (
           <IntegrationCard
             key={integration.id}
             name={integration.name}
             description={integration.description}
-            provider={integration.provider}
             connected={integration.connected}
             lastSyncAt={integration.lastSyncAt}
             syncSchedule={integration.syncSchedule}
