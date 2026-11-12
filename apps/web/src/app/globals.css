@@ -1,17 +1,14 @@
-/* Clarivo design-system tokens, from docs/landing/design-system/tokens.css.
-   Imported before Tailwind so the --cv-* custom properties exist for the
-   theme.extend mapping in tailwind.config.ts. Every name is cv-prefixed, so
-   this sits alongside the shadcn/ui variables below rather than over them. */
+/* Clarivo design-system tokens (Ink & Signal). Imported before Tailwind so the --cv-*
+   custom properties exist for the theme.extend mapping in tailwind.config.ts. */
 @import "./clarivo-tokens.css";
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* DriftStrip animations, from docs/landing/design-system/components/bundle.css.
-   These stay as CSS rather than Tailwind utilities because the keyframes read
-   --cv-lift, which the component sets per size so the lift always matches the
-   tick height. The reduced-motion rule is the design system's own. */
+/* DriftStrip animations, from the design system's components/bundle.css. These stay as
+   CSS rather than Tailwind utilities because the keyframes read --cv-lift, which the
+   component sets per size so the lift always matches the tick height. */
 .cv-drift__tick {
   background: currentColor;
   opacity: 0.45;
@@ -52,69 +49,150 @@
   }
 }
 
+/*
+ * The shadcn/ui variables, mapped onto Ink & Signal.
+ *
+ * shadcn reads these as hsl(var(--x)), so each is the HSL channel triplet of a design
+ * token (hex in the comment). This is what re-colours every existing component under
+ * components/ui and every `bg-card`, `text-muted-foreground`, `border-input` in the app
+ * without touching them. New code uses the cv- utilities (bg-cv-surface, text-cv-ink...)
+ * directly; see docs/design/TOKEN_MAP.md.
+ *
+ * Note the two shadcn names that mean something else here:
+ * - --accent is shadcn's hover ground (ghost and outline hovers), so it maps to
+ *   surface-sunken, NOT to the cobalt accent. Cobalt is bg-cv-accent.
+ * - --border is the decorative hairline (line); --input is the 3:1 edge of anything you
+ *   can type into or click (border).
+ */
 @layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
-    --sidebar: 217.2 32.6% 17.5%;
-    --sidebar-foreground: 210 40% 98%;
+  :root,
+  [data-theme="light"] {
+    --background: 210 14.3% 97.3%; /* bg #F7F8F9 */
+    --foreground: 210 30.8% 10.2%; /* ink #121A22 */
+    --card: 0 0% 100%; /* surface #FFFFFF */
+    --card-foreground: 210 30.8% 10.2%;
+    --popover: 0 0% 100%; /* surface-raised #FFFFFF */
+    --popover-foreground: 210 30.8% 10.2%;
+    --primary: 210 30.8% 10.2%; /* primary = ink #121A22 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 204 20% 95.1%; /* surface-sunken #F0F3F5 */
+    --secondary-foreground: 210 30.8% 10.2%;
+    --muted: 204 20% 95.1%; /* surface-sunken #F0F3F5 */
+    --muted-foreground: 210 8% 43.9%; /* ink-subtle #677079 */
+    --accent: 204 20% 95.1%; /* hover ground = surface-sunken */
+    --accent-foreground: 210 30.8% 10.2%;
+    --destructive: 340.6 65.1% 49.4%; /* danger #D02C61 */
+    --destructive-foreground: 0 0% 100%;
+    --border: 205.7 16.3% 91.6%; /* line #E6EAED */
+    --input: 211.8 7.1% 53.1%; /* border #7F8790 */
+    --ring: 223.9 65.1% 50.6%; /* focus #2F5BD3 */
+    --radius: 0.625rem; /* radius-lg 10px */
+    --sidebar: 210 30.8% 10.2%; /* Ink side menu #121A22 */
+    --sidebar-foreground: 210 18.7% 93.7%; /* #ECEFF2 */
   }
 
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
-    --sidebar: 217.2 32.6% 17.5%;
-    --sidebar-foreground: 210 40% 98%;
+  .dark,
+  [data-theme="dark"] {
+    --background: 210 29.4% 6.7%; /* bg #0C1116 */
+    --foreground: 210 18.7% 93.7%; /* ink #ECEFF2 */
+    --card: 210 30.8% 10.2%; /* surface #121A22 */
+    --card-foreground: 210 18.7% 93.7%;
+    --popover: 212.3 18.8% 13.5%; /* surface-raised #1C2229 */
+    --popover-foreground: 210 18.7% 93.7%;
+    --primary: 210 20% 96.1%; /* primary turns paper #F3F5F7 */
+    --primary-foreground: 210 30.8% 10.2%; /* with an ink label */
+    --secondary: 206.7 36% 4.9%; /* surface-sunken #080D11 */
+    --secondary-foreground: 210 18.7% 93.7%;
+    --muted: 206.7 36% 4.9%;
+    --muted-foreground: 212 7.9% 62.5%; /* ink-subtle #989FA7 */
+    --accent: 206.7 36% 4.9%;
+    --accent-foreground: 210 18.7% 93.7%;
+    --destructive: 340.6 65.1% 49.4%; /* danger #D02C61 */
+    --destructive-foreground: 0 0% 100%;
+    --border: 210 14.9% 18.4%; /* line #282F36 */
+    --input: 210 7.1% 43.9%; /* border #687078 */
+    --ring: 221.7 95.6% 73.1%; /* focus #79A1FC */
+    --sidebar: 206.7 36% 4.9%; /* #080D11 */
+    --sidebar-foreground: 210 18.7% 93.7%;
   }
 }
 
 @layer base {
-  * { @apply border-border; }
-  body { @apply bg-background text-foreground; }
+  * {
+    @apply border-border;
+  }
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    @apply bg-background font-sans text-foreground;
+    font-size: 15px;
+    line-height: 24px;
+  }
+  /* Every interactive element shows the focus ring. Components draw their own with
+     focus-visible:shadow-cv-focus-ring; this :where() fallback has zero specificity, so
+     it only paints where nothing else does. */
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--cv-focus);
+    outline-offset: 2px;
+  }
+  /* Lucide icons follow the design system's 1.75 stroke. CSS beats the stroke-width
+     attribute Lucide writes, so this covers every existing import at once. */
+  svg.lucide {
+    stroke-width: 1.75;
+  }
+  /* Figures: tabular so columns line up and numbers never jump. */
+  table {
+    font-variant-numeric: tabular-nums;
+  }
 }
 
+@layer components {
+  /* A right-aligned amount in a table cell: Geist Mono, tabular, 13px. */
+  .cv-num {
+    text-align: right;
+    font-family: var(--cv-font-mono);
+    font-size: 13px;
+    line-height: 20px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+}
+
+/*
+ * Legacy utilities, kept so nothing breaks mid-migration and re-pointed at the design
+ * system by MEANING. Do not use them in new code; docs/design/TOKEN_MAP.md names the
+ * replacement for each, and test/design-system.test.ts lists any file still using them.
+ *
+ * Increases are rust and decreases cobalt: on a payroll bill, up is the thing to look at.
+ */
 @layer utilities {
-  .increase-text { @apply text-green-600 dark:text-green-400; }
-  .decrease-text { @apply text-red-600 dark:text-red-400; }
-  .unchanged-text { @apply text-gray-500 dark:text-gray-400; }
-  .anomaly-critical { @apply bg-red-50 border-red-200 text-red-800 dark:bg-red-950 dark:border-red-800 dark:text-red-300; }
-  .anomaly-warning { @apply bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-300; }
-  .anomaly-info { @apply bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-950 dark:border-blue-800 dark:text-blue-300; }
+  .increase-text {
+    color: var(--cv-delta-up-ink);
+  }
+  .decrease-text {
+    color: var(--cv-delta-down-ink);
+  }
+  .unchanged-text {
+    color: var(--cv-delta-flat-ink);
+  }
+  .anomaly-critical {
+    background: var(--cv-danger-soft);
+    border-color: transparent;
+    color: var(--cv-ink);
+  }
+  .anomaly-warning {
+    background: var(--cv-warning-soft);
+    border-color: transparent;
+    color: var(--cv-ink);
+  }
+  .anomaly-info {
+    background: var(--cv-accent-soft);
+    border-color: transparent;
+    color: var(--cv-ink);
+  }
 }
 
 /*
@@ -142,10 +220,12 @@
     display: none !important;
   }
 
-  /* Drop the app chrome's offsets so content uses the full page width. */
+  /* Drop the app chrome's offsets so content uses the full page width. The side
+     menu is 240px (lg:pl-60); lg:pl-64 is the width before the redesign. */
   main {
     padding: 0 !important;
   }
+  .lg\:pl-60,
   .lg\:pl-64 {
     padding-left: 0 !important;
   }
@@ -249,15 +329,17 @@
   margin-top: 0.5rem;
 }
 
-/* Formulas and column names. `font-cv-mono` is the same face the KPI tiles
-   use, so a spreadsheet formula reads as a figure rather than as prose. */
+/* Formulas and column names, in the same mono face the KPI tables use, so a
+   spreadsheet formula reads as a figure rather than as prose. (This read
+   var(--font-cv-mono), a variable nothing defines, so code fell back to the
+   browser's default monospace.) */
 .cv-article code {
   padding: 0.125rem 0.375rem;
   border: 1px solid var(--cv-line);
   border-radius: var(--cv-radius-sm, 0.25rem);
   background: var(--cv-surface);
   color: var(--cv-ink);
-  font-family: var(--font-cv-mono), ui-monospace, monospace;
+  font-family: var(--cv-font-mono);
   font-size: 0.9375em;
   overflow-wrap: break-word;
 }
