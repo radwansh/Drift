@@ -38,7 +38,6 @@ const LEGACY_FILES = new Set<string>([
   "src/components/detailed-view/comparison-table.tsx",
   "src/components/detailed-view/employee-detail-row.tsx",
   "src/components/employee-file/employee-file-header.tsx",
-  "src/components/employee-file/employee-list.tsx",
   "src/components/employee-file/employee-period-chart.tsx",
   "src/components/employee-file/employee-reconciliation.tsx",
   "src/components/payroll-periods/mapping-row.tsx",
