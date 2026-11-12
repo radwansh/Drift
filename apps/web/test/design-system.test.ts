@@ -21,8 +21,14 @@ import path from "node:path";
 const WEB_ROOT = path.resolve(import.meta.dirname, "..");
 const SRC = path.join(WEB_ROOT, "src");
 
-/** Screens still to migrate (phase 4 of the brief). Remove a line when its file is clean. */
-const LEGACY_FILES = new Set<string>(["src/lib/utils.ts"]);
+/**
+ * Screens still to migrate (phase 4 of the brief). Remove a line when its file is clean.
+ *
+ * Empty since phase 5: the last entry was `src/lib/utils.ts`, whose `formatChange` and
+ * `getSeverityBg` returned legacy class names to nobody. The set and the second test are
+ * deleted in phase 6, which needs it empty first to show the ratchet ran to the end.
+ */
+const LEGACY_FILES = new Set<string>([]);
 
 /**
  * Files allowed to hold literal colours for good. Clerk's appearance API computes shades

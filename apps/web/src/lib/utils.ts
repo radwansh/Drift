@@ -65,18 +65,15 @@ export function formatPercentage(value: number | null): string {
   return `${sign}${value.toFixed(1)}%`;
 }
 
-export function formatChange(value: number | null): { text: string; className: string } {
-  if (value === null || value === undefined) return { text: "—", className: "unchanged-text" };
-  if (Math.abs(value) < 0.01) return { text: "0.00", className: "unchanged-text" };
-  const sign = value > 0 ? "+" : "";
-  const className = value > 0 ? "increase-text" : value < 0 ? "decrease-text" : "unchanged-text";
-  return { text: `${sign}${value.toFixed(2)}`, className };
-}
-
-export function getSeverityBg(severity: string): string {
-  switch (severity) {
-    case "critical": return "anomaly-critical";
-    case "warning": return "anomaly-warning";
-    default: return "anomaly-info";
-  }
-}
+/*
+ * `formatChange` and `getSeverityBg` stood here. Both returned a legacy class
+ * name — increase-text / decrease-text / unchanged-text, and
+ * anomaly-critical / -warning / -info — and both had lost their last caller to
+ * the Ink & Signal rebuild: <Variance> prints a signed change with its arrow and
+ * colour, and <SeverityBadge> prints a severity with its icon and word.
+ *
+ * They are deleted rather than re-pointed at cv- tokens. A function that hands
+ * out a colour by string is how a hue reaches a screen without the icon or the
+ * sign beside it, which is the one thing the design system forbids; keeping a
+ * tidied version would have kept the route open.
+ */
