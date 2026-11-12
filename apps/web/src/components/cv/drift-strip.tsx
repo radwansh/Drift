@@ -1,17 +1,16 @@
 import { cn } from "@/lib/utils";
 
 /**
- * DriftStrip — the brand's signature device: a baseline of ticks with one
- * drifted into signal rust. Ported from bundle.css (`.cv-drift`).
+ * DriftStrip — the signature device: a baseline of ticks with one drifted tick in rust.
+ * Everything lines up except the change that matters.
  *
- * The geometry is driven by four CSS custom properties per size, exactly as
- * the design system has it, because the lift distance has to stay tied to the
- * tick height: the container reserves `tick + lift` so a drifted tick never
- * clips. Expressing that in Tailwind utilities alone would need arbitrary
- * values that drift out of step with each other, so the sizes stay as a style
- * object.
+ * Uses:
+ * - an empty or "nothing above your thresholds" state, still (animate={false});
+ * - the result of a finished comparison, lifting into place once (animate="lift");
+ * - loading, scanning (animate="scan") — Button's `loading` prop uses this at size xs.
  *
- * Animations respect prefers-reduced-motion through the rule in globals.css.
+ * The keyframes live in globals.css because they read --cv-lift, which is set here per
+ * size so the lift always matches the tick height. prefers-reduced-motion stops both.
  */
 
 type Size = "xs" | "sm" | "md" | "lg";
@@ -25,12 +24,11 @@ const SIZES: Record<Size, { w: string; gap: string; tick: string; lift: string }
 
 export interface DriftStripProps {
   count?: number;
-  /** Index of the drifted tick. Defaults to 70% along, as the design system does. */
+  /** Index of the drifted tick. Defaults to 70% along. */
   drift?: number;
   size?: Size;
-  /** 'lift' plays once on entry; 'scan' is the loading state. */
   animate?: false | "lift" | "scan";
-  /** Accessible name. Without it the strip is decorative and hidden. */
+  /** Accessible name. Omit to leave the strip decorative. */
   label?: string;
   className?: string;
 }
@@ -44,11 +42,14 @@ export function DriftStrip({
   className,
 }: DriftStripProps) {
   const s = SIZES[size];
-  const driftIndex = drift ?? Math.round(count * 0.7);
+  // While scanning there is no drifted tick: nothing has been found yet.
+  const driftIndex = animate === "scan" ? -1 : (drift ?? Math.round((count - 1) * 0.7));
 
   return (
     <span
       className={cn(
+        // Ticks paint in currentColor at 45% (globals.css), which on ink reads as the
+        // delta-flat grey; the drifted tick is always rust.
         "cv-drift inline-flex items-end",
         animate === "lift" && "cv-drift--lift",
         animate === "scan" && "cv-drift--scan",
@@ -57,7 +58,6 @@ export function DriftStrip({
       style={{
         gap: s.gap,
         height: `calc(${s.tick} + ${s.lift})`,
-        // Read by the keyframes in globals.css.
         ["--cv-lift" as string]: s.lift,
       }}
       {...(label ? { role: "img", "aria-label": label } : { "aria-hidden": true })}
@@ -67,11 +67,17 @@ export function DriftStrip({
         return (
           <span
             key={i}
-            className={cn("cv-drift__tick block flex-none rounded-[1px]", drifted && "cv-drift__tick--drift")}
+            className={cn(
+              "cv-drift__tick block flex-none rounded-[1px]",
+              drifted && "cv-drift__tick--drift",
+            )}
             style={{
               width: s.w,
               height: s.tick,
-              ...(drifted ? { transform: `translateY(calc(-1 * ${s.lift}))` } : null),
+              ...(drifted && animate !== "lift"
+                ? { transform: `translateY(calc(-1 * ${s.lift}))` }
+                : null),
+              ...(animate === "scan" ? { animationDelay: `${i * 90}ms` } : null),
             }}
           />
         );

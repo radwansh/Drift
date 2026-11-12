@@ -10,6 +10,12 @@ interface ChartFrameProps {
   rows: { name: string; values: string[] }[];
   /** Column headers for the hidden data table. */
   columns: string[];
+  /**
+   * Header of the row-name column in the hidden table. Defaults to "Period", which is
+   * right for every annual chart; the dashboard's distribution and component charts
+   * are not per period, so they name their own ("Change in net pay", "Pay component").
+   */
+  rowHeader?: string;
   className?: string;
   children: ReactNode;
 }
@@ -23,35 +29,48 @@ interface ChartFrameProps {
  * visually hidden table carrying the same numbers — which also means the figures
  * are selectable and searchable, not only decodable from bar heights.
  */
-export function ChartFrame({ label, rows, columns, className, children }: ChartFrameProps) {
+export function ChartFrame({
+  label,
+  rows,
+  columns,
+  rowHeader = "Period",
+  className,
+  children,
+}: ChartFrameProps) {
   return (
     <div className={cn("w-full min-w-0", className)}>
       <div role="img" aria-label={label} className="h-full w-full min-w-0">
         {children}
       </div>
-      <table className="sr-only">
-        <caption>{label}</caption>
-        <thead>
-          <tr>
-            <th scope="col">Period</th>
-            {columns.map((c) => (
-              <th key={c} scope="col">
-                {c}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.name}>
-              <th scope="row">{r.name}</th>
-              {r.values.map((v, i) => (
-                <td key={`${r.name}-${columns[i] ?? i}`}>{v}</td>
+      {/* sr-only goes on a wrapper, not on the table: a table never shrinks below its
+          content, so `sr-only` on the <table> itself left a 1,100px-wide absolutely
+          positioned box that widened the page (a horizontal scrollbar on every page with a
+          chart). The wrapper clips it to 1px as intended. */}
+      <div className="sr-only">
+        <table>
+          <caption>{label}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{rowHeader}</th>
+              {columns.map((c) => (
+                <th key={c} scope="col">
+                  {c}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.name}>
+                <th scope="row">{r.name}</th>
+                {r.values.map((v, i) => (
+                  <td key={`${r.name}-${columns[i] ?? i}`}>{v}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

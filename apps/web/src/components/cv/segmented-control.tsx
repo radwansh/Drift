@@ -4,17 +4,15 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * SegmentedControl — two to five mutually exclusive views. Ported from
- * bundle.css (`.cv-seg`).
+ * SegmentedControl — a small set of mutually exclusive options, all visible.
  *
- * The only stateful component the landing page uses: it drives the monthly /
- * yearly billing toggle. Everything else on the page is static, and the mobile
- * menu and FAQ use native <details>, so this is the one client boundary in the
- * section components.
+ * In the app: the payroll cadence (Monthly, Bi-monthly, Bi-weekly, Weekly), the Employee
+ * File's "who to list", chart modes (By period / Cumulative). Use a select when there are
+ * more than five options or the labels are long.
  *
- * Buttons carry `aria-pressed` rather than being a radio group, matching the
- * reference implementation — the control switches a view rather than entering
- * a value in a form.
+ * Buttons with aria-pressed inside a labelled group, so a screen reader hears the group
+ * name and which option is on. Controlled with `value` + `onChange`, or uncontrolled with
+ * `defaultValue`.
  */
 
 export interface SegmentedOption {
@@ -28,6 +26,7 @@ export interface SegmentedControlProps {
   defaultValue?: string;
   onChange?: (value: string) => void;
   size?: "sm" | "md";
+  /** The group's accessible name, e.g. "Payroll cadence". */
   label?: string;
   className?: string;
 }
@@ -44,9 +43,7 @@ export function SegmentedControl({
   const normalised: SegmentedOption[] = options.map((o) =>
     typeof o === "string" ? { value: o, label: o } : o,
   );
-
   const [internal, setInternal] = useState(defaultValue ?? normalised[0]?.value ?? "");
-  // Controlled when `value` is supplied, uncontrolled otherwise.
   const current = value ?? internal;
 
   function select(next: string) {
