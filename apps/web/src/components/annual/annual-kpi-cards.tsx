@@ -1,7 +1,6 @@
 "use client";
 
 import type { AnnualSummary } from "@saas/payroll-core";
-import { Briefcase, CalendarRange, ReceiptText, Users, Wallet, PieChart } from "lucide-react";
 import { AnnualKpiCard, AnnualKpiCardSkeleton } from "@/components/annual/annual-kpi-card";
 import {
   formatCompact,
@@ -16,8 +15,11 @@ interface AnnualKpiCardsProps {
   summary: AnnualSummary | null;
 }
 
+/** Six cards, so three across on a desktop and two rows — never six in a line. */
+const GRID = "grid grid-cols-1 items-start gap-5 sm:grid-cols-2 xl:grid-cols-3";
+
 /**
- * The KPI row (step 34, finding U5).
+ * The KPI row (step 34, finding U5), on Ink & Signal.
  *
  * Four problems, all fixed here: cards mixed scopes without saying so (the
  * employer-cost card was a full-year forecast sitting next to to-date cards);
@@ -28,11 +30,11 @@ interface AnnualKpiCardsProps {
 export function AnnualKpiCards({ summary }: AnnualKpiCardsProps) {
   if (!summary) {
     return (
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+      <section className={GRID} aria-label="Key figures" aria-busy="true">
         {Array.from({ length: 6 }).map((_, i) => (
           <AnnualKpiCardSkeleton key={i} />
         ))}
-      </div>
+      </section>
     );
   }
 
@@ -48,7 +50,9 @@ export function AnnualKpiCards({ summary }: AnnualKpiCardsProps) {
   const costPerEmployeeToDate =
     summary.avgHeadcountYtd > 0 ? actual.totalEmploymentCost / summary.avgHeadcountYtd : null;
   const costPerEmployeeAnnualised =
-    summary.avgHeadcountFullYear > 0 ? fullYear.totalEmploymentCost / summary.avgHeadcountFullYear : null;
+    summary.avgHeadcountFullYear > 0
+      ? fullYear.totalEmploymentCost / summary.avgHeadcountFullYear
+      : null;
 
   const taxesToDate =
     (cat.income_tax ?? 0) + (cat.social_security_employee ?? 0) + statutory.employerOnCostTotal;
@@ -68,7 +72,6 @@ export function AnnualKpiCards({ summary }: AnnualKpiCardsProps) {
     scope: Scope;
     subtext?: string;
     badge?: string;
-    icon: typeof Wallet;
   }[] = [
     {
       title: "Salaries paid",
@@ -77,7 +80,6 @@ export function AnnualKpiCards({ summary }: AnnualKpiCardsProps) {
       scope: "to_date",
       // A period name, not an ISO date.
       subtext: `Net, through ${lastPeriod}. Gross ${formatCompact(actual.gross, currency)}.`,
-      icon: Wallet,
     },
     {
       title: `Salaries forecast`,
@@ -86,7 +88,6 @@ export function AnnualKpiCards({ summary }: AnnualKpiCardsProps) {
       scope: "full_year_forecast",
       subtext: `Net. ${formatCompact(actual.net, currency)} paid plus ${formatCompact(forecast.net, currency)} to come.`,
       badge: estimatedBadge,
-      icon: CalendarRange,
     },
     {
       title: "Total employer cost",
@@ -96,7 +97,6 @@ export function AnnualKpiCards({ summary }: AnnualKpiCardsProps) {
       scope: "full_year_forecast",
       subtext: `Gross plus employer costs. ${formatCompact(actual.totalEmploymentCost, currency)} to date.`,
       badge: estimatedBadge,
-      icon: Briefcase,
     },
     {
       title: "Headcount",
@@ -114,12 +114,13 @@ export function AnnualKpiCards({ summary }: AnnualKpiCardsProps) {
       ]
         .filter(Boolean)
         .join(" · "),
-      icon: Users,
     },
     {
       title: "Cost per employee",
-      display: costPerEmployeeToDate !== null ? formatCompact(costPerEmployeeToDate, currency) : "—",
-      fullValue: costPerEmployeeToDate !== null ? formatMoney(costPerEmployeeToDate, currency) : undefined,
+      display:
+        costPerEmployeeToDate !== null ? formatCompact(costPerEmployeeToDate, currency) : "—",
+      fullValue:
+        costPerEmployeeToDate !== null ? formatMoney(costPerEmployeeToDate, currency) : undefined,
       // v1 led with a year-to-date figure and put an annualised one beside it
       // without saying which was which.
       scope: "to_date",
@@ -127,7 +128,6 @@ export function AnnualKpiCards({ summary }: AnnualKpiCardsProps) {
         costPerEmployeeAnnualised !== null
           ? `Annualised ${formatCompact(costPerEmployeeAnnualised, currency)} on average headcount ${summary.avgHeadcountFullYear.toFixed(1)}.`
           : undefined,
-      icon: PieChart,
     },
     {
       title: "Taxes and social security",
@@ -138,15 +138,14 @@ export function AnnualKpiCards({ summary }: AnnualKpiCardsProps) {
       subtext: `Income tax, employee social security and employer on-costs. Employer on-cost rate ${formatPct(
         statutory.employerOnCostRate,
       )} of gross.`,
-      icon: ReceiptText,
     },
   ];
 
   return (
-    <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+    <section className={GRID} aria-label="Key figures">
       {cards.map((card) => (
         <AnnualKpiCard key={card.title} {...card} />
       ))}
-    </div>
+    </section>
   );
 }

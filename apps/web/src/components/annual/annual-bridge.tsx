@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { AnnualSummary } from "@saas/payroll-core";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Panel } from "@/components/cv";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   BarChart,
@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/table";
 import { formatAxisMoney, formatMoney, formatCompact } from "@/components/annual/annual-utils";
 import { ChartFrame } from "@/components/annual/chart-frame";
+import { CHART, axisProps, categoryAxisProps, gridProps } from "@/lib/chart-palette";
 
 interface AnnualBridgeProps {
   summary: AnnualSummary | null;
@@ -102,11 +103,17 @@ export function buildWaterfall(summary: AnnualSummary): WaterfallRow[] {
   return rows;
 }
 
+/**
+ * Subtotals in ink, amounts that reduce in cobalt, amounts that add in rust —
+ * and never a third hue. The two balancing lines ("Unreconciled" here,
+ * "Earnings balance" in the table below) are steps like any other: they exist
+ * because real uploads have unmapped columns, and folding them into "other"
+ * would put the gap back where nobody can see it.
+ */
 const STEP_FILL: Record<StepKind, string> = {
-  // Decreases red, increases green, totals grey.
-  decrease: "hsl(var(--destructive))",
-  increase: "hsl(142 70% 42%)",
-  total: "hsl(var(--muted-foreground))",
+  decrease: CHART.down,
+  increase: CHART.up,
+  total: CHART.current,
 };
 
 const TABLE_ROWS: { label: string; get: (line: AnnualSummary["bridge"]["actual"]) => number }[] = [
@@ -138,15 +145,12 @@ export function AnnualBridge({ summary }: AnnualBridgeProps) {
 
   if (!summary) {
     return (
-      <Card className="min-w-0">
-        <CardHeader>
-          <CardTitle className="text-sm font-medium">Gross to net</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
+      <Panel headingId="annual-bridge-h" title="Gross to net">
+        <div className="space-y-3">
           <Skeleton className="h-[320px] w-full" />
           <Skeleton className="h-40 w-full" />
-        </CardContent>
-      </Card>
+        </div>
+      </Panel>
     );
   }
 
@@ -154,15 +158,12 @@ export function AnnualBridge({ summary }: AnnualBridgeProps) {
   const axisMax = Math.max(...waterfall.map((r) => r.base + r.span), 0);
 
   return (
-    <Card className="min-w-0">
-      <CardHeader>
-        <CardTitle className="text-sm font-medium">Gross to net</CardTitle>
-        <CardDescription>
-          Where gross pay goes, to date. Totals start at zero; deductions step down from gross and
-          employer costs step up.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
+    <Panel
+      headingId="annual-bridge-h"
+      title="Gross to net"
+      description="Where gross pay goes, to date. Totals start at zero; deductions step down from gross and employer costs step up."
+    >
+      <div className="flex flex-col gap-6">
         <ChartFrame
           label={`Gross-to-net waterfall for ${summary.year}. Gross ${formatMoney(
             summary.bridge.actual.gross,
@@ -171,6 +172,7 @@ export function AnnualBridge({ summary }: AnnualBridgeProps) {
             summary.bridge.actual.totalEmploymentCost,
             currency,
           )}.`}
+          rowHeader="Line"
           rows={waterfall.map((r) => ({
             name: r.label,
             values: [formatMoney(r.value, currency)],
@@ -182,26 +184,26 @@ export function AnnualBridge({ summary }: AnnualBridgeProps) {
             <BarChart
               data={waterfall}
               layout={narrow ? "vertical" : "horizontal"}
-              margin={narrow ? { top: 4, right: 56, left: 8, bottom: 4 } : { top: 20, right: 8, left: 8, bottom: 8 }}
+              margin={
+                narrow
+                  ? { top: 4, right: 56, left: 8, bottom: 4 }
+                  : { top: 20, right: 8, left: 8, bottom: 8 }
+              }
             >
-              <CartesianGrid strokeDasharray="3 3" vertical={narrow} horizontal={!narrow} />
+              <CartesianGrid {...gridProps} vertical={narrow} horizontal={!narrow} />
               {narrow ? (
                 <>
                   <XAxis
                     type="number"
                     domain={[0, axisMax]}
-                    tick={{ fontSize: 11 }}
-                    tickLine={false}
-                    axisLine={false}
+                    {...axisProps}
                     tickFormatter={formatAxisMoney}
                   />
                   <YAxis
                     type="category"
                     dataKey="label"
                     width={132}
-                    tick={{ fontSize: 11 }}
-                    tickLine={false}
-                    axisLine={false}
+                    {...categoryAxisProps}
                     interval={0}
                   />
                 </>
@@ -209,9 +211,7 @@ export function AnnualBridge({ summary }: AnnualBridgeProps) {
                 <>
                   <XAxis
                     dataKey="label"
-                    tick={{ fontSize: 11 }}
-                    tickLine={false}
-                    axisLine={false}
+                    {...categoryAxisProps}
                     tickMargin={8}
                     interval={0}
                     angle={-30}
@@ -221,9 +221,7 @@ export function AnnualBridge({ summary }: AnnualBridgeProps) {
                   <YAxis
                     width={64}
                     domain={[0, axisMax]}
-                    tick={{ fontSize: 11 }}
-                    tickLine={false}
-                    axisLine={false}
+                    {...axisProps}
                     tickMargin={8}
                     tickFormatter={formatAxisMoney}
                   />
@@ -239,8 +237,8 @@ export function AnnualBridge({ summary }: AnnualBridgeProps) {
                 <LabelList
                   dataKey="value"
                   position={narrow ? "right" : "top"}
-                  className="fill-foreground"
-                  style={{ fontSize: 10 }}
+                  className="fill-cv-ink"
+                  style={{ fontSize: 11, fontFamily: "var(--cv-font-mono)" }}
                   formatter={(v: number) => formatAxisMoney(Math.abs(v))}
                 />
               </Bar>
@@ -248,11 +246,12 @@ export function AnnualBridge({ summary }: AnnualBridgeProps) {
           </ResponsiveContainer>
         </ChartFrame>
 
-        <div className="relative overflow-x-auto">
+        <div className="overflow-x-auto rounded-cv-lg border border-cv-line">
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead className="sticky left-0 z-10 bg-background">Line</TableHead>
+              <TableRow className="hover:bg-transparent">
+                {/* Sticky, so the line name survives a sideways scroll on a phone. */}
+                <TableHead className="sticky left-0 z-10 bg-cv-surface-sunken">Line</TableHead>
                 <TableHead className="text-right">To date</TableHead>
                 <TableHead className="text-right">Forecast</TableHead>
                 <TableHead className="text-right">Full year</TableHead>
@@ -261,17 +260,17 @@ export function AnnualBridge({ summary }: AnnualBridgeProps) {
             <TableBody>
               {TABLE_ROWS.map((row) => (
                 <TableRow key={row.label}>
-                  <TableCell className="sticky left-0 z-10 bg-background font-medium whitespace-nowrap">
+                  <TableCell className="sticky left-0 z-10 whitespace-nowrap bg-cv-surface font-medium text-cv-ink">
                     {row.label}
                   </TableCell>
                   {/* Full values, as the spec asks — not compact ones (finding U9). */}
-                  <TableCell className="text-right tabular-nums whitespace-nowrap">
+                  <TableCell className="cv-num">
                     {formatMoney(row.get(summary.bridge.actual), currency)}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums whitespace-nowrap">
+                  <TableCell className="cv-num">
                     {formatMoney(row.get(summary.bridge.forecast), currency)}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums whitespace-nowrap">
+                  <TableCell className="cv-num">
                     {formatMoney(row.get(summary.bridge.fullYear), currency)}
                   </TableCell>
                 </TableRow>
@@ -285,26 +284,27 @@ export function AnnualBridge({ summary }: AnnualBridgeProps) {
                 dashes and why it sits below the totals rather than among them.
               */}
               {summary.oneOffsExcluded.total !== 0 && (
-                <TableRow className="border-t text-muted-foreground">
-                  <TableCell className="sticky left-0 z-10 bg-background font-medium whitespace-nowrap">
+                <TableRow className="text-cv-ink-muted">
+                  <TableCell className="sticky left-0 z-10 whitespace-nowrap bg-cv-surface font-medium">
                     One-offs excluded from forecast
                   </TableCell>
-                  <TableCell className="text-right tabular-nums whitespace-nowrap">
+                  <TableCell className="cv-num">
                     {formatMoney(summary.oneOffsExcluded.total, currency)}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums whitespace-nowrap">—</TableCell>
-                  <TableCell className="text-right tabular-nums whitespace-nowrap">—</TableCell>
+                  <TableCell className="cv-num">—</TableCell>
+                  <TableCell className="cv-num">—</TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
         </div>
-        <p className="text-xs text-muted-foreground">
+
+        <p className="m-0 text-xs leading-4 text-cv-ink-subtle">
           Gross {formatCompact(summary.bridge.actual.gross, currency)} → net{" "}
           {formatCompact(summary.bridge.actual.net, currency)} → total employment cost{" "}
           {formatCompact(summary.bridge.actual.totalEmploymentCost, currency)}.
         </p>
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }

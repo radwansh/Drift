@@ -24,16 +24,6 @@ const SRC = path.join(WEB_ROOT, "src");
 /** Screens still to migrate (phase 4 of the brief). Remove a line when its file is clean. */
 const LEGACY_FILES = new Set<string>([
   "src/app/(main)/settings/column-mappings/page.tsx",
-  "src/components/annual/annual-bridge.tsx",
-  "src/components/annual/annual-budget.tsx",
-  "src/components/annual/annual-categories.tsx",
-  "src/components/annual/annual-dashboard.tsx",
-  "src/components/annual/annual-headcount-chart.tsx",
-  "src/components/annual/annual-periods-chart.tsx",
-  "src/components/annual/annual-scenario.tsx",
-  "src/components/annual/annual-statutory.tsx",
-  "src/components/annual/annual-warnings.tsx",
-  "src/components/annual/category-manager.tsx",
   "src/components/settings/billing-card.tsx",
   "src/lib/utils.ts",
 ]);

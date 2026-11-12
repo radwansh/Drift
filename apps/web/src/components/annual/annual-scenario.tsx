@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FlaskConical, TrendingDown, TrendingUp } from "lucide-react";
+import { FlaskConical } from "lucide-react";
 import type { AnnualSummary } from "@saas/payroll-core";
 import { applyScenario, costPerHeadForecast, type Scenario } from "@saas/payroll-core";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Button, Panel, TextField, Variance } from "@/components/cv";
 import {
   Select,
   SelectTrigger,
@@ -12,8 +12,6 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { formatMoney, formatCompact } from "@/components/annual/annual-utils";
 
 interface AnnualScenarioProps {
@@ -21,7 +19,7 @@ interface AnnualScenarioProps {
 }
 
 /**
- * Scenario planner (step 43).
+ * Scenario planner (step 43), on Ink & Signal.
  *
  * Runs in the browser against the summary already on screen, so the baseline a
  * user compares against is exactly what they are looking at and no round trip is
@@ -57,41 +55,42 @@ export function AnnualScenario({ summary }: AnnualScenarioProps) {
   const perHead = costPerHeadForecast(summary);
   const currency = summary.currency;
   const hasScenario = result.assumptions.length > 0;
-  const worse = result.difference.totalEmploymentCost > 0;
 
   if (projectedSlots.length === 0) return null;
 
   return (
-    <Card className="min-w-0">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-sm font-medium">
-          <FlaskConical className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+    <Panel
+      headingId="annual-scenario-h"
+      title={
+        <span className="inline-flex items-center gap-2">
+          <FlaskConical className="h-5 w-5 shrink-0 text-cv-ink-subtle" aria-hidden="true" />
           Scenario planner
-        </CardTitle>
-        <CardDescription>
-          Applies changes to the {projectedSlots.length} remaining{" "}
-          {projectedSlots.length === 1 ? "period" : "periods"} only; actuals are never changed. Cost
-          per head in the next projected period is {formatMoney(perHead, currency)}, excluding one-offs.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-5">
+        </span>
+      }
+      description={`Applies changes to the ${projectedSlots.length} remaining ${
+        projectedSlots.length === 1 ? "period" : "periods"
+      } only; actuals are never changed. Cost per head in the next projected period is ${formatMoney(
+        perHead,
+        currency,
+      )}, excluding one-offs.`}
+    >
+      <div className="flex flex-col gap-5">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="space-y-1.5">
-            <label htmlFor="scenario-people" className="text-xs font-medium text-muted-foreground">
-              Headcount change
-            </label>
-            <input
-              id="scenario-people"
-              type="number"
-              step={1}
-              value={people}
-              onChange={(e) => setPeople(Number(e.target.value) || 0)}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm tabular-nums shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-          </div>
+          <TextField
+            id="scenario-people"
+            label="Headcount change"
+            mono
+            type="number"
+            step={1}
+            value={people}
+            onChange={(e) => setPeople(Number(e.target.value) || 0)}
+          />
 
-          <div className="space-y-1.5">
-            <label htmlFor="scenario-from" className="text-xs font-medium text-muted-foreground">
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <label
+              htmlFor="scenario-from"
+              className="text-[13px] font-medium leading-[18px] tracking-[0.005em] text-cv-ink"
+            >
               From period
             </label>
             <Select value={String(fromSlot)} onValueChange={(v) => setFromSlot(Number(v))}>
@@ -108,105 +107,101 @@ export function AnnualScenario({ summary }: AnnualScenarioProps) {
             </Select>
           </div>
 
-          <div className="space-y-1.5">
-            <label htmlFor="scenario-increase" className="text-xs font-medium text-muted-foreground">
-              Pay increase %
-            </label>
-            <input
-              id="scenario-increase"
-              type="number"
-              step={0.5}
-              value={increasePct}
-              onChange={(e) => setIncreasePct(Number(e.target.value) || 0)}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm tabular-nums shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-          </div>
+          <TextField
+            id="scenario-increase"
+            label="Pay increase"
+            mono
+            suffix="%"
+            type="number"
+            step={0.5}
+            value={increasePct}
+            onChange={(e) => setIncreasePct(Number(e.target.value) || 0)}
+          />
 
-          <div className="space-y-1.5">
-            <label htmlFor="scenario-bonus" className="text-xs font-medium text-muted-foreground">
-              One-off bonus per head
-            </label>
-            <div className="flex gap-2">
-              <input
-                id="scenario-bonus"
-                type="number"
-                step={100}
-                min={0}
-                value={bonusPerHead}
-                onChange={(e) => setBonusPerHead(Number(e.target.value) || 0)}
-                className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm tabular-nums shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-              <Select value={String(bonusSlot)} onValueChange={(v) => setBonusSlot(Number(v))}>
-                <SelectTrigger className="w-28" aria-label="Bonus period">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {projectedSlots.map((s) => (
-                    <SelectItem key={s.index} value={String(s.index)}>
-                      {s.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <TextField
+              id="scenario-bonus"
+              label="One-off bonus per head"
+              mono
+              prefix={currency}
+              type="number"
+              step={100}
+              min={0}
+              value={bonusPerHead}
+              onChange={(e) => setBonusPerHead(Number(e.target.value) || 0)}
+            />
+            <Select value={String(bonusSlot)} onValueChange={(v) => setBonusSlot(Number(v))}>
+              <SelectTrigger aria-label="Bonus period">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {projectedSlots.map((s) => (
+                  <SelectItem key={s.index} value={String(s.index)}>
+                    {s.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
         {hasScenario ? (
-          <div className="space-y-3 rounded-lg border p-4">
+          <div className="flex flex-col gap-3 rounded-cv-lg border border-cv-line p-4">
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="min-w-0">
-                <p className="text-xs font-medium text-muted-foreground">Baseline, full year</p>
-                <p className="mt-1 text-lg font-semibold tabular-nums">
+                <p className="m-0 text-xs font-medium leading-4 text-cv-ink-muted">
+                  Baseline, full year
+                </p>
+                <p className="m-0 mt-1 text-lg font-semibold leading-6 tabular-nums text-cv-ink">
                   {formatCompact(result.baseline.totalEmploymentCost, currency)}
                 </p>
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-medium text-muted-foreground">Scenario, full year</p>
-                <p className="mt-1 text-lg font-semibold tabular-nums">
+                <p className="m-0 text-xs font-medium leading-4 text-cv-ink-muted">
+                  Scenario, full year
+                </p>
+                <p className="m-0 mt-1 text-lg font-semibold leading-6 tabular-nums text-cv-ink">
                   {formatCompact(result.scenario.totalEmploymentCost, currency)}
                 </p>
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-medium text-muted-foreground">Difference</p>
-                <p
-                  className={cn(
-                    "mt-1 flex items-center gap-1.5 text-lg font-semibold tabular-nums",
-                    worse ? "text-destructive" : "text-emerald-600 dark:text-emerald-500",
-                  )}
-                >
-                  {worse ? (
-                    <TrendingUp className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  ) : (
-                    <TrendingDown className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  )}
-                  {formatMoney(Math.abs(result.difference.totalEmploymentCost), currency)}
-                </p>
+                <p className="m-0 text-xs font-medium leading-4 text-cv-ink-muted">Difference</p>
+                {/* A signed change: arrow, sign and colour, with the amount
+                    through the money formatter. Costing more is rust. */}
+                <span className="mt-1 block">
+                  <Variance
+                    value={result.difference.totalEmploymentCost}
+                    size="lg"
+                    format={(n) => formatMoney(n, currency)}
+                  />
+                </span>
               </div>
             </div>
-            <ul className="space-y-1 text-xs text-muted-foreground">
+            <ul className="m-0 flex list-none flex-col gap-1 p-0 text-xs leading-4 text-cv-ink-subtle">
               {result.assumptions.map((a) => (
                 <li key={a}>{a}</li>
               ))}
             </ul>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setPeople(0);
-                setIncreasePct(0);
-                setBonusPerHead(0);
-              }}
-            >
-              Reset
-            </Button>
+            <div>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setPeople(0);
+                  setIncreasePct(0);
+                  setBonusPerHead(0);
+                }}
+              >
+                Reset
+              </Button>
+            </div>
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">
+          <p className="m-0 text-sm leading-5 text-cv-ink-muted">
             Enter a headcount change, a pay increase or a bonus to see its effect on the full year.
           </p>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }
