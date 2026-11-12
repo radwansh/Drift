@@ -22,11 +22,7 @@ const WEB_ROOT = path.resolve(import.meta.dirname, "..");
 const SRC = path.join(WEB_ROOT, "src");
 
 /** Screens still to migrate (phase 4 of the brief). Remove a line when its file is clean. */
-const LEGACY_FILES = new Set<string>([
-  "src/app/(main)/settings/column-mappings/page.tsx",
-  "src/components/settings/billing-card.tsx",
-  "src/lib/utils.ts",
-]);
+const LEGACY_FILES = new Set<string>(["src/lib/utils.ts"]);
 
 /**
  * Files allowed to hold literal colours for good. Clerk's appearance API computes shades

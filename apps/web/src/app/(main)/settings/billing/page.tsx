@@ -1,12 +1,46 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+import { ExternalLink } from "lucide-react";
+import { Badge, Button, PageHeader, Panel, PanelBar, Stat } from "@/components/cv";
+import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { BillingCard } from "@/components/settings/billing-card";
-import { ExternalLink, CreditCard, Users, BarChart3, Clock } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
+/**
+ * Settings · Plan and billing — board "Settings: plan and billing", screen 8 of
+ * the Ink & Signal rebuild.
+ *
+ * What is on this page is what was on it: a fixture. The plan, the three usage
+ * figures, the four invoices and the three plan prices are literals, and
+ * "Manage subscription" waits 800ms and opens `billing.stripe.com` in a tab —
+ * it never calls `settings.createBillingPortal`, which exists and would return
+ * the session URL. Unchanged, deliberately.
+ *
+ * **The prices are printed exactly as this page has always printed them**, with
+ * a dollar sign and no formatter. They are list prices typed into the file, not
+ * payroll money, and the app's `USD 1,234.56` rule is about figures read from a
+ * register. They do **not** agree with the website's pricing
+ * (`components/marketing/content.ts`), which sells Starter, Growth, Business and
+ * Enterprise at ¤59 / ¤99 / ¤299 with a 50% beta-founder discount and says
+ * Clarivo is free during the beta. Reconciling the two is a product decision and
+ * is reported rather than taken here.
+ *
+ * Two changes to the layout, both from the board. The plan grid is rendered
+ * **once**: the old page put a full-width "Professional" card at the top and the
+ * same card again in a sidebar, so the current plan appeared twice on one
+ * screen, with two different buttons. And there is no payment-method panel,
+ * because nothing on this page or in `settings.getBillingInfo` knows what the
+ * payment method is, and a card ending in four invented digits is worse than an
+ * absent panel.
+ */
 
 const invoiceHistory = [
   { id: "INV-001", date: "Jun 01, 2026", amount: "$299.00", status: "paid" },
@@ -14,6 +48,53 @@ const invoiceHistory = [
   { id: "INV-003", date: "Apr 01, 2026", amount: "$299.00", status: "paid" },
   { id: "INV-004", date: "Mar 01, 2026", amount: "$199.00", status: "paid" },
 ];
+
+const plans = [
+  {
+    name: "Starter",
+    price: "$99",
+    interval: "/month",
+    description: "For small teams",
+    features: [
+      "10 comparisons/month",
+      "Basic anomaly detection",
+      "CSV & XLSX upload",
+      "Email support",
+    ],
+    active: false,
+  },
+  {
+    name: "Professional",
+    price: "$299",
+    interval: "/month",
+    description: "For growing payroll teams",
+    features: [
+      "Unlimited comparisons",
+      "AI-powered analysis",
+      "Advanced anomaly detection",
+      "Priority support",
+      "Up to 1,000 employees per period",
+    ],
+    active: true,
+  },
+  {
+    name: "Enterprise",
+    price: "Custom",
+    interval: "",
+    description: "For large organizations",
+    features: [
+      "Unlimited everything",
+      "Dedicated support",
+      "Custom integrations",
+      "SLA guarantee",
+      "On-premise option",
+    ],
+    active: false,
+  },
+];
+
+/** One source for the plan named at the top and the one outlined in the grid. */
+const currentPlan = plans.find((plan) => plan.active) ?? plans[0]!;
 
 export default function BillingPage() {
   const [loadingPortal, setLoadingPortal] = useState(false);
@@ -26,154 +107,104 @@ export default function BillingPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Billing & Subscription</h2>
-        <p className="text-muted-foreground mt-1">Manage your plan, invoices, and payment methods</p>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        eyebrow="Settings"
+        title="Plan and billing"
+        lede="The plan this company is on, what it has used this month, and every invoice so far."
+      />
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-6">
-          <BillingCard
-            name="Professional"
-            price="$299"
-            interval="/month"
-            description="For growing payroll teams"
-            features={[
-              "Unlimited comparisons",
-              "AI-powered analysis",
-              "Advanced anomaly detection",
-              "Priority support",
-              "Up to 1,000 employees per period",
-            ]}
-            active
-          />
+      <SettingsTabs />
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CreditCard className="h-5 w-5 text-muted-foreground" />
-                Subscription
-              </CardTitle>
-              <CardDescription>
-                <span className="flex items-center gap-2 mt-1">
-                  Current status: <Badge variant="success">Active</Badge>
-                </span>
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="rounded-lg border p-4">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Users className="h-4 w-4" />
-                    Active Employees
-                  </div>
-                  <p className="mt-1 text-2xl font-bold">16</p>
-                  <p className="text-xs text-muted-foreground">of 1,000 limit</p>
-                </div>
-                <div className="rounded-lg border p-4">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <BarChart3 className="h-4 w-4" />
-                    Comparisons This Month
-                  </div>
-                  <p className="mt-1 text-2xl font-bold">3</p>
-                  <p className="text-xs text-muted-foreground">Unlimited</p>
-                </div>
-                <div className="rounded-lg border p-4">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Clock className="h-4 w-4" />
-                    Next Billing Date
-                  </div>
-                  <p className="mt-1 text-2xl font-bold">Jul 1</p>
-                  <p className="text-xs text-muted-foreground">2026</p>
-                </div>
-              </div>
-              <Button variant="outline" onClick={handleManageSubscription} disabled={loadingPortal}>
-                <ExternalLink className="h-4 w-4 mr-2" />
-                {loadingPortal ? "Opening..." : "Manage Subscription"}
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Invoice History</CardTitle>
-              <CardDescription>Recent billing invoices</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Invoice</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {invoiceHistory.map((inv) => (
-                    <TableRow key={inv.id}>
-                      <TableCell className="font-medium">{inv.id}</TableCell>
-                      <TableCell>{inv.date}</TableCell>
-                      <TableCell>{inv.amount}</TableCell>
-                      <TableCell>
-                        <Badge variant="success" className="capitalize">{inv.status}</Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+      <Panel
+        title={currentPlan.name}
+        description={`${currentPlan.price}${currentPlan.interval}, billed to this company.`}
+        actions={
+          <Badge tone="success" icon="check">
+            Active
+          </Badge>
+        }
+      >
+        <div className="flex flex-col gap-5">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Stat label="Active employees" value="16" caption="of 1,000 on this plan" />
+            <Stat label="Comparisons this month" value="3" caption="Unlimited on this plan" />
+            <Stat label="Next billing date" value="Jul 1" caption="2026" />
+          </div>
+          <div>
+            <Button
+              variant="secondary"
+              icon={<ExternalLink aria-hidden="true" />}
+              onClick={() => void handleManageSubscription()}
+              disabled={loadingPortal}
+              loading={loadingPortal}
+            >
+              {loadingPortal ? "Opening…" : "Manage subscription"}
+            </Button>
+          </div>
         </div>
+      </Panel>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Pricing</CardTitle>
-            <CardDescription>Compare our plans</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+      <section aria-labelledby="plans-heading" className="flex flex-col gap-4">
+        <div>
+          <h2
+            id="plans-heading"
+            className="m-0 text-xl font-semibold leading-7 tracking-[-0.01em] text-cv-ink"
+          >
+            Plans
+          </h2>
+          <p className="m-0 mt-0.5 text-sm leading-5 text-cv-ink-subtle">
+            The plan you are on is outlined.
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          {plans.map((plan) => (
             <BillingCard
-              name="Starter"
-              price="$99"
-              interval="/month"
-              description="For small teams"
-              features={[
-                "10 comparisons/month",
-                "Basic anomaly detection",
-                "CSV & XLSX upload",
-                "Email support",
-              ]}
+              key={plan.name}
+              name={plan.name}
+              price={plan.price}
+              interval={plan.interval}
+              description={plan.description}
+              features={plan.features}
+              active={plan.active}
             />
-            <BillingCard
-              name="Professional"
-              price="$299"
-              interval="/month"
-              description="For growing teams"
-              features={[
-                "Unlimited comparisons",
-                "AI-powered analysis",
-                "Advanced anomaly detection",
-                "Priority support",
-              ]}
-              active
-            />
-            <BillingCard
-              name="Enterprise"
-              price="Custom"
-              interval=""
-              description="For large organizations"
-              features={[
-                "Unlimited everything",
-                "Dedicated support",
-                "Custom integrations",
-                "SLA guarantee",
-                "On-premise option",
-              ]}
-            />
-          </CardContent>
-        </Card>
-      </div>
+          ))}
+        </div>
+      </section>
+
+      <Panel flush>
+        <PanelBar>
+          <p className="m-0 text-[13px] leading-[18px] text-cv-ink-muted">
+            Invoices · {invoiceHistory.length} on record
+          </p>
+        </PanelBar>
+        <div className="overflow-x-auto">
+          <Table className="min-w-[560px]">
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Invoice</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead className="text-right">Amount</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {invoiceHistory.map((inv) => (
+                <TableRow key={inv.id}>
+                  <TableCell className="font-cv-mono text-[13px] text-cv-ink">{inv.id}</TableCell>
+                  <TableCell className="text-cv-ink-muted">{inv.date}</TableCell>
+                  <TableCell className="cv-num text-right">{inv.amount}</TableCell>
+                  <TableCell>
+                    <Badge tone="success" icon="check">
+                      Paid
+                    </Badge>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </Panel>
     </div>
   );
 }
