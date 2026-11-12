@@ -1,10 +1,16 @@
-import { AlertCircle, Lock } from "lucide-react";
+import { EmptyState } from "@/components/cv";
 
 /**
- * The two panels both Employee File routes can land on (step E1).
+ * The two panels both Employee File routes can land on (step E1), on Ink &
+ * Signal.
  *
  * Shared rather than duplicated per route, because the wording is the point: a
  * redirect from either of these states loses the reason, and two copies drift.
+ *
+ * Both are `EmptyState visual={null}`: the design system's empty state is a
+ * calm baseline, and the drift strip is for "nothing here yet" rather than for
+ * a refusal, so neither of these gets one. The old big icon in a tinted circle
+ * is gone with it — a dead end is not an alarm.
  */
 
 /**
@@ -18,17 +24,14 @@ import { AlertCircle, Lock } from "lucide-react";
  */
 export function AccountUnavailable() {
   return (
-    <div className="flex flex-col items-center justify-center py-24">
-      <div className="rounded-full bg-destructive/10 p-4">
-        <AlertCircle className="h-10 w-10 text-destructive" aria-hidden="true" />
-      </div>
-      <h2 className="mt-6 text-2xl font-bold text-foreground">Could not open your account</h2>
-      <p className="mt-2 max-w-md text-center text-muted-foreground">
-        You are signed in, but we could not load the company this page belongs to. Reloading
-        usually works. If it keeps happening, the account needs attention rather than another
-        attempt.
-      </p>
-    </div>
+    <section aria-label="Could not open your account">
+      <EmptyState
+        visual={null}
+        title="Could not open your account"
+        description="You are signed in, but we could not load the company this page belongs to. Reloading usually works. If it keeps happening, the account needs attention rather than another attempt."
+        className="py-24"
+      />
+    </section>
   );
 }
 
@@ -43,15 +46,13 @@ export function AccountUnavailable() {
  */
 export function NotAvailableForRole() {
   return (
-    <div className="flex flex-col items-center justify-center py-24">
-      <div className="rounded-full bg-muted p-4">
-        <Lock className="h-10 w-10 text-muted-foreground" aria-hidden="true" />
-      </div>
-      <h2 className="mt-6 text-2xl font-bold text-foreground">Not available for your role</h2>
-      <p className="mt-2 max-w-md text-center text-muted-foreground">
-        The Employee File shows one person&apos;s pay in full, so it is open to admins and
-        managers only. Ask an admin in your company if you need access to it.
-      </p>
-    </div>
+    <section aria-label="Not available for your role">
+      <EmptyState
+        visual={null}
+        title="Not available for your role"
+        description="The Employee File shows one person's pay in full, so it is open to admins and managers only. Ask an admin in your company if you need access to it."
+        className="py-24"
+      />
+    </section>
   );
 }

@@ -65,9 +65,16 @@ export interface PeriodRow {
  *
  * Colours are explicit `fill` values, **never** a Tailwind `className`:
  * Recharts does not apply classes to legend marks, so a classed chart renders
- * its legend black and loses it in dark mode. These are fixed hues rather than
- * theme variables because a stack needs six distinguishable colours and the
- * theme defines one accent.
+ * its legend black and loses it in dark mode.
+ *
+ * Since the Ink & Signal rebuild the **chart does not read `fill`**. It paints
+ * the n-th present series with `seriesColor(n)` from `lib/chart-palette.ts`,
+ * the way the Dashboard's distribution chart ignores the engine's own colours:
+ * which six hues a stack uses is a design-system decision, not a domain one,
+ * and `seriesColor` follows the light/dark theme where these fixed hues cannot.
+ * The field stays because it is what pins "a colour is a value, never a class
+ * name" in `employee-file-ui.test.ts`, and because the order of this array is
+ * the order the palette is handed out in.
  */
 export const GROSS_STACK: readonly {
   key: Category | "earnBal";
@@ -148,7 +155,7 @@ export function buildPeriodRows(
       employerCosts: paid ? slot.employerCosts : null,
       earnBal: paid ? slot.earnBal : null,
       netBal: paid ? slot.netBal : null,
-      absenceDays: paid ? slot.quantities.absence_days ?? null : null,
+      absenceDays: paid ? (slot.quantities.absence_days ?? null) : null,
       byCategory: paid ? slot.byCategory : null,
       department: slot.department,
       rowCount: slot.rowCount,
@@ -188,7 +195,7 @@ export function buildChartData(rows: readonly PeriodRow[]): ChartDatum[] {
         continue;
       }
       const value =
-        series.key === "earnBal" ? row.earnBal ?? 0 : row.byCategory[series.key] ?? 0;
+        series.key === "earnBal" ? (row.earnBal ?? 0) : (row.byCategory[series.key] ?? 0);
       // A real zero in a category that exists stays 0 — a slot that paid no
       // overtime did pay no overtime. Only an unpaid or un-uploaded slot is
       // null, which is the distinction in spec 7.14.
