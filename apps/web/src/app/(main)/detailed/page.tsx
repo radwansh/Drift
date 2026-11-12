@@ -5,7 +5,7 @@ import type { ComparisonOutput } from "@saas/payroll-core";
 import { trpc } from "@/lib/trpc";
 import { usePeriodOptions } from "@/hooks/use-period-options";
 import { PeriodSelector } from "@/components/dashboard/period-selector";
-import { ComparisonTable } from "@/components/detailed-view/comparison-table";
+import { ComparisonTable, STATUS_LABELS } from "@/components/detailed-view/comparison-table";
 import { ColumnPicker, type ColumnConfig } from "@/components/detailed-view/column-picker";
 import { SavedViews } from "@/components/detailed-view/saved-views";
 import { ExportButton } from "@/components/detailed-view/export-button";
@@ -70,16 +70,22 @@ function buildColumnConfig(
  * viewers included — CLAUDE.md records that as a product decision, so nothing
  * here gates on a role.
  *
- * The rebuild is presentation only. Same mutation, same preselection effect,
- * same filters, same `buildColumnConfig`, same export handler.
+ * The rebuild was presentation only — same mutation, same preselection
+ * effect, same `buildColumnConfig`, same export handler. The **status filter**
+ * is the one exception on this screen and was approved by Radwan: the screen
+ * map lists it as part of the filter row, and the screen never had one.
  *
  *   PageHeader ("July 2026 vs June 2026")
  *   PeriodSelector — the Dashboard's toolbar, with Saved views, Export and
  *                    Columns in its `actions` slot (the prop it was given in
  *                    phase 3 for exactly this screen)
- *   filter row     — search and department, in the same bordered surface row
- *                    the Employee File list uses
+ *   filter row     — search, department and status, in the same bordered
+ *                    surface row the Employee File list uses
  *   ComparisonTable in a Panel
+ *
+ * The three filters narrow, they never replace one another: all three
+ * predicates run in `filteredResults` over the same array, in one memo with
+ * all three in its dependency list.
  */
 export default function DetailedViewPage() {
   const { componentVisibility } = usePayrollStore();
@@ -90,6 +96,7 @@ export default function DetailedViewPage() {
   const [results, setResults] = useState<ComparisonOutput[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   // Step 8b: the company currency, so the table labels its figures with the
   // right code instead of defaulting every cell to USD.
   const [currency, setCurrency] = useState("USD");
@@ -133,8 +140,11 @@ export default function DetailedViewPage() {
     if (departmentFilter !== "all") {
       filtered = filtered.filter((r) => r.department === departmentFilter);
     }
+    if (statusFilter !== "all") {
+      filtered = filtered.filter((r) => r.status === statusFilter);
+    }
     return filtered;
-  }, [results, searchQuery, departmentFilter]);
+  }, [results, searchQuery, departmentFilter, statusFilter]);
 
   const departments = useMemo(() => {
     const depts = new Set<string>();
@@ -142,6 +152,26 @@ export default function DetailedViewPage() {
       if (r.department) depts.add(r.department);
     }
     return Array.from(depts).sort();
+  }, [results]);
+
+  /**
+   * The statuses actually on screen, the way `departments` above lists the
+   * departments actually on screen — read off the results, never a literal
+   * list of the five the classifier has today. A sixth status would otherwise
+   * be unreachable through the filter while its rows sat in the table.
+   *
+   * `STATUS_LABELS` only orders them and names them, and anything missing from
+   * it sorts last rather than being dropped, so an unlabelled status is still
+   * filterable (it shows its raw key, which is what the Status column shows
+   * for it too).
+   */
+  const statuses = useMemo(() => {
+    const order = Object.keys(STATUS_LABELS);
+    const rank = (status: string) => {
+      const index = order.indexOf(status);
+      return index === -1 ? order.length : index;
+    };
+    return Array.from(new Set(results.map((r) => r.status))).sort((a, b) => rank(a) - rank(b));
   }, [results]);
 
   const handleExport = async (format: "pdf" | "xlsx" | "csv") => {
@@ -223,6 +253,20 @@ export default function DetailedViewPage() {
                 {departments.map((dept) => (
                   <SelectItem key={dept} value={dept}>
                     {dept}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {/* The words are the Status column's own, from one exported map. */}
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger aria-label="Status" className="w-full sm:w-56">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                {statuses.map((status) => (
+                  <SelectItem key={status} value={status}>
+                    {STATUS_LABELS[status] ?? status}
                   </SelectItem>
                 ))}
               </SelectContent>

@@ -71,10 +71,18 @@ interface ComparisonTableProps {
   currency: string;
 }
 
-const STATUS_LABELS: Record<ComparisonOutput["status"], string> = {
-  unchanged: "Unchanged",
+/**
+ * The classifier's five statuses as words.
+ *
+ * Exported because the toolbar's status filter reads the same map: a filter
+ * and a column that each kept their own copy of these words would eventually
+ * disagree about what a row is. Key order is the order the filter offers them
+ * in, which is why it is movement first and population after.
+ */
+export const STATUS_LABELS: Record<ComparisonOutput["status"], string> = {
   increased: "Increased",
   decreased: "Decreased",
+  unchanged: "Unchanged",
   new: "New",
   departed: "Departed",
 };
