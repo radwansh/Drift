@@ -34,8 +34,6 @@ const LEGACY_FILES = new Set<string>([
   "src/components/annual/annual-statutory.tsx",
   "src/components/annual/annual-warnings.tsx",
   "src/components/annual/category-manager.tsx",
-  "src/components/payroll-periods/mapping-row.tsx",
-  "src/components/payroll-periods/upload-modal.tsx",
   "src/components/settings/billing-card.tsx",
   "src/lib/utils.ts",
 ]);
