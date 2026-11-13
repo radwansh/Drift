@@ -125,3 +125,49 @@ describe("settings.updateCompany is an editorProcedure", () => {
     expect(globexRow.currencyCode).toBe("LBP");
   });
 });
+
+/**
+ * What the billing page renders.
+ *
+ * It showed a "Professional" plan at $299, marked Active, with four paid
+ * invoices. `getBillingInfo` has always answered something else, and for every
+ * company in the product it answers this: free, inactive, no subscription.
+ */
+describe("settings.getBillingInfo", () => {
+  it("reports free and inactive for a company with nothing recorded", async () => {
+    const info = await caller(globex, "admin").getBillingInfo();
+    expect(info).toEqual({
+      subscriptionId: null,
+      status: "inactive",
+      plan: "free",
+      periodEnd: null,
+    });
+  });
+
+  it("reads a plan that has actually been written to companies.settings", async () => {
+    // The only way onto another rung today: a direct write. Nothing in the app
+    // sets `plan`, which is why the billing page has no upgrade button.
+    await ctx.db.execute(sql`
+      UPDATE companies
+      SET settings = ${JSON.stringify({
+        plan: "enterprise",
+        stripeSubscriptionStatus: "active",
+        stripeSubscriptionId: "sub_test_123",
+        subscriptionPeriodEnd: "2027-01-31",
+      })}::jsonb
+      WHERE id = ${globex.companyId}
+    `);
+
+    const info = await caller(globex, "viewer").getBillingInfo();
+    expect(info.plan).toBe("enterprise");
+    expect(info.status).toBe("active");
+    expect(info.subscriptionId).toBe("sub_test_123");
+    expect(info.periodEnd).toBe("2027-01-31");
+  });
+
+  it("does not leak another company's billing state", async () => {
+    const acmeInfo = await caller(acme, "admin").getBillingInfo();
+    expect(acmeInfo.plan).toBe("free");
+    expect(acmeInfo.subscriptionId).toBeNull();
+  });
+});
