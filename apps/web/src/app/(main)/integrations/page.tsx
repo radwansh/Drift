@@ -39,12 +39,12 @@ export const dynamic = "force-dynamic";
  * same reason, and both are backed by the server — the sidebar's filtering is
  * cosmetic.
  *
- * **Unlike the Employee File, the procedures behind this page are not gated.**
- * `integrations.list`, `configure` and `disconnect` are `protectedProcedure`
- * and still answer any signed-in member who calls them directly. Narrowing
- * them is a gate move on a surface this brief did not cover; what it would
- * protect is a provider name in a JSON column, not pay detail. Worth doing,
- * separately.
+ * **The procedures behind this page are gated too**, so this panel is not the
+ * only thing standing between a non-Enterprise company and the connectors.
+ * `routers/integrations.ts` reads this same `hasIntegrations` for the plan,
+ * and puts `configure` and `disconnect` behind `editorProcedure` as
+ * company-wide writes. This panel stays because a gate the user can read is
+ * worth more than a 403, not because it is load-bearing.
  */
 export default async function IntegrationsPage() {
   let account;

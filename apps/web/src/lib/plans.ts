@@ -40,6 +40,26 @@ export function parsePlan(value: unknown): PlanId | null {
 }
 
 /**
+ * The plan a `companies.settings` value says the company is on.
+ *
+ * An **absent** key is `DEFAULT_PLAN`, the default `getBillingInfo` applies; a
+ * key holding something the vocabulary does not recognise is `null`, so a gate
+ * is never told a company is on a plan nobody put it on. Both are "not
+ * Enterprise", so both close a capability either way.
+ *
+ * Lives here, with `parsePlan` and `DEFAULT_PLAN`, because two callers now ask
+ * the same question of the same column — `server/current-account.ts` for the
+ * sidebar and the page gates, and `routers/integrations.ts` for the router
+ * gate. Two copies of "an absent key means free" is the kind of pair that
+ * agrees until one of them is edited.
+ */
+export function planOfSettings(settings: unknown): PlanId | null {
+  if (settings === null || typeof settings !== "object") return DEFAULT_PLAN;
+  const value = (settings as Record<string, unknown>).plan;
+  return value === undefined ? DEFAULT_PLAN : parsePlan(value);
+}
+
+/**
  * The plans that include the HR/payroll connectors.
  *
  * Kept as a list rather than an `=== "enterprise"` check so the nav gate, the
