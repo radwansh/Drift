@@ -150,7 +150,7 @@ Every tenant-scoped table carries `companyId`. There is **no row-level security 
 | `publicProcedure` | anyone | unauthenticated endpoints |
 | `protectedProcedure` | signed in | when you only need `ctx.userId` and `ctx.db` |
 | `memberProcedure` | signed in | **the default.** Resolves the user once and puts `ctx.companyId` and `ctx.currentUser` on the context |
-| `editorProcedure` | admin, manager | any company-wide write — component categories, the budget, the fiscal start, `payrollPeriods.ingest`/`.delete`, `annual.setAiEnabled` and `annual.generateInsights` |
+| `editorProcedure` | admin, manager | any company-wide write — component categories, the budget, the fiscal start, `payrollPeriods.ingest`/`.delete`, `annual.setAiEnabled`, `annual.generateInsights`, `settings.updateCompany`, and `integrations.configure`/`.disconnect` |
 | `payDetailProcedure` | admin, manager | reading an individual's pay detail (`employees.*`, `annual.drillDownEmployees`, `employeeFile.*`) |
 | `adminProcedure` | admin | reserved; nothing uses it after the Employee File change |
 
@@ -158,13 +158,24 @@ Every tenant-scoped table carries `companyId`. There is **no row-level security 
 
 **`comparisons.getById` is the widest employee-level surface in the product, and it is a `memberProcedure`.** It returns every `comparison_results` row — employee name, gross, net, per-component deltas — to any signed-in member, viewers included, and the Dashboard and Detailed View are built on it. So the role table above describes `employees.*` and the annual drill-down, not the product's actual exposure of individual pay. Narrowing `comparisons.getById` would remove the Dashboard and Detailed View from viewers, which is a product decision rather than a tidy-up; do not change it as part of unrelated work.
 
-**The table says what each procedure means, not that every endpoint uses the right one.** Three gaps, each found by reading the routers rather than by anything failing. Every one of them is scoped to the caller's own `companyId`, so none is a cross-tenant leak — they are role gaps, which is a smaller and different thing:
+**The table says what each procedure means, not that every endpoint uses the right one.** Two gaps remain, each found by reading the routers rather than by anything failing. Both are scoped to the caller's own `companyId`, so neither is a cross-tenant leak — they are role gaps, which is a smaller and different thing:
 
 - **The whole `ai.*` router is `protectedProcedure`.** `getNarrative`, `getAnomalyRefinement`, `askQuestion` and `getAuditSummary` are open to any signed-in user, viewers included, so a viewer can spend a Claude call on the company's data. "AI generation" in the table above means `annual.setAiEnabled` and `annual.generateInsights` and nothing else.
-- **`settings.updateCompany` is `protectedProcedure`**, so any signed-in viewer can rename the company or change its currency code. Nothing reaches it today only because `app/(main)/settings/page.tsx` is a fixture — every field is `useState` seeded with a literal ("Acme Corp"), and Save waits a second and flips a flag. Whoever wires that form up must put `editorProcedure` on the write in the same change, or shipping the form ships the hole.
 - **`api/upload/route.ts` has no role check** — it tests `authResult.userId`, then writes an `upload_sessions` row for the caller's company and returns the file's header row; `payrollPeriods.getUploadUrl` is a `protectedProcedure` doing the same. A viewer still cannot land a period, because `payrollPeriods.ingest` is correctly `editorProcedure`, so the cost is an orphan session row and a column list rather than payroll data.
 
+`settings.updateCompany` **used to be the third**, and that entry is gone because the hole is closed: the company form is wired, the write is `editorProcedure`, and `test/settings-router.test.ts` pins a viewer's refusal. Do not "fix" it again.
+
 Prefer `memberProcedure` over `protectedProcedure` in new code: it supplies `companyId` and saves a query. Forgetting to scope by `companyId` is a cross-tenant data leak, not just a bug.
+
+### Plans are a second axis, and `companies.settings` is not one capability
+
+**A role is who the person is; a plan is what the company bought.** They are separate gates and the constants stay separate: `PAY_DETAIL_ROLES`/`EDITOR_ROLES` in `lib/roles.ts`, `INTEGRATION_PLANS` in `lib/plans.ts`. `NAV_ITEMS` carries `roles` and `plans` as two optional fields and `visibleNavItems(role, plan)` filters on both; **neither argument is optional and neither has a "do not filter" value** — `null` means "unknown" and closes the gate. The axis first shipped with `plan` optional so four one-argument assertions in a test needed no edit, which made a capability gate default to open with nothing enforcing it. Don't reintroduce that.
+
+The plan comes from `companies.settings.plan` through `planOfSettings()`, read once per request by `currentAccount()` — which is still **one query**, a join on `users.clerk_user_id` picking up `companies.settings`, with `ensureUser` running only when the join finds nothing. `routers/integrations.ts` reads the same `hasIntegrations()` predicate, so the hidden sidebar entry, the page's panel and the router's refusal cannot disagree.
+
+**Nothing in the app writes `plan`.** Every company reads `"free"`, so Integrations is hidden from everyone including the account owner — intended while the screen advertises five connectors that do not exist (there is no sync procedure and no sync code anywhere in the repo; `integrations.syncStatus` is a stub returning `not_synced` unconditionally and wants a `periodId` the page does not have). Enterprise today is a direct write: `UPDATE companies SET settings = settings || '{"plan":"enterprise"}'::jsonb WHERE id = '…'`.
+
+**`companies.settings` is one jsonb column shared by five features, so "write the settings" is not one capability.** It holds `plan`, `stripeSubscriptionId`/`…Status`/`subscriptionPeriodEnd`, `integrations`, `fiscalStartMonth`, `aiEnabled` and `tolerances`. `settings.updateCompany` merges a patch into it with `jsonb ||` **inside the UPDATE** — atomic under the row lock, unlike the read-modify-write that `integrations.configure`, `annual.setFiscalStartMonth` and `annual.setAiEnabled` still do — and deletes keys through a separate `unsetSettings` array, not RFC 7396's null-means-delete, which would leave no way to store a JSON `null`. It writes only the keys on `WRITABLE_SETTINGS_KEYS` (today: `tolerances`, the one key with a reader and no writer) and refuses the rest **by name**, pointing at whatever owns them. That allow-list is load-bearing: the merge replaced a whole-object write, and a merge accepting arbitrary keys would let any admin set `plan: "enterprise"` through the settings form and unlock Integrations for their own company. The replace could only ever destroy that key; the merge could grant it.
 
 ### Raw SQL: alias and parse, never cast
 
