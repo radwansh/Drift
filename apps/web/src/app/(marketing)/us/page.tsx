@@ -7,7 +7,7 @@ import { SITE } from "@/components/marketing/content";
  *
  * Identical to `/` in every word except the currency symbol, because the only
  * thing that genuinely differs between the two markets today is the price
- * ladder — $59/$99/$299 against €59/€99/€299, list prices per market rather
+ * ladder — $29/$49 against €29/€49, list prices per market rather
  * than conversions of one another.
  *
  * **The "Hosted in the EU" security point renders here too.** It is not a

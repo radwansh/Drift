@@ -17,7 +17,7 @@ import { EarlyAccessButton } from "../early-access-button";
  * List prices are struck through beside the founder price. The strike-through
  * is a <s> element rather than a line-through class so the "was" price is
  * announced as struck text, and each figure carries a visually hidden label,
- * because "€59 €29" read aloud in sequence is meaningless.
+ * because "€29 €14" read aloud in sequence is meaningless.
  *
  * The Annual Salaries line in "Every plan includes" is gated: promising it
  * while the dashboard is still being fixed would be selling something that is

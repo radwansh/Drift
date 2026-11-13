@@ -165,14 +165,22 @@ These are the flat, size-based prices we agreed for Clarivo as a self-serve micr
 > Read a price from `content.ts`; change it there.
 
 | Plan | For | List price | Beta founder price | Founder price, yearly | Button |
-| Starter | Up to 100 employees | ~~€59~~ per month | **€29** per month | €290 per year (list €590) | Get early access |
-| Growth | Up to 500 employees | ~~€99~~ per month | **€49** per month | €490 per year (list €990) | Get early access |
-| Business | Up to 2,000 employees | ~~€299~~ per month | **€149** per month | €1,490 per year (list €2,990) | Get early access |
-| Bureau | Payroll bureaus and accountants, up to 200 employees per client company | Priced per client company, from five clients | Founder discount applies | — | Talk to us |
+| Starter | Up to 500 employees | ~~€29~~ per month | **€14** per month | €140 per year (list €290) | Get early access |
+| Growth | Up to 2,000 employees | ~~€49~~ per month | **€24** per month | €240 per year (list €490) | Get early access |
 | Enterprise | Over 2,000 employees or several countries | On request | Founder discount applies | — | Talk to us (opens an email to hello@clarivo-app.com) |
 
-The US dollar column on `/us` is **$59 / $99 / $299** a month list, with the same founder
+The US dollar column on `/us` is **$29 / $49** a month list, with the same founder
 discount. These are list prices set per market, not conversions, so there is no FX rate to apply.
+
+The ladder was rewritten on 2026-11-13: three paid plans became two, the employee bands moved
+down a step (the 500-employee band from €99 to €29, the 2,000 band from €299 to €49), and
+Business was dropped. The founder price is €14 and €24 — slightly more than the −50% the badge
+promises, which is the safe direction for a claim to be wrong in.
+
+The **Bureau** plan is gone from this table because it is not on the site and was never priced
+there. It had published per-client figures here that the shipped page deliberately withholds:
+it sells by a different unit — per client company rather than per company — so a number in the
+same row as Starter reads as "the cheapest plan" to anyone scanning.
 
 **Bureau carries no published number**, and the omission is deliberate: it sells by a different
 unit — per client company rather than per company — so a figure sitting in the same row as
@@ -205,7 +213,7 @@ Headline (H2): **Payroll dashboard questions, answered**
 | Does Clarivo replace my payroll software? | No. Your payroll system still calculates and pays salaries. Clarivo checks what it produced and shows you what changed before you approve. It never changes your data. |
 | What happens to my payroll data? | Each company's data is kept separate and encrypted, and it is never used to train AI models. The AI only recognises your columns, writes a plain-language summary and ranks alerts; it never changes a number. |
 | Which pay frequencies and currencies does it handle? | Monthly, bi-monthly, bi-weekly and weekly payrolls, in any currency. Clarivo never adds amounts in different currencies together; each currency is reported on its own. |
-| How much does Clarivo cost? | Clarivo is free during the beta, with no credit card. When billing starts, plans run from €59 to €299 a month by company size, and beta founders pay half: €29 to €149 a month for 24 months. |
+| How much does Clarivo cost? | Clarivo is free during the beta, with no credit card. When billing starts, plans run from €29 to €49 a month by company size, and beta founders pay half: €14 to €24 a month for 24 months. Over 2,000 employees is Enterprise, priced on request. |
 
 ## Final call to action and footer
 The page ends on the same single action as the hero, restated as the outcome the visitor wants.
@@ -240,7 +248,7 @@ Ask Claude Design to use the copy in this document word for word, in the section
 | Payroll anomaly alerts | — | Alert cards with a severity chip; the sample alert shown large, as it appears in the app. |
 | Built for each role | — | Four cards, business owners first. |
 | Security | `#security` | Two-column list with an icon per point, then the link to the security page. |
-| Pricing | `#pricing` | Monthly/yearly toggle, four plan cards (Growth highlighted) with the list price struck through beside the founder price, then a full-width Enterprise strip and the "Every plan includes" list. |
+| Pricing | `#pricing` | Monthly/yearly toggle, two plan cards (Growth highlighted) with the list price struck through beside the founder price, then a full-width Enterprise strip and the "Every plan includes" list. |
 | FAQ | `#faq` | Accordion, all answers closed by default. |
 | Final call to action and footer | — | Centred headline, optional founder line and buttons, then a four-column footer. |
 

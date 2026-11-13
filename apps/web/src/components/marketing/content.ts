@@ -25,7 +25,7 @@ import type { IconName } from "./ui";
  *
  * `¤` is U+00A4, the generic currency sign. Every price and every sample figure
  * stores the numerals once and `money()` substitutes the symbol, because the
- * dollar ladder Radwan set ($59/$99/$299) uses the same numerals as the euro
+ * dollar ladder Radwan set ($29/$49) uses the same numerals as the euro
  * one. Holding two copies of the same numbers is how a price drifts — which has
  * already happened once in this repo between `content.ts` and
  * `docs/landing/content.md`. One set of numerals cannot drift from itself.
@@ -34,7 +34,7 @@ import type { IconName } from "./ui";
  * suffix on the sample figures are part of the stored string, so nothing is
  * re-formatted per market and `−¤860` stays `−$860`.
  *
- * Prices are **list prices per market, not conversions.** $59 is not €59 at
+ * Prices are **list prices per market, not conversions.** $29 is not €29 at
  * some rate; it is the dollar price. There is therefore no FX rate policy and
  * no small print about which currency is actually charged.
  */
@@ -366,31 +366,22 @@ export const PRICING = {
   plans: [
     {
       name: "Starter",
-      for: "Up to 100 employees",
-      listMonthly: "¤59",
-      founderMonthly: "¤29",
-      founderYearly: "¤290",
-      listYearly: "¤590",
+      for: "Up to 500 employees",
+      listMonthly: "¤29",
+      founderMonthly: "¤14",
+      founderYearly: "¤140",
+      listYearly: "¤290",
       highlighted: false,
     },
     {
       name: "Growth",
-      for: "Up to 500 employees",
-      listMonthly: "¤99",
-      founderMonthly: "¤49",
-      founderYearly: "¤490",
-      listYearly: "¤990",
+      for: "Up to 2,000 employees",
+      listMonthly: "¤49",
+      founderMonthly: "¤24",
+      founderYearly: "¤240",
+      listYearly: "¤490",
       highlighted: true,
       tag: "Best for growing teams",
-    },
-    {
-      name: "Business",
-      for: "Up to 2,000 employees",
-      listMonthly: "¤299",
-      founderMonthly: "¤149",
-      founderYearly: "¤1,490",
-      listYearly: "¤2,990",
-      highlighted: false,
     },
   ],
   enterprise: {
@@ -471,7 +462,7 @@ export const FAQ = {
     },
     {
       q: "How much does Clarivo cost?",
-      a: "Clarivo is free during the beta, with no credit card. When billing starts, plans run from ¤59 to ¤299 a month by company size, and beta founders pay half: ¤29 to ¤149 a month for 24 months.",
+      a: "Clarivo is free during the beta, with no credit card. When billing starts, plans run from ¤29 to ¤49 a month by company size, and beta founders pay half: ¤14 to ¤24 a month for 24 months. Over 2,000 employees is Enterprise, priced on request.",
     },
   ],
 } as const;

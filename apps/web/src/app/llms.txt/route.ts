@@ -246,7 +246,7 @@ function body(): string {
     "",
     "Prices exclude VAT and are published in two currencies, on two pages: euro at",
     `${SITE.url}/ and US dollars at ${SITE.url}/us. The two pages are identical apart from the`,
-    "currency. The numerals are the same in both — Starter is 59, Growth 99, Business 299 a month —",
+    "currency. The numerals are the same in both — Starter is 29 and Growth 49 a month —",
     "so these are list prices set per market, not one price converted at an exchange rate. A quote",
     "should name the currency, because \"59 a month\" is ambiguous and the two are not interchangeable.",
     "",
