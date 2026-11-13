@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { visibleNavItems } from "@/lib/constants";
+import type { PlanId } from "@/lib/plans";
 import { useSidebar } from "@/lib/sidebar-context";
 import { NAV_ICONS, type NavIconName } from "./nav-icons";
 import { BarChart3, X } from "lucide-react";
@@ -14,15 +15,24 @@ export interface SidebarProps {
    * a broken one.
    */
   role: string | null;
+  /**
+   * The plan the caller's company is on, from the same lookup. `null` when it
+   * failed or holds a value the vocabulary does not recognise, and treated the
+   * same way: the plan-gated items are hidden.
+   *
+   * Passed explicitly rather than defaulted, because omitting it means "do not
+   * gate on plan" — see `visibleNavItems`.
+   */
+  plan: PlanId | null;
 }
 
-export function Sidebar({ role }: SidebarProps) {
+export function Sidebar({ role, plan }: SidebarProps) {
   const pathname = usePathname();
   const section = "/" + (pathname.split("/")[1] ?? "");
   const { isOpen, close } = useSidebar();
   // Active state needs no change for the new entry: this compares the first
   // path segment, so /employees/E0002 highlights /employees.
-  const items = visibleNavItems(role);
+  const items = visibleNavItems(role, plan);
 
   return (
     <>
