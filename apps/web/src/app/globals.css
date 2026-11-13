@@ -162,38 +162,16 @@
 }
 
 /*
- * Legacy utilities, kept so nothing breaks mid-migration and re-pointed at the design
- * system by MEANING. Do not use them in new code; docs/design/TOKEN_MAP.md names the
- * replacement for each, and test/design-system.test.ts lists any file still using them.
+ * The legacy utilities — .increase-text, .decrease-text, .unchanged-text and
+ * .anomaly-critical / -warning / -info — stood here, re-pointed at the tokens by meaning
+ * so nothing broke mid-rebuild. Their last callers went with the screens, and
+ * test/design-system.test.ts now fails on the names anywhere under src/.
  *
- * Increases are rust and decreases cobalt: on a payroll bill, up is the thing to look at.
+ * They are not coming back. A bare colour class is how a hue reaches a screen without the
+ * arrow, sign or word that makes it mean something: use <Variance> for a change,
+ * <SeverityBadge> for a severity, <Notice> for a message. docs/design/TOKEN_MAP.md maps
+ * each old class to what replaced it.
  */
-@layer utilities {
-  .increase-text {
-    color: var(--cv-delta-up-ink);
-  }
-  .decrease-text {
-    color: var(--cv-delta-down-ink);
-  }
-  .unchanged-text {
-    color: var(--cv-delta-flat-ink);
-  }
-  .anomaly-critical {
-    background: var(--cv-danger-soft);
-    border-color: transparent;
-    color: var(--cv-ink);
-  }
-  .anomaly-warning {
-    background: var(--cv-warning-soft);
-    border-color: transparent;
-    color: var(--cv-ink);
-  }
-  .anomaly-info {
-    background: var(--cv-accent-soft);
-    border-color: transparent;
-    color: var(--cv-ink);
-  }
-}
 
 /*
  * Board pack print styles (step 42).

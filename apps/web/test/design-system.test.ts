@@ -3,32 +3,21 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * Guards for the Ink & Signal migration (docs/design/CLAUDE_CODE_BRIEF.md).
+ * Guards for the Ink & Signal design system (docs/design/CLAUDE_CODE_BRIEF.md).
  *
- * A ratchet, not a big bang. Every file under src/ must be free of the colours the
- * design system replaces — raw Tailwind palette classes (text-green-600, bg-red-50...),
- * hard-coded hex colours, shadcn HSL strings used as chart colours, and the legacy
- * increase/decrease/anomaly utilities — EXCEPT the files in LEGACY_FILES, which are the
- * screens not migrated yet. The list can only shrink:
+ * Every file under src/ must be free of the colours the design system replaces — raw
+ * Tailwind palette classes (text-green-600, bg-red-50...), hard-coded hex colours, shadcn
+ * HSL strings used as a colour, and the legacy increase/decrease/anomaly utilities.
  *
- * - a file outside the list that gains a legacy colour fails the first test;
- * - a file inside the list that no longer has one fails the second, so whoever migrates
- *   a screen also deletes its line here, and the list is always the true to-do list.
- *
- * When the list is empty, delete it and the second test; the first then covers all of src/.
+ * This was a ratchet while the rebuild ran: a LEGACY_FILES set named the screens not
+ * migrated yet, a second test failed on any entry that had come clean, and the list was
+ * the to-do list at every commit. It emptied in phase 5 and is gone, so the rule the one
+ * remaining test states is no longer "no new offenders" but "none anywhere" — and there is
+ * no list to add a file to. A screen that needs a colour needs a cv- token by meaning.
  */
 
 const WEB_ROOT = path.resolve(import.meta.dirname, "..");
 const SRC = path.join(WEB_ROOT, "src");
-
-/**
- * Screens still to migrate (phase 4 of the brief). Remove a line when its file is clean.
- *
- * Empty since phase 5: the last entry was `src/lib/utils.ts`, whose `formatChange` and
- * `getSeverityBg` returned legacy class names to nobody. The set and the second test are
- * deleted in phase 6, which needs it empty first to show the ratchet ran to the end.
- */
-const LEGACY_FILES = new Set<string>([]);
 
 /**
  * Files allowed to hold literal colours for good. Clerk's appearance API computes shades
@@ -100,23 +89,14 @@ const files = sourceFiles(SRC).map((full) => ({
   rel: path.relative(WEB_ROOT, full).split(path.sep).join("/"),
 }));
 
-describe("design system: Ink & Signal migration", () => {
-  it("no file outside the legacy list uses a colour the design system replaces", () => {
+describe("design system: Ink & Signal", () => {
+  it("no file under src/ uses a colour the design system replaces", () => {
     const offenders = files
-      .filter(({ rel }) => !LEGACY_FILES.has(rel) && !EXEMPT.has(rel))
+      .filter(({ rel }) => !EXEMPT.has(rel))
       .map(({ full, rel }) => ({ rel, hits: legacyHits(full) }))
       .filter(({ hits }) => hits.length > 0)
       .map(({ rel, hits }) => `${rel}\n    ${hits.join("\n    ")}`);
     expect(offenders, offenders.join("\n")).toEqual([]);
-  });
-
-  it("every file on the legacy list still needs migrating (delete its line once it is clean)", () => {
-    const known = new Set(files.map(({ rel }) => rel));
-    const stale = [...LEGACY_FILES].filter((rel) => {
-      if (!known.has(rel)) return true;
-      return legacyHits(path.join(WEB_ROOT, rel)).length === 0;
-    });
-    expect(stale, `Remove from LEGACY_FILES: ${stale.join(", ")}`).toEqual([]);
   });
 
   it("every cv- colour Tailwind names is declared in clarivo-tokens.css", () => {

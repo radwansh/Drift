@@ -14,9 +14,10 @@ import { cn } from "@/lib/utils";
  *   ghost        -> ghost.
  *   destructive  -> danger (crimson). Destructive confirmations only.
  *   link         -> a cobalt text link.
- *   success, warning -> kept for compatibility (nothing uses them) and drawn as
- *                   primary/secondary: the system has no green or amber buttons, and a
- *                   button is never filled with rust.
+ *
+ * shadcn's `success` and `warning` variants are gone: nothing ever passed them, and the
+ * system has no green or amber button — status is a <Badge> or <Notice> with its icon and
+ * word, never a filled button. (Nor is a button ever filled with rust: rust means change.)
  *
  * Heights follow the controls scale: sm 32, default 40, lg 48, icon 40x40.
  * New code can use Button from "@/components/cv" (icons, loading strip, href).
@@ -33,8 +34,6 @@ const buttonVariants = cva(
         ghost:
           "text-cv-ink hover:bg-cv-surface-sunken disabled:border-transparent disabled:bg-transparent",
         link: "h-auto border-0 px-0 text-cv-accent underline-offset-4 hover:text-cv-accent-hover hover:underline disabled:bg-transparent",
-        success: "bg-cv-primary text-cv-on-primary hover:bg-cv-primary-hover",
-        warning: "border-cv-border bg-cv-surface text-cv-ink hover:bg-cv-surface-sunken",
       },
       size: {
         default: "h-10 px-4",
