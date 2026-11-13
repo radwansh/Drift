@@ -2,7 +2,7 @@ import { cache } from "react";
 import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { companies, requireDb, users, type DbClient } from "@saas/db";
-import { DEFAULT_PLAN, parsePlan, type PlanId } from "@/lib/plans";
+import { planOfSettings, type PlanId } from "@/lib/plans";
 import { ensureUser, type CurrentUserRow } from "./ensure-user";
 
 /**
@@ -80,7 +80,7 @@ export async function loadAccount(db: DbClient, clerkUserId: string): Promise<Cu
 
   if (joined) {
     const { settings, ...row } = joined;
-    return { ...row, plan: planOf(settings) };
+    return { ...row, plan: planOfSettings(settings) };
   }
 
   // No row for this Clerk id, so provision — then read the plan the new (or
@@ -92,14 +92,7 @@ export async function loadAccount(db: DbClient, clerkUserId: string): Promise<Cu
     .where(eq(companies.id, provisioned.companyId))
     .limit(1);
 
-  return { ...provisioned, plan: planOf(company?.settings) };
-}
-
-/** `settings.plan`, defaulting an absent key the way `getBillingInfo` does. */
-function planOf(settings: unknown): PlanId | null {
-  if (settings === null || typeof settings !== "object") return DEFAULT_PLAN;
-  const value = (settings as Record<string, unknown>).plan;
-  return value === undefined ? DEFAULT_PLAN : parsePlan(value);
+  return { ...provisioned, plan: planOfSettings(company?.settings) };
 }
 
 export const currentAccount = cache(async (): Promise<CurrentAccount | null> => {
