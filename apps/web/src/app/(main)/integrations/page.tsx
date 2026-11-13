@@ -1,125 +1,80 @@
-"use client";
+import { redirect } from "next/navigation";
+import { EmptyState } from "@/components/shared/empty-state";
+import { IntegrationsList } from "@/components/integrations/integrations-list";
+import { hasIntegrations } from "@/lib/plans";
+import { currentAccount } from "@/server/current-account";
+import { AlertCircle, Lock } from "lucide-react";
 
-import { useState } from "react";
-import { IntegrationCard } from "@/components/integrations/integration-card";
+/**
+ * Integrations, gated to Enterprise.
+ *
+ * `(main)/layout.tsx` already sets this, and it is set again here on purpose:
+ * a statically rendered protected page has already leaked a cached auth
+ * response in this product, and a route that depends on its layout for that is
+ * one `export` away from doing it again.
+ */
+export const dynamic = "force-dynamic";
 
-interface Integration {
-  id: string;
-  name: string;
-  description: string;
-  provider: string;
-  connected: boolean;
-  lastSyncAt: string | null;
-  syncSchedule: string | null;
-}
-
-const initialIntegrations: Integration[] = [
-  {
-    id: "sap",
-    name: "SAP SuccessFactors",
-    description: "Connect your SAP SuccessFactors payroll module for automatic data sync",
-    provider: "sap",
-    connected: true,
-    lastSyncAt: "2026-06-20T14:30:00Z",
-    syncSchedule: "Daily at 2:00 AM",
-  },
-  {
-    id: "adp",
-    name: "ADP Workforce Now",
-    description: "Sync employee payroll data from ADP Workforce Now",
-    provider: "adp",
-    connected: false,
-    lastSyncAt: null,
-    syncSchedule: null,
-  },
-  {
-    id: "sage",
-    name: "Sage HR & Payroll",
-    description: "Integrate with Sage for seamless payroll data import",
-    provider: "sage",
-    connected: false,
-    lastSyncAt: null,
-    syncSchedule: null,
-  },
-  {
-    id: "workday",
-    name: "Workday",
-    description: "Connect Workday HCM and Payroll for automated comparisons",
-    provider: "workday",
-    connected: true,
-    lastSyncAt: "2026-06-19T08:00:00Z",
-    syncSchedule: "Daily at 3:00 AM",
-  },
-  {
-    id: "gusto",
-    name: "Gusto",
-    description: "Import payroll data directly from your Gusto account",
-    provider: "gusto",
-    connected: false,
-    lastSyncAt: null,
-    syncSchedule: null,
-  },
-];
-
-export default function IntegrationsPage() {
-  const [integrations, setIntegrations] = useState<Integration[]>(initialIntegrations);
-
-  const handleConnect = (provider: string) => {
-    setIntegrations((prev) =>
-      prev.map((i) =>
-        i.provider === provider
-          ? { ...i, connected: true, lastSyncAt: new Date().toISOString(), syncSchedule: "Daily at 2:00 AM" }
-          : i,
-      ),
+/**
+ * **Nothing in the app sets a company's plan.** `companies.settings.plan` is
+ * written by no procedure and no form, so every company reads `"free"` and
+ * this page is therefore closed to everyone, the account owner included. That
+ * is the intent: the screen advertises five payroll connectors, none of which
+ * exists — there is no sync job anywhere in the repo and `syncStatus` is a
+ * stub. Putting a company on Enterprise today means a direct write to
+ * `companies.settings`, e.g.
+ *
+ * ```sql
+ * UPDATE companies
+ * SET settings = settings || '{"plan":"enterprise"}'::jsonb
+ * WHERE id = '…';
+ * ```
+ *
+ * The gate is the same `INTEGRATION_PLANS` the sidebar filters on, through
+ * `hasIntegrations`, so the hidden link and the closed page cannot disagree.
+ *
+ * It is a panel rather than a `notFound()`: a customer who followed a bookmark
+ * or a shared URL should read why the page is closed, not a 404 implying it
+ * never existed. The Employee File's role panels make the same choice for the
+ * same reason, and both are backed by the server — the sidebar's filtering is
+ * cosmetic.
+ *
+ * **Unlike the Employee File, the procedures behind this page are not gated.**
+ * `integrations.list`, `configure` and `disconnect` are `protectedProcedure`
+ * and still answer any signed-in member who calls them directly. Narrowing
+ * them is a gate move on a surface this brief did not cover; what it would
+ * protect is a provider name in a JSON column, not pay detail. Worth doing,
+ * separately.
+ */
+export default async function IntegrationsPage() {
+  let account;
+  try {
+    account = await currentAccount();
+  } catch (error) {
+    console.error("Integrations: could not resolve the signed-in account:", error);
+    return (
+      <EmptyState
+        icon={AlertCircle}
+        title="Could not open your account"
+        description="You are signed in, but we could not load the company this page belongs to. Reloading usually works; if it keeps happening the account needs attention rather than another attempt."
+      />
     );
-  };
+  }
 
-  const handleDisconnect = (provider: string) => {
-    setIntegrations((prev) =>
-      prev.map((i) =>
-        i.provider === provider
-          ? { ...i, connected: false, lastSyncAt: null, syncSchedule: null }
-          : i,
-      ),
+  // `redirect()` throws a control-flow error, so it stays outside the catch:
+  // inside, it would be swallowed and shown as an account failure to somebody
+  // who is merely signed out.
+  if (!account) redirect("/login");
+
+  if (!hasIntegrations(account.plan)) {
+    return (
+      <EmptyState
+        icon={Lock}
+        title="Integrations are an Enterprise feature"
+        description="Connectors to SAP, ADP, Sage, Workday and Gusto are part of the Enterprise plan. Until then, payroll data comes in by upload — which is how every comparison in Clarivo is built today. See Settings → Billing for the plans."
+      />
     );
-  };
+  }
 
-  const handleSync = async (provider: string) => {
-    await new Promise((r) => setTimeout(r, 2000));
-    setIntegrations((prev) =>
-      prev.map((i) =>
-        i.provider === provider
-          ? { ...i, lastSyncAt: new Date().toISOString() }
-          : i,
-      ),
-    );
-  };
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Integrations</h2>
-        <p className="text-muted-foreground mt-1">
-          Connect your HR and payroll systems for automatic data synchronization
-        </p>
-      </div>
-
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {integrations.map((integration) => (
-          <IntegrationCard
-            key={integration.id}
-            name={integration.name}
-            description={integration.description}
-            provider={integration.provider}
-            connected={integration.connected}
-            lastSyncAt={integration.lastSyncAt}
-            syncSchedule={integration.syncSchedule}
-            onConnect={() => handleConnect(integration.provider)}
-            onDisconnect={() => handleDisconnect(integration.provider)}
-            onSync={() => handleSync(integration.provider)}
-          />
-        ))}
-      </div>
-    </div>
-  );
+  return <IntegrationsList />;
 }

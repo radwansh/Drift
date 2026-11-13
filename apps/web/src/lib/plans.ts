@@ -38,3 +38,31 @@ export function parsePlan(value: unknown): PlanId | null {
   const lowered = value.trim().toLowerCase();
   return PLAN_IDS.includes(lowered as PlanId) ? (lowered as PlanId) : null;
 }
+
+/**
+ * The plans that include the HR/payroll connectors.
+ *
+ * Kept as a list rather than an `=== "enterprise"` check so the nav gate, the
+ * page gate and the test all read one authority, the way `PAY_DETAIL_ROLES`
+ * does for the Employee File — and so adding Growth to it later is one edit
+ * rather than three.
+ *
+ * Deliberately **not** reused for anything else: "may use the connectors" is
+ * not "is a large customer", and sharing the constant would make a later
+ * change to one silently change the other. That is the same reasoning
+ * `lib/roles.ts` gives for keeping `EDITOR_ROLES` and `PAY_DETAIL_ROLES` apart
+ * while both read `["admin", "manager"]`.
+ */
+export const INTEGRATION_PLANS = ["enterprise"] as const satisfies readonly PlanId[];
+
+/**
+ * Whether a plan includes the connectors.
+ *
+ * An unresolved plan — `null` from a failed lookup, or `undefined` — is
+ * **false**, the least privileged answer: a lookup failure must close the
+ * capability rather than open it.
+ */
+export function hasIntegrations(plan: PlanId | null | undefined): boolean {
+  if (!plan) return false;
+  return (INTEGRATION_PLANS as readonly PlanId[]).includes(plan);
+}
