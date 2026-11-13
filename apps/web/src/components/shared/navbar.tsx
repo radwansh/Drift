@@ -16,9 +16,11 @@ import { ThemeToggle, useIsDark } from "./theme-toggle";
  * The page's own title lives in its PageHeader, not here — the bar used to say
  * "Welcome, <name>", which repeated on every page and named nothing on screen.
  *
- * The company name comes from `settings.getCompany`, the query the Settings page already
- * runs, so the two share one cache entry; a long staleTime keeps it to one request per
- * session in practice. If the query fails (no company yet), the bar simply shows no name.
+ * The company name comes from `settings.getCompany`. This bar is the only caller: the
+ * Settings page looks like it would run the same query, but every field there is
+ * `useState` seeded with a literal and it has never called the router at all. So the
+ * staleTime below is what keeps this to one request per session, not a cache entry shared
+ * with another page. If the query fails (no company yet), the bar simply shows no name.
  */
 export function Navbar() {
   const { toggle, isOpen } = useSidebar();

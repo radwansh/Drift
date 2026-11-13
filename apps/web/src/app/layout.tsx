@@ -9,8 +9,8 @@ import { Providers } from "./providers";
  *
  * The Ink & Signal fonts (Instrument Sans + Geist Mono, see ./fonts.ts) are applied on
  * <html>, so the app, the auth screens and the marketing pages all read the same
- * --font-instrument-sans and --font-geist-mono. Inter is no longer loaded: the design
- * system does not use it, and src/app/fonts/inter-latin.woff2 can be deleted.
+ * --font-instrument-sans and --font-geist-mono. Inter is gone: the design system does not
+ * use it, and src/app/fonts/ now holds those two faces and nothing else.
  */
 export const metadata: Metadata = {
   title: "Clarivo - Payroll Variance Analysis",
