@@ -1,15 +1,20 @@
 "use client";
 
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import {
+  Badge,
+  EmptyState,
+  Panel,
+  SEVERITY_ORDER,
+  SeverityBadge,
+  type Severity,
+} from "@/components/cv";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AlertTriangle, AlertCircle, Info, ExternalLink } from "lucide-react";
 
 interface AnomalyFlag {
   employeeId: string;
   employeeName: string;
   type: string;
-  severity: "info" | "warning" | "critical";
+  severity: Severity;
   description: string;
 }
 
@@ -17,94 +22,73 @@ interface AnomalyFlagsPanelProps {
   anomalies?: AnomalyFlag[];
 }
 
-const severityConfig = {
-  critical: {
-    icon: AlertCircle,
-    color: "text-red-600 dark:text-red-400",
-    bg: "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-900",
-    badge: "destructive" as const,
-    label: "Critical",
-  },
-  warning: {
-    icon: AlertTriangle,
-    color: "text-amber-600 dark:text-amber-400",
-    bg: "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900",
-    badge: "warning" as const,
-    label: "Warning",
-  },
-  info: {
-    icon: Info,
-    color: "text-blue-600 dark:text-blue-400",
-    bg: "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-900",
-    badge: "info" as const,
-    label: "Info",
-  },
-};
+/** "net_change_beyond_tolerance" -> "Net change beyond tolerance". Sentence case, no caps. */
+function typeLabel(type: string): string {
+  const words = type.replace(/_/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
 
+/**
+ * Anomaly flags for a comparison (redesign canvas: Dashboard, right of the summary).
+ *
+ * Severity by meaning (see components/cv/severity-badge.tsx): an impossible figure is
+ * danger, a change over a threshold is signal ("Review"), a new or removed component is
+ * neutral information. Critical first.
+ *
+ * The rows are not buttons any more: the old ones logged to the console and went
+ * nowhere, which is a control that lies. Linking a row to the Employee File is a product
+ * decision (that page is limited to admins and managers), so it is left for later.
+ */
 export function AnomalyFlagsPanel({ anomalies }: AnomalyFlagsPanelProps) {
-  const grouped = anomalies
-    ? [...anomalies].sort((a, b) => {
-        const order = { critical: 0, warning: 1, info: 2 };
-        return order[a.severity] - order[b.severity];
-      })
+  const sorted = anomalies
+    ? [...anomalies].sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity])
     : null;
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm font-medium">Anomaly Flags</CardTitle>
-          {anomalies && (
-            <span className="text-xs text-muted-foreground">
-              {anomalies.length} flag{anomalies.length !== 1 ? "s" : ""}
-            </span>
-          )}
+    <Panel
+      headingId="flags-h"
+      compact
+      title="Anomaly flags"
+      actions={
+        sorted ? (
+          <Badge tone={sorted.length > 0 ? "signal" : "neutral"}>
+            {sorted.length} {sorted.length === 1 ? "flag" : "flags"}
+          </Badge>
+        ) : undefined
+      }
+      className="flex flex-col"
+    >
+      {!sorted ? (
+        <div className="space-y-3" aria-busy="true">
+          <Skeleton className="h-14 w-full" />
+          <Skeleton className="h-14 w-full" />
+          <Skeleton className="h-14 w-3/4" />
         </div>
-      </CardHeader>
-      <CardContent>
-        {!grouped ? (
-          <div className="space-y-3">
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-3/4" />
-          </div>
-        ) : grouped.length === 0 ? (
-          <div className="flex items-center justify-center h-24 text-sm text-muted-foreground">
-            <AlertCircle className="h-4 w-4 mr-2" />
-            No anomalies detected
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {grouped.map((flag, index) => {
-              const config = severityConfig[flag.severity];
-              const Icon = config.icon;
-              return (
-                <button
-                  key={index}
-                  type="button"
-                  onClick={() => console.log(`Navigate to employee: ${flag.employeeId} - ${flag.employeeName}`)}
-                  className={`w-full flex items-start gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-accent ${config.bg}`}
-                >
-                  <Icon className={`h-5 w-5 mt-0.5 shrink-0 ${config.color}`} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-sm font-medium">{flag.employeeName}</span>
-                      <Badge variant={config.badge} className="text-[10px] px-1.5 py-0">
-                        {config.label}
-                      </Badge>
-                      <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                        {flag.type.replace(/_/g, " ")}
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{flag.description}</p>
-                  </div>
-                  <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      ) : sorted.length === 0 ? (
+        <EmptyState
+          bare
+          title="No changes above your thresholds"
+          description="Nothing in this comparison crossed a threshold or produced an impossible figure."
+        />
+      ) : (
+        <ul className="m-0 flex max-h-[420px] list-none flex-col overflow-y-auto p-0">
+          {sorted.map((flag, index) => (
+            <li
+              key={`${flag.employeeId}-${flag.type}-${index}`}
+              className="flex flex-col gap-1 border-b border-cv-line py-3 first:pt-0 last:border-b-0 last:pb-0"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <SeverityBadge severity={flag.severity} />
+                <span className="text-sm font-semibold leading-5 text-cv-ink">
+                  {flag.employeeName}
+                </span>
+                <span className="text-xs leading-4 text-cv-ink-subtle">{typeLabel(flag.type)}</span>
+              </div>
+              <p className="m-0 text-sm leading-5 text-cv-ink-muted">{flag.description}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
   );
 }

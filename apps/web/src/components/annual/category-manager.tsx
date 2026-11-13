@@ -11,7 +11,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { Badge, Button, Icon, Notice } from "@/components/cv";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectTrigger,
@@ -21,10 +22,9 @@ import {
   SelectGroup,
   SelectLabel,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Tags, Loader2, Search, RotateCcw } from "lucide-react";
+import { Tags, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatComponentName, formatMoney } from "@/components/annual/annual-utils";
 
@@ -121,7 +121,8 @@ export function CategoryManager({
     const rows = data?.categories ?? [];
     const needle = search.trim().toLowerCase();
     const filtered = rows.filter((r) => {
-      if (onlyUncategorised && (draft[r.componentKey] ?? r.category) !== "uncategorised") return false;
+      if (onlyUncategorised && (draft[r.componentKey] ?? r.category) !== "uncategorised")
+        return false;
       if (!needle) return true;
       return r.componentKey.toLowerCase().includes(needle);
     });
@@ -204,13 +205,16 @@ export function CategoryManager({
 
   return (
     <>
+      {/* Primary while something is uncategorised: an uncategorised component
+          silently leaves money out of every bucket on the page, so this is the
+          screen's one action worth leading on until it is done. */}
       <Button
         type="button"
         size="sm"
-        variant={hasUncategorised ? "default" : "outline"}
+        variant={hasUncategorised ? "primary" : "secondary"}
+        icon={<Tags aria-hidden="true" />}
         onClick={() => setOpen(true)}
       >
-        <Tags className="mr-2 h-4 w-4" aria-hidden="true" />
         Categorise components
       </Button>
 
@@ -224,23 +228,25 @@ export function CategoryManager({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex flex-wrap items-center gap-2 border-b pb-3">
+          <div className="flex flex-wrap items-center gap-2 border-b border-cv-line pb-3">
             <div className="relative min-w-0 flex-1">
-              <Search
-                className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-                aria-hidden="true"
+              <Icon
+                name="search"
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-cv-ink-subtle"
               />
-              <input
-                type="search"
+              {/* No `type="search"`: the re-skinned Input narrows `type` to the
+                  four the design system draws, and every other search box in the
+                  rebuilt app is a plain text field with a search icon. */}
+              <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search components"
                 aria-label="Search components"
-                className="h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="pl-9"
               />
             </div>
 
-            <label className="inline-flex items-center gap-2 text-sm">
+            <label className="inline-flex items-center gap-2 text-sm leading-5 text-cv-ink">
               <Checkbox
                 checked={onlyUncategorised}
                 onCheckedChange={(v) => setOnlyUncategorised(v === true)}
@@ -262,10 +268,8 @@ export function CategoryManager({
 
           {/* Bulk assign, so a long tail of similar columns is one action. */}
           {visible.length > 1 && (
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="text-muted-foreground">
-                Set all {visible.length} shown to
-              </span>
+            <div className="flex flex-wrap items-center gap-2 text-sm leading-5">
+              <span className="text-cv-ink-muted">Set all {visible.length} shown to</span>
               <Select value={bulkCategory} onValueChange={(v) => setBulkCategory(v as Category)}>
                 <SelectTrigger className="w-52" aria-label="Bulk category">
                   <SelectValue placeholder="Choose a category" />
@@ -283,7 +287,7 @@ export function CategoryManager({
                   ))}
                 </SelectContent>
               </Select>
-              <Button size="sm" variant="outline" disabled={!bulkCategory} onClick={applyBulk}>
+              <Button size="sm" variant="secondary" disabled={!bulkCategory} onClick={applyBulk}>
                 Apply
               </Button>
             </div>
@@ -291,17 +295,17 @@ export function CategoryManager({
 
           <div className="max-h-[50vh] min-h-[16rem] overflow-y-auto pr-1">
             {categoriesQuery.isLoading ? (
-              <div className="space-y-3">
+              <div className="flex flex-col gap-3">
                 {Array.from({ length: 6 }).map((_, i) => (
                   <Skeleton key={i} className="h-14 w-full" />
                 ))}
               </div>
             ) : categoriesQuery.isError ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">
+              <p className="m-0 py-8 text-center text-sm leading-5 text-cv-ink-subtle">
                 Could not load component categories. Please try again.
               </p>
             ) : visible.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">
+              <p className="m-0 py-8 text-center text-sm leading-5 text-cv-ink-subtle">
                 {data && data.categories.length === 0
                   ? "No component columns found yet. Upload a payroll period to discover components."
                   : "No components match the current filter."}
@@ -316,35 +320,36 @@ export function CategoryManager({
                     <div
                       key={row.componentKey}
                       className={cn(
-                        "flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3",
-                        changed && "border-primary",
+                        "flex flex-wrap items-center justify-between gap-3 rounded-cv-lg border border-cv-line p-3",
+                        changed && "border-cv-accent bg-cv-accent-soft",
                       )}
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{label}</p>
-                        <p className="truncate text-xs tabular-nums text-muted-foreground">
+                        <p className="m-0 truncate text-sm font-medium leading-5 text-cv-ink">
+                          {label}
+                        </p>
+                        <p className="m-0 truncate font-cv-mono text-xs leading-4 tabular-nums text-cv-ink-subtle">
                           {formatMoney(row.amountToDate, currency)} to date · {row.componentKey}
                         </p>
                         {/* The rule that matched, so an automatic choice can be
                             understood rather than guessed at. */}
                         {row.source === "auto" && (
-                          <p className="truncate text-xs text-muted-foreground">
+                          <p className="m-0 truncate text-xs leading-4 text-cv-ink-subtle">
                             Matched automatically by rule &ldquo;{row.autoRule}&rdquo;
                           </p>
                         )}
                       </div>
                       <div className="flex items-center gap-2">
                         {row.source === "saved" ? (
-                          <Badge variant="secondary">Saved</Badge>
+                          <Badge tone="success" icon="check">
+                            Saved
+                          </Badge>
                         ) : row.category === "uncategorised" ? (
-                          <Badge
-                            variant="secondary"
-                            className="bg-amber-500/15 text-amber-700 dark:text-amber-300"
-                          >
+                          <Badge tone="warning" icon="alert">
                             Uncategorised
                           </Badge>
                         ) : (
-                          <Badge variant="outline">Auto</Badge>
+                          <Badge tone="neutral">Auto</Badge>
                         )}
 
                         <Select
@@ -364,7 +369,7 @@ export function CategoryManager({
                                   <SelectItem key={c} value={c}>
                                     <span>{CATEGORY_LABELS[c]}</span>
                                     {CATEGORY_HINTS[c] && (
-                                      <span className="ml-2 text-xs text-muted-foreground">
+                                      <span className="ml-2 text-xs text-cv-ink-subtle">
                                         {CATEGORY_HINTS[c]}
                                       </span>
                                     )}
@@ -377,14 +382,14 @@ export function CategoryManager({
 
                         {row.source === "saved" && (
                           <Button
-                            size="icon"
+                            size="sm"
                             variant="ghost"
+                            iconOnly
+                            icon={<RotateCcw aria-hidden="true" />}
                             aria-label={`Reset ${label} to the automatic category`}
                             disabled={resetMutation.isPending}
                             onClick={() => handleReset(row.componentKey)}
-                          >
-                            <RotateCcw className="h-4 w-4" aria-hidden="true" />
-                          </Button>
+                          />
                         )}
                       </div>
                     </div>
@@ -394,10 +399,10 @@ export function CategoryManager({
             )}
           </div>
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && <Notice tone="danger">{error}</Notice>}
 
           <DialogFooter className="flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-muted-foreground">
+            <p className="m-0 text-xs leading-4 text-cv-ink-subtle">
               {changes.length === 0
                 ? "No changes yet."
                 : grossDelta === 0
@@ -407,15 +412,20 @@ export function CategoryManager({
                     } by ${formatMoney(Math.abs(grossDelta), currency)}.`}
             </p>
             <div className="flex gap-2">
-              <Button type="button" variant="outline" disabled={saving} onClick={() => setOpen(false)}>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={saving}
+                onClick={() => setOpen(false)}
+              >
                 Cancel
               </Button>
               <Button
                 type="button"
                 disabled={saving || changes.length === 0 || categoriesQuery.isLoading}
+                loading={saving}
                 onClick={handleSave}
               >
-                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
                 Save{changes.length > 0 ? ` (${changes.length})` : ""}
               </Button>
             </div>

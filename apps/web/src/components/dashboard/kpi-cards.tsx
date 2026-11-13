@@ -8,74 +8,94 @@ interface KpiCardsProps {
   summary: AggregatedSummary | null;
   /** The company currency (step 8b). */
   currency: string;
+  /** The period compared against, e.g. "June 2026", for the captions. */
+  previousLabel?: string;
 }
 
-export function KpiCards({ summary, currency }: KpiCardsProps) {
+const MINUS = "−";
+
+/** "+USD 10,345.00" / "−USD 120.00": the sign leads, the formatter stays the app's one. */
+function signedMoney(amount: number, currency: string): string {
+  if (amount === 0) return formatCurrency(0, currency);
+  return `${amount > 0 ? "+" : MINUS}${formatCurrency(Math.abs(amount), currency)}`;
+}
+
+/**
+ * The six Dashboard KPIs, in the canvas's order and words.
+ *
+ * Net variance leads: `totalPayrollVariance` is net — what actually left the bank — and
+ * the card says so. Gross sits in its caption for anyone costing the payroll.
+ */
+export function KpiCards({ summary, currency, previousLabel }: KpiCardsProps) {
+  const grid = "grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3";
+
   if (!summary) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <section className={grid} aria-label="Key figures" aria-busy="true">
         {Array.from({ length: 6 }).map((_, i) => (
-          <KpiCard key={i} title="" value="" loading />
+          <KpiCard key={i} label="" loading />
         ))}
-      </div>
+      </section>
     );
   }
 
+  const since = previousLabel ? ` since ${previousLabel}` : "";
+  const vs = previousLabel ? ` vs ${previousLabel}` : "";
   const variance = summary.totalPayrollVariance;
-  const isPositive = variance.absolute >= 0;
-
-  const cards = [
-    {
-      // Net, which is what totalPayrollVariance now holds. It read "Total
-      // Variance" over a figure that was gross plus deductions.
-      title: "Net Variance",
-      value: formatCurrency(Math.abs(variance.absolute), currency),
-      subtext: variance.percentage !== null ? `${isPositive ? "+" : ""}${variance.percentage.toFixed(1)}%` : "N/A",
-      iconName: isPositive ? "TrendingUp" : "TrendingDown",
-      trend: isPositive ? "up" as const : "down" as const,
-    },
-    {
-      title: "Employees Affected",
-      value: summary.employeesAffected.total.toString(),
-      subtext: `${summary.employeesAffected.increased} ↑ · ${summary.employeesAffected.decreased} ↓`,
-      iconName: "Users",
-      trend: "neutral" as const,
-    },
-    {
-      title: "New Employees",
-      value: summary.newEmployees.toString(),
-      subtext: "Added this period",
-      iconName: "UserPlus",
-      trend: "up" as const,
-    },
-    {
-      title: "Departed Employees",
-      value: summary.departedEmployees.toString(),
-      subtext: "Removed this period",
-      iconName: "UserMinus",
-      trend: "down" as const,
-    },
-    {
-      title: "Largest Increase",
-      value: summary.largestIncrease ? formatCurrency(summary.largestIncrease.amount, currency) : "—",
-      subtext: summary.largestIncrease ? `${summary.largestIncrease.employeeName} (${summary.largestIncrease.department ?? "N/A"})` : "None",
-      iconName: "ArrowUpCircle",
-      trend: "up" as const,
-    },
-    {
-      title: "Largest Decrease",
-      value: summary.largestDecrease ? formatCurrency(Math.abs(summary.largestDecrease.amount), currency) : "—",
-      subtext: summary.largestDecrease ? `${summary.largestDecrease.employeeName} (${summary.largestDecrease.department ?? "N/A"})` : "None",
-      iconName: "ArrowDownCircle",
-      trend: "down" as const,
-    },
-  ];
+  const gross = summary.totalGross;
+  const affected = summary.employeesAffected;
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {cards.map((card) => (
-        <KpiCard key={card.title} {...card} />
-      ))}
-    </div>
+    <section className={grid} aria-label="Key figures">
+      <KpiCard
+        label="Net variance"
+        value={signedMoney(variance.absolute, currency)}
+        variance={
+          variance.percentage !== null
+            ? { value: variance.absolute, percent: variance.percentage, percentOnly: true }
+            : undefined
+        }
+        caption={`Net pay${vs} · gross ${signedMoney(gross.absolute, currency)}`}
+      />
+      <KpiCard
+        label="Employees affected"
+        value={affected.total.toLocaleString("en-US")}
+        caption={`${affected.increased} increased · ${affected.decreased} decreased · ${affected.unchanged} unchanged`}
+      />
+      <KpiCard
+        label="Largest increase"
+        value={
+          summary.largestIncrease ? signedMoney(summary.largestIncrease.amount, currency) : "None"
+        }
+        muted={!summary.largestIncrease}
+        caption={
+          summary.largestIncrease
+            ? `${summary.largestIncrease.employeeName} · ${summary.largestIncrease.department ?? "No department"}`
+            : `Nobody was paid more than${previousLabel ? ` in ${previousLabel}` : " before"}`
+        }
+      />
+      <KpiCard
+        label="New employees"
+        value={summary.newEmployees.toLocaleString("en-US")}
+        caption={`Joined${since}`}
+      />
+      <KpiCard
+        label="Departed employees"
+        value={summary.departedEmployees.toLocaleString("en-US")}
+        caption={`Left${since}`}
+      />
+      <KpiCard
+        label="Largest decrease"
+        value={
+          summary.largestDecrease ? signedMoney(summary.largestDecrease.amount, currency) : "None"
+        }
+        muted={!summary.largestDecrease}
+        caption={
+          summary.largestDecrease
+            ? `${summary.largestDecrease.employeeName} · ${summary.largestDecrease.department ?? "No department"}`
+            : `Nobody was paid less than${previousLabel ? ` in ${previousLabel}` : " before"}`
+        }
+      />
+    </section>
   );
 }

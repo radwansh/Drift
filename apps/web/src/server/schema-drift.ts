@@ -12,10 +12,11 @@ import { MIGRATION_TAGS, type DbClient } from "@saas/db";
  * `schema/payrollPeriods.ts`, so drizzle names it in **every** generated SELECT
  * against `payroll_periods` — one missing column broke every query on the
  * table, not only the control-total feature. Two pages render
- * `{error.message}` straight into an `AlertDescription`
- * (`payroll-periods/page.tsx:210`, `dashboard/page.tsx:127`), so what reached
- * the user was the driver's own sentence: it names a column, which is not the
- * thing that was wrong, and it says nothing about what to do.
+ * `{error.message}` straight through (`payroll-periods/page.tsx:285`,
+ * `dashboard/page.tsx:130` — a `Notice tone="danger"` since the Ink & Signal
+ * rebuild, an `AlertDescription` before it), so what reached the user was the
+ * driver's own sentence: it names a column, which is not the thing that was
+ * wrong, and it says nothing about what to do.
  *
  * This module is wired into `server/trpc.ts`, the single place every tRPC error
  * passes through, so it covers every router at once rather than patching the

@@ -5,10 +5,31 @@ import { useRouter } from "next/navigation";
 import { keepPreviousData } from "@tanstack/react-query";
 import type { PayrollPeriod, PeriodType, PeriodStatus, CurrencyCode } from "@saas/types";
 import { trpc } from "@/lib/trpc";
-import { PeriodCard, PeriodCardSkeleton } from "@/components/payroll-periods/period-card";
+import {
+  PeriodRow,
+  PeriodRowSkeleton,
+  PERIOD_COLUMN_COUNT,
+} from "@/components/payroll-periods/period-row";
 import { UploadModal } from "@/components/payroll-periods/upload-modal";
+import {
+  Button,
+  EmptyState,
+  Icon,
+  Notice,
+  PageHeader,
+  Panel,
+  PanelBar,
+  PanelFoot,
+} from "@/components/cv";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Select,
   SelectTrigger,
@@ -26,8 +47,8 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
-import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
-import { Search, Filter, SlidersHorizontal, Upload, Trash2, AlertTriangle } from "lucide-react";
+import { formatPeriodLabel } from "@/lib/date";
+import { PERIOD_TYPE_LABELS } from "@/lib/constants";
 
 const PAGE_SIZE = 20;
 
@@ -40,6 +61,24 @@ const PAGE_SIZE = 20;
  * fiction. It now reads `payrollPeriods.list`, which is scoped by company and
  * paginated server-side, and the filters and search run in SQL rather than
  * over whatever happened to be in memory.
+ *
+ * The Ink & Signal rebuild (canvas board "Payroll periods") is presentation
+ * only: `PageHeader`, one bordered toolbar row, and the periods in a
+ * `Panel flush` — a table where there were cards — with the count in its
+ * `PanelBar` and pagination in its `PanelFoot`. Same query, same filters, same
+ * mutations, same confirmations.
+ *
+ * Two labels changed, deliberately. **"Clear All" became two separate
+ * controls**: the board puts a ghost "Clear all" in the toolbar, which on
+ * every other screen in this app resets the filters — and this screen's old
+ * "Clear All" deleted every payroll period the company had. Two controls one
+ * word apart, one of them irreversible, is how a register gets deleted by
+ * somebody who meant to clear a search box. The toolbar's "Clear all" resets
+ * the three filters; the destructive one is in the header, says "Delete all
+ * periods", and keeps its confirmation. And the search box says "Search by
+ * file name", because `payrollPeriods.list` searches `source_filename` and
+ * nothing else — "Search periods…" promised a match on "July 2026" that the
+ * query cannot make.
  */
 export default function PayrollPeriodsPage() {
   const router = useRouter();
@@ -85,7 +124,7 @@ export default function PayrollPeriodsPage() {
     onError: (error) => setActionError(error.message),
   });
 
-  /** The server returns period_start/period_end; the card wants a dateRange. */
+  /** The server returns period_start/period_end; the row wants a dateRange. */
   const filteredPeriods = useMemo<PayrollPeriod[]>(() => {
     const rows = listQuery.data?.data ?? [];
     return rows.map((row) => ({
@@ -109,6 +148,25 @@ export default function PayrollPeriodsPage() {
 
   const hasAnyPeriods = total > 0;
 
+  /**
+   * Whether the three filters are narrowing the set.
+   *
+   * `total` is the *filtered* count, so it cannot tell "no periods at all"
+   * from "none match these filters" — which is why the old empty state's
+   * "No periods match your current filters" branch was unreachable and
+   * everyone with a filter on was told to upload their first file. The filter
+   * state knows, so it is what the message branches on.
+   */
+  const filtersActive =
+    searchQuery.trim() !== "" || periodTypeFilter !== "all" || statusFilter !== "all";
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setPeriodTypeFilter("all");
+    setStatusFilter("all");
+    setPage(1);
+  };
+
   const handleDelete = () => {
     if (!deleteId) return;
     setActionError(null);
@@ -126,36 +184,46 @@ export default function PayrollPeriodsPage() {
     router.push(`/dashboard?periodId=${encodeURIComponent(id)}`);
   };
 
+  /** The confirmation names the period, rather than "this payroll period". */
+  const periodBeingDeleted = filteredPeriods.find((period) => period.id === deleteId);
+  const deleteTitle = periodBeingDeleted
+    ? `Delete ${formatPeriodLabel(
+        periodBeingDeleted.periodType,
+        periodBeingDeleted.dateRange.from,
+        periodBeingDeleted.dateRange.to,
+      )}?`
+    : "Delete this payroll period?";
+
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">Payroll Periods</h2>
-          <p className="text-muted-foreground mt-1">
-            Manage and view all your payroll periods
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {hasAnyPeriods && (
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        eyebrow="Payroll periods"
+        title="Every period on record"
+        lede="One payroll file per period, with what it totalled and whether its two balancing lines tie out."
+        actions={
+          hasAnyPeriods ? (
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
+              iconLeft="trash"
               onClick={() => setClearConfirmOpen(true)}
               disabled={deleteAllMutation.isPending}
             >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Clear All
+              Delete all periods
             </Button>
-          )}
-          <UploadModal open={uploadOpen} onOpenChange={setUploadOpen} />
-        </div>
-      </div>
+          ) : undefined
+        }
+      />
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative w-full sm:flex-1 sm:min-w-[200px] sm:max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <div className="flex flex-wrap items-center gap-3 rounded-cv-lg border border-cv-line bg-cv-surface px-4 py-3">
+        <div className="relative min-w-[16rem] flex-1">
+          <Icon
+            name="search"
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-cv-ink-subtle"
+          />
           <Input
-            placeholder="Search periods..."
+            placeholder="Search by file name"
+            aria-label="Search by file name"
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
@@ -164,6 +232,7 @@ export default function PayrollPeriodsPage() {
             className="pl-9"
           />
         </div>
+
         <Select
           value={periodTypeFilter}
           onValueChange={(v) => {
@@ -171,18 +240,19 @@ export default function PayrollPeriodsPage() {
             setPage(1);
           }}
         >
-          <SelectTrigger className="w-full sm:w-40">
-            <Filter className="h-4 w-4 mr-2 shrink-0" />
+          <SelectTrigger aria-label="Cadence" className="w-full sm:w-44">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            <SelectItem value="monthly">Monthly</SelectItem>
-            <SelectItem value="weekly">Weekly</SelectItem>
-            <SelectItem value="bi_monthly">Bi-Monthly</SelectItem>
-            <SelectItem value="bi_weekly">Bi-Weekly</SelectItem>
+            <SelectItem value="all">All cadences</SelectItem>
+            {Object.entries(PERIOD_TYPE_LABELS).map(([value, label]) => (
+              <SelectItem key={value} value={value}>
+                {label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
+
         <Select
           value={statusFilter}
           onValueChange={(v) => {
@@ -190,120 +260,148 @@ export default function PayrollPeriodsPage() {
             setPage(1);
           }}
         >
-          <SelectTrigger className="w-full sm:w-36">
-            <SlidersHorizontal className="h-4 w-4 mr-2 shrink-0" />
+          <SelectTrigger aria-label="Status" className="w-full sm:w-40">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="all">All statuses</SelectItem>
             <SelectItem value="processing">Processing</SelectItem>
             <SelectItem value="ready">Ready</SelectItem>
             <SelectItem value="error">Error</SelectItem>
           </SelectContent>
         </Select>
+
+        {filtersActive && (
+          <Button variant="ghost" size="sm" onClick={clearFilters}>
+            Clear all
+          </Button>
+        )}
+
+        <UploadModal open={uploadOpen} onOpenChange={setUploadOpen} />
       </div>
 
       {listQuery.error && (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>Could not load your payroll periods</AlertTitle>
-          <AlertDescription>{listQuery.error.message}</AlertDescription>
-        </Alert>
+        <Notice tone="danger" title="Could not load your payroll periods">
+          {listQuery.error.message}
+        </Notice>
       )}
 
       {actionError && (
-        <Alert variant="destructive">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>That did not work</AlertTitle>
-          <AlertDescription>{actionError}</AlertDescription>
-        </Alert>
+        <Notice tone="danger" title="That did not work">
+          {actionError}
+        </Notice>
       )}
 
-      {loading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <PeriodCardSkeleton key={i} />
-          ))}
-        </div>
-      ) : filteredPeriods.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border bg-card py-16">
-          <div className="rounded-full bg-muted p-4">
-            <Upload className="h-8 w-8 text-muted-foreground" />
-          </div>
-          <h3 className="mt-4 text-lg font-semibold">No periods found</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {hasAnyPeriods
-              ? "No periods match your current filters."
-              : "Upload your first payroll period to get started."}
+      <Panel flush>
+        <PanelBar className="justify-between">
+          <p className="m-0 text-[13px] leading-[18px] text-cv-ink-muted">
+            {loading
+              ? "Listing your payroll periods…"
+              : `${total} period${total === 1 ? "" : "s"}${filtersActive ? " matching these filters" : ""}`}
           </p>
-          {!hasAnyPeriods && (
-            <Button className="mt-4" onClick={() => setUploadOpen(true)}>
-              <Upload className="h-4 w-4 mr-2" />
-              Upload New Period
-            </Button>
-          )}
+        </PanelBar>
+
+        <div className="overflow-x-auto">
+          <Table className="min-w-[960px]">
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Period</TableHead>
+                <TableHead>Dates</TableHead>
+                <TableHead>Cadence</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Employees</TableHead>
+                <TableHead className="text-right">Gross pay</TableHead>
+                <TableHead>Uploaded</TableHead>
+                <TableHead>File</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                Array.from({ length: 6 }).map((_, i) => <PeriodRowSkeleton key={i} />)
+              ) : filteredPeriods.length === 0 ? (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={PERIOD_COLUMN_COUNT} className="p-0">
+                    {filtersActive ? (
+                      <EmptyState
+                        bare
+                        title="No periods match these filters"
+                        description="Clear them to see every period on record."
+                        action={
+                          <Button variant="secondary" onClick={clearFilters}>
+                            Clear all
+                          </Button>
+                        }
+                      />
+                    ) : (
+                      <EmptyState
+                        bare
+                        title="No payroll periods yet"
+                        description="Upload your first payroll file to compare it with the next one."
+                        action={
+                          <Button iconLeft="upload" onClick={() => setUploadOpen(true)}>
+                            Upload period
+                          </Button>
+                        }
+                      />
+                    )}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredPeriods.map((period) => (
+                  <PeriodRow
+                    key={period.id}
+                    period={period}
+                    check={listQuery.data?.checks[period.id]}
+                    onDelete={(id) => setDeleteId(id)}
+                    onCompare={handleCompare}
+                  />
+                ))
+              )}
+            </TableBody>
+          </Table>
         </div>
-      ) : (
-        <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredPeriods.map((period) => (
-              <PeriodCard
-                key={period.id}
-                period={period}
-                check={listQuery.data?.checks[period.id]}
-                onDelete={(id) => setDeleteId(id)}
-                onCompare={handleCompare}
-              />
-            ))}
-          </div>
 
-          {pageCount > 1 && (
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">
-                Page {page} of {pageCount} · {total} period{total === 1 ? "" : "s"}
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1 || listQuery.isFetching}
-                >
-                  Previous
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-                  disabled={page >= pageCount || listQuery.isFetching}
-                >
-                  Next
-                </Button>
-              </div>
+        {pageCount > 1 && (
+          <PanelFoot>
+            <p className="m-0">
+              Page {page} of {pageCount} · {total} period{total === 1 ? "" : "s"}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || listQuery.isFetching}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                disabled={page >= pageCount || listQuery.isFetching}
+              >
+                Next
+              </Button>
             </div>
-          )}
-        </>
-      )}
+          </PanelFoot>
+        )}
+      </Panel>
 
-      <AlertDialog
-        open={deleteId !== null}
-        onOpenChange={(open) => !open && setDeleteId(null)}
-      >
+      <AlertDialog open={deleteId !== null} onOpenChange={(open) => !open && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Payroll Period</AlertDialogTitle>
+            <AlertDialogTitle>{deleteTitle}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this payroll period? All associated
-              employee data will be permanently removed. This action cannot be undone.
+              Every employee row this period carries is removed with it, and nothing recovers it.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDeleteId(null)}>
-              Cancel
-            </AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setDeleteId(null)}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-cv-danger text-cv-on-danger hover:bg-cv-danger-hover"
             >
               Delete
             </AlertDialogAction>
@@ -311,27 +409,22 @@ export default function PayrollPeriodsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog
-        open={clearConfirmOpen}
-        onOpenChange={setClearConfirmOpen}
-      >
+      <AlertDialog open={clearConfirmOpen} onOpenChange={setClearConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Clear All Payroll Periods</AlertDialogTitle>
+            <AlertDialogTitle>Delete all payroll periods?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete all payroll periods and associated
-              employee data. This action cannot be undone.
+              Every period and every employee row behind it is removed, for the whole company.
+              Nothing recovers it.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setClearConfirmOpen(false)}>
-              Cancel
-            </AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setClearConfirmOpen(false)}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleClearAll}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-cv-danger text-cv-on-danger hover:bg-cv-danger-hover"
             >
-              Clear All
+              Delete all periods
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

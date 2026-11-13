@@ -2,17 +2,9 @@
 
 import { useMemo } from "react";
 import type { AnnualSummary } from "@saas/payroll-core";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Panel } from "@/components/cv";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import {
   formatAxisMoney,
   formatMoney,
@@ -20,19 +12,27 @@ import {
   shortPeriodLabel,
 } from "@/components/annual/annual-utils";
 import { ChartFrame } from "@/components/annual/chart-frame";
+import {
+  axisProps,
+  categoryAxisProps,
+  gridProps,
+  seriesColor,
+  tooltipProps,
+} from "@/lib/chart-palette";
 
 interface AnnualStatutoryProps {
   summary: AnnualSummary | null;
 }
 
+/** Three categories, so `seriesColor(0..2)` in order — never one hue at three opacities. */
 const SERIES = [
-  { key: "incomeTax", label: "Income tax", fill: "hsl(var(--primary))" },
-  { key: "employeeSS", label: "Employee social security", fill: "hsl(var(--primary) / 0.6)" },
-  { key: "employerSS", label: "Employer social security", fill: "hsl(var(--primary) / 0.3)" },
+  { key: "incomeTax", label: "Income tax", fill: seriesColor(0) },
+  { key: "employeeSS", label: "Employee social security", fill: seriesColor(1) },
+  { key: "employerSS", label: "Employer social security", fill: seriesColor(2) },
 ] as const;
 
 /**
- * Taxes and social security (step 35, KPI 6).
+ * Taxes and social security (step 35, KPI 6), on Ink & Signal.
  *
  * The spec asks for stacked bars by period; v1 showed a totals card only. The
  * total also lumped other employer costs in with employer social security, so
@@ -65,14 +65,9 @@ export function AnnualStatutory({ summary }: AnnualStatutoryProps) {
 
   if (!summary) {
     return (
-      <Card className="min-w-0">
-        <CardHeader>
-          <CardTitle className="text-sm font-medium">Taxes and social security</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-64 w-full" />
-        </CardContent>
-      </Card>
+      <Panel headingId="annual-statutory-h" title="Taxes and social security">
+        <Skeleton className="h-64 w-full" />
+      </Panel>
     );
   }
 
@@ -86,14 +81,12 @@ export function AnnualStatutory({ summary }: AnnualStatutoryProps) {
   const currency = summary.currency;
 
   return (
-    <Card className="min-w-0">
-      <CardHeader>
-        <CardTitle className="text-sm font-medium">Taxes and social security</CardTitle>
-        <CardDescription>
-          Statutory liability to date: {formatMoney(statutoryTotal, currency)}.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-5">
+    <Panel
+      headingId="annual-statutory-h"
+      title="Taxes and social security"
+      description={`Statutory liability to date: ${formatMoney(statutoryTotal, currency)}.`}
+    >
+      <div className="flex flex-col gap-5">
         {data.length > 0 && (
           <ChartFrame
             label={`Income tax, employee social security and employer social security by period for ${summary.year}.`}
@@ -110,26 +103,16 @@ export function AnnualStatutory({ summary }: AnnualStatutoryProps) {
           >
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <CartesianGrid {...gridProps} />
                 <XAxis
                   dataKey="label"
-                  tick={{ fontSize: 11 }}
-                  tickLine={false}
-                  axisLine={false}
+                  {...categoryAxisProps}
                   tickMargin={8}
                   interval="preserveStartEnd"
                 />
-                <YAxis
-                  width={60}
-                  tick={{ fontSize: 11 }}
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={8}
-                  tickFormatter={formatAxisMoney}
-                />
+                <YAxis width={60} {...axisProps} tickMargin={8} tickFormatter={formatAxisMoney} />
                 <Tooltip
-                  cursor={{ fill: "hsl(var(--muted) / 0.4)" }}
-                  contentStyle={{ fontSize: 13, borderRadius: 8 }}
+                  {...tooltipProps}
                   formatter={(v: number, name) => {
                     const series = SERIES.find((s) => s.key === name);
                     return [formatMoney(Number(v), currency), series?.label ?? String(name)];
@@ -139,23 +122,35 @@ export function AnnualStatutory({ summary }: AnnualStatutoryProps) {
                   }
                 />
                 {SERIES.map((s) => (
-                  <Bar key={s.key} dataKey={s.key} stackId="statutory" fill={s.fill} isAnimationActive={false} />
+                  <Bar
+                    key={s.key}
+                    dataKey={s.key}
+                    stackId="statutory"
+                    fill={s.fill}
+                    isAnimationActive={false}
+                  />
                 ))}
               </BarChart>
             </ResponsiveContainer>
           </ChartFrame>
         )}
 
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        {/* The key is plain text with an SVG mark: Recharts drops classes on
+            legend marks, so these colours are explicit too. */}
+        <ul className="m-0 flex list-none flex-wrap items-center gap-x-4 gap-y-1 p-0 text-xs leading-4 text-cv-ink-muted">
           {SERIES.map((s) => (
-            <span key={s.key} className="inline-flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-sm" style={{ background: s.fill }} aria-hidden="true" />
+            <li key={s.key} className="inline-flex items-center gap-1.5">
+              <span
+                aria-hidden="true"
+                className="h-2.5 w-2.5 flex-none rounded-cv-xs"
+                style={{ background: s.fill }}
+              />
               {s.label}
-            </span>
+            </li>
           ))}
-        </div>
+        </ul>
 
-        <div className="space-y-2 border-t pt-3 text-sm">
+        <div className="flex flex-col gap-2 border-t border-cv-line pt-3 text-sm leading-5">
           {[
             { label: "Income tax", amount: incomeTax },
             { label: "Employee social security", amount: employeeSS },
@@ -163,37 +158,35 @@ export function AnnualStatutory({ summary }: AnnualStatutoryProps) {
             { label: "Other employer costs", amount: otherEmployerCost },
           ].map((row) => (
             <div key={row.label} className="flex items-center justify-between gap-4">
-              <span className="truncate text-muted-foreground">{row.label}</span>
-              <span className="whitespace-nowrap text-right tabular-nums">
-                {formatMoney(row.amount, currency)}
-              </span>
+              <span className="truncate text-cv-ink-muted">{row.label}</span>
+              <span className="cv-num text-cv-ink">{formatMoney(row.amount, currency)}</span>
             </div>
           ))}
-          <div className="flex items-center justify-between gap-4 border-t pt-2 font-medium">
-            <span className="truncate">Statutory total to date</span>
-            <span className="whitespace-nowrap text-right tabular-nums">
-              {formatMoney(statutoryTotal, currency)}
-            </span>
+          <div className="flex items-center justify-between gap-4 border-t border-cv-line pt-2 font-medium">
+            <span className="truncate text-cv-ink">Statutory total to date</span>
+            <span className="cv-num text-cv-ink">{formatMoney(statutoryTotal, currency)}</span>
           </div>
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="rounded-lg border p-3">
-            <p className="text-xs text-muted-foreground">Effective income tax rate</p>
-            <p className="mt-1 text-lg font-semibold tabular-nums">
+          <div className="rounded-cv-lg border border-cv-line p-3">
+            <p className="m-0 text-xs leading-4 text-cv-ink-subtle">Effective income tax rate</p>
+            <p className="m-0 mt-1 text-lg font-semibold leading-6 tabular-nums text-cv-ink">
               {formatPct(summary.statutory.effectiveTaxRate)}
             </p>
-            <p className="text-xs text-muted-foreground">Income tax over gross.</p>
+            <p className="m-0 text-xs leading-4 text-cv-ink-subtle">Income tax over gross.</p>
           </div>
-          <div className="rounded-lg border p-3">
-            <p className="text-xs text-muted-foreground">Employer on-cost rate</p>
-            <p className="mt-1 text-lg font-semibold tabular-nums">
+          <div className="rounded-cv-lg border border-cv-line p-3">
+            <p className="m-0 text-xs leading-4 text-cv-ink-subtle">Employer on-cost rate</p>
+            <p className="m-0 mt-1 text-lg font-semibold leading-6 tabular-nums text-cv-ink">
               {formatPct(summary.statutory.employerOnCostRate)}
             </p>
-            <p className="text-xs text-muted-foreground">Employer social security over gross.</p>
+            <p className="m-0 text-xs leading-4 text-cv-ink-subtle">
+              Employer social security over gross.
+            </p>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }

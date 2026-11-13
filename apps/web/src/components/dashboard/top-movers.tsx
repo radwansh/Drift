@@ -1,11 +1,16 @@
 "use client";
 
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Panel, Variance } from "@/components/cv";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { formatCurrency } from "@/lib/utils";
-import { cn } from "@/lib/utils";
 
 interface MoverRow {
   employeeName: string;
@@ -18,69 +23,69 @@ interface MoverRow {
 
 interface TopMoversProps {
   movers?: MoverRow[];
-  /** The company currency (step 8b). */
   currency: string;
+  previousLabel?: string;
+  currentLabel?: string;
 }
 
-export function TopMovers({ movers, currency }: TopMoversProps) {
+/**
+ * The largest changes in net pay (redesign canvas: Dashboard, "Top movers").
+ * Same table anatomy as the department table: names in ink, departments ink-muted,
+ * figures in Geist Mono right-aligned, the change as a Variance.
+ */
+export function TopMovers({ movers, currency, previousLabel, currentLabel }: TopMoversProps) {
+  const money = (n: number) => formatCurrency(n, currency);
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-sm font-medium">Top Movers</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {!movers ? (
-          <div className="space-y-3">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-3/4" />
-          </div>
-        ) : movers.length === 0 ? (
-          <div className="flex items-center justify-center h-24 text-sm text-muted-foreground">
-            No mover data available
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Employee</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead className="text-right">Previous Net</TableHead>
-                  <TableHead className="text-right">Current Net</TableHead>
-                  <TableHead className="text-right">Change</TableHead>
-                  <TableHead className="text-right">Change %</TableHead>
+    <Panel
+      headingId="movers-h"
+      title="Top movers"
+      description="The largest changes in net pay, in either direction."
+    >
+      {!movers ? (
+        <div className="space-y-3" aria-busy="true">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-3/4" />
+        </div>
+      ) : movers.length === 0 ? (
+        <p className="m-0 py-8 text-center text-sm leading-5 text-cv-ink-subtle">
+          Nobody&apos;s net pay changed.
+        </p>
+      ) : (
+        <div className="overflow-x-auto rounded-cv-lg border border-cv-line">
+          <Table className="min-w-[680px]">
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Employee</TableHead>
+                <TableHead>Department</TableHead>
+                <TableHead className="text-right">Net pay {previousLabel ?? "previous"}</TableHead>
+                <TableHead className="text-right">Net pay {currentLabel ?? "current"}</TableHead>
+                <TableHead className="text-right">Change</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {movers.map((mover, index) => (
+                <TableRow key={`${mover.employeeName}-${index}`}>
+                  <TableCell className="font-medium">{mover.employeeName}</TableCell>
+                  <TableCell className="text-cv-ink-muted">{mover.department ?? "—"}</TableCell>
+                  <TableCell className="cv-num text-cv-ink-muted">
+                    {money(mover.previousNet)}
+                  </TableCell>
+                  <TableCell className="cv-num">{money(mover.currentNet)}</TableCell>
+                  <TableCell className="text-right">
+                    <Variance
+                      value={mover.changeAmount}
+                      percent={mover.changePercentage}
+                      format={money}
+                    />
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {movers.map((mover, index) => {
-                  const isPositive = mover.changeAmount >= 0;
-                  return (
-                    <TableRow key={index}>
-                      <TableCell className="font-medium">{mover.employeeName}</TableCell>
-                      <TableCell className="text-muted-foreground">{mover.department ?? "—"}</TableCell>
-                      <TableCell className="text-right font-mono text-xs">{formatCurrency(mover.previousNet, currency)}</TableCell>
-                      <TableCell className="text-right font-mono text-xs">{formatCurrency(mover.currentNet, currency)}</TableCell>
-                      <TableCell className={cn("text-right font-mono text-xs font-medium", isPositive ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-                        {isPositive ? "+" : ""}{formatCurrency(mover.changeAmount, currency)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {mover.changePercentage !== null ? (
-                          <Badge variant={isPositive ? "success" : "destructive"} className="text-[10px]">
-                            {isPositive ? "+" : ""}{mover.changePercentage.toFixed(1)}%
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </Panel>
   );
 }

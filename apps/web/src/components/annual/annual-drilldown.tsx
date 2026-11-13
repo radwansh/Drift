@@ -18,7 +18,7 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Lock } from "lucide-react";
+import { Notice } from "@/components/cv";
 import { formatCount, formatMoney } from "@/components/annual/annual-utils";
 import { ScrollShadow } from "@/components/annual/scroll-shadow";
 
@@ -30,7 +30,7 @@ interface AnnualDrilldownProps {
 }
 
 /**
- * Drill-down (step 44).
+ * Drill-down (step 44), on Ink & Signal.
  *
  * A department opens its periods, which any member may see — they are the same
  * aggregates already on the page. Employee-level rows come from a separate
@@ -66,51 +66,55 @@ export function AnnualDrilldown({ summary, department, onClose }: AnnualDrilldow
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4">
           {forbidden ? (
-            <div className="flex items-start gap-2 rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-              <Lock className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-              <p>
-                Employee-level figures are visible to admins only. The department totals above are
-                available to everyone with access to this dashboard.
-              </p>
-            </div>
+            <Notice tone="info" title="Employee-level figures are visible to admins only">
+              The department totals above are available to everyone with access to this dashboard.
+            </Notice>
           ) : employees.isLoading ? (
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               {Array.from({ length: 5 }).map((_, i) => (
                 <Skeleton key={i} className="h-9 w-full" />
               ))}
             </div>
           ) : employees.isError ? (
-            <p className="text-sm text-muted-foreground">
+            <p className="m-0 text-sm leading-5 text-cv-ink-muted">
               Could not load employee figures for this department.
             </p>
           ) : (
-            <ScrollShadow>
+            <ScrollShadow className="rounded-cv-lg border border-cv-line">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="sticky left-0 top-0 z-30 bg-background">Employee</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-background">Department</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-background text-right">Periods</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-background text-right">Gross</TableHead>
-                    <TableHead className="sticky top-0 z-20 bg-background text-right">Net</TableHead>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="sticky left-0 top-0 z-30 bg-cv-surface-sunken">
+                      Employee
+                    </TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-cv-surface-sunken">
+                      Department
+                    </TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-cv-surface-sunken text-right">
+                      Periods
+                    </TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-cv-surface-sunken text-right">
+                      Gross
+                    </TableHead>
+                    <TableHead className="sticky top-0 z-20 bg-cv-surface-sunken text-right">
+                      Net
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {(employees.data?.employees ?? []).map((e) => (
                     <TableRow key={e.employeeExternalId}>
-                      <TableCell className="sticky left-0 z-10 whitespace-nowrap bg-background font-medium">
+                      <TableCell className="sticky left-0 z-10 whitespace-nowrap bg-cv-surface font-medium text-cv-ink">
                         {e.employeeName ?? e.employeeExternalId}
                       </TableCell>
                       <TableCell className="whitespace-nowrap">{e.department}</TableCell>
-                      <TableCell className="whitespace-nowrap text-right tabular-nums">
-                        {formatCount(e.periodCount)}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-right tabular-nums">
+                      <TableCell className="cv-num">{formatCount(e.periodCount)}</TableCell>
+                      <TableCell className="cv-num">
                         {formatMoney(e.gross, summary.currency)}
                       </TableCell>
-                      <TableCell className="whitespace-nowrap text-right tabular-nums">
+                      <TableCell className="cv-num">
                         {formatMoney(e.net, summary.currency)}
                       </TableCell>
                     </TableRow>

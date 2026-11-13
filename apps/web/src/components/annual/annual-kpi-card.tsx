@@ -1,9 +1,6 @@
 "use client";
 
-import type { LucideIcon } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Badge, Stat } from "@/components/cv";
 import { SCOPE_LABELS, type Scope } from "@/components/annual/annual-utils";
 
 interface AnnualKpiCardProps {
@@ -19,9 +16,21 @@ interface AnnualKpiCardProps {
   scope: Scope;
   subtext?: string;
   badge?: string;
-  icon?: LucideIcon;
 }
 
+/**
+ * One annual KPI, on the design system's `Stat` (canvas board "Annual
+ * salaries").
+ *
+ * The scope badge sits in `aside`, the label row, where it reads as a
+ * qualification of the label rather than a status of the figure — "Salaries
+ * forecast · Full-year forecast". It is the whole point of this card: a
+ * full-year projection next to a year-to-date actual, with nothing to tell
+ * them apart, is finding U5.
+ *
+ * No icon tile and no coloured figure: colour means change, and none of these
+ * six is a change.
+ */
 export function AnnualKpiCard({
   title,
   display,
@@ -29,56 +38,44 @@ export function AnnualKpiCard({
   scope,
   subtext,
   badge,
-  icon: Icon,
 }: AnnualKpiCardProps) {
   return (
-    <Card className="min-w-0">
-      <CardContent className="p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 flex-1 space-y-1">
-            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-              <p className="truncate text-sm text-muted-foreground">{title}</p>
-              <Badge variant="outline" className="shrink-0 text-[10px] font-normal">
-                {SCOPE_LABELS[scope]}
-              </Badge>
-            </div>
-            <p className="text-xl font-bold tracking-tight tabular-nums sm:text-2xl">{display}</p>
+    <Stat
+      label={title}
+      value={display}
+      muted={display === "—"}
+      aside={<Badge tone="neutral">{SCOPE_LABELS[scope]}</Badge>}
+      caption={
+        fullValue || subtext || badge ? (
+          <span className="flex min-w-0 flex-col gap-1">
             {/* The full value is text, because a touch screen cannot open a
                 hover title (finding U5). */}
             {fullValue && fullValue !== display && (
-              <p className="break-words text-xs tabular-nums text-muted-foreground">{fullValue}</p>
+              <span className="break-words font-cv-mono tabular-nums">{fullValue}</span>
             )}
-            {subtext && <p className="break-words text-xs text-muted-foreground">{subtext}</p>}
+            {subtext && <span className="break-words">{subtext}</span>}
             {badge && (
-              <Badge variant="secondary" className="mt-1 text-[10px] font-normal">
-                {badge}
-              </Badge>
+              <span>
+                <Badge tone="neutral">{badge}</Badge>
+              </span>
             )}
-          </div>
-          {Icon && (
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-              <Icon className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+          </span>
+        ) : undefined
+      }
+    />
   );
 }
 
 export function AnnualKpiCardSkeleton() {
   return (
-    <Card className="min-w-0">
-      <CardContent className="p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0 flex-1 space-y-2">
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-7 w-28" />
-            <Skeleton className="h-3 w-20" />
-          </div>
-          <Skeleton className="h-9 w-9 shrink-0 rounded-lg" />
-        </div>
-      </CardContent>
-    </Card>
+    <Stat
+      label={
+        <span
+          aria-hidden="true"
+          className="block h-[18px] w-24 animate-pulse rounded-cv-sm bg-cv-surface-sunken"
+        />
+      }
+      loading
+    />
   );
 }

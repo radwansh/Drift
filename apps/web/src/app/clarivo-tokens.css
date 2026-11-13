@@ -1,9 +1,24 @@
-/* Clarivo design tokens, generated from tokens.json (design system version 1791983806-7026).
-   Every name carries a cv- prefix so it never collides with shadcn/ui variables (--primary, --accent, --border, --chart-*, --radius-*).
-   Light values sit on :root. The landing page is designed light-only, so nothing switches it to dark.
-   The dark values are kept under [data-cv-theme="dark"] for the app later; nothing sets that attribute today.
-   Fonts: load Instrument Sans and Geist Mono with next/font/google, variables --font-instrument-sans and --font-geist-mono. */
-:root {
+/* Clarivo design tokens (Ink & Signal), from the Clarivo design system tokens.json
+   (light values verified against design-system version 1792939260-744f).
+
+   Every name carries a cv- prefix so it never collides with shadcn/ui variables
+   (--primary, --accent, --border, --radius ...). Those are HSL channel triplets read as
+   hsl(var(--x)); these are complete colour values. globals.css maps the shadcn names onto
+   these values, so both vocabularies paint the same palette.
+
+   Themes
+   - Light on :root, and again on [data-theme="light"] so a subtree can pin itself light
+     (the marketing layout does, because the landing page is designed light-only).
+   - Dark on .dark (what next-themes sets on <html> for the app), on [data-theme="dark"],
+     and on [data-cv-theme="dark"], which scopes a dark region inside a light page: the
+     app's side menu uses it, so its colours come straight from the Dark theme.
+   - Rust stays #E0592A in both themes. Every role keeps its meaning.
+
+   Fonts: src/app/fonts.ts loads Instrument Sans and Geist Mono with next/font/local and
+   exposes --font-instrument-sans and --font-geist-mono, which --cv-font-* read below. */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
   --cv-bg: var(--cv-slate-25);
   --cv-surface: #ffffff;
   --cv-surface-sunken: var(--cv-slate-50);
@@ -56,6 +71,7 @@
   --cv-danger-ink: #b01f4f;
   --cv-danger-soft: #feeff1;
   --cv-on-danger: #ffffff;
+  --cv-scrim: #121a2299;
   --cv-slate-25: #f7f8f9;
   --cv-slate-50: #f0f3f5;
   --cv-slate-100: #e6eaed;
@@ -119,7 +135,10 @@
   --cv-font-mono: var(--font-geist-mono, "Geist Mono"), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
+.dark,
+[data-theme="dark"],
 [data-cv-theme="dark"] {
+  color-scheme: dark;
   --cv-bg: var(--cv-slate-950);
   --cv-surface: var(--cv-slate-900);
   --cv-surface-sunken: #080d11;
@@ -141,7 +160,16 @@
   --cv-on-accent: var(--cv-slate-950);
   --cv-signal-ink: #f2805b;
   --cv-signal-soft: #3b1d14;
+  /* Derived roles are declared again so they resolve against the Dark values when the
+     theme is scoped to an element (the side menu) rather than set on <html>. */
+  --cv-focus: var(--cv-accent);
+  --cv-delta-up: var(--cv-signal);
+  --cv-delta-up-ink: var(--cv-signal-ink);
+  --cv-delta-down: var(--cv-accent);
+  --cv-delta-down-ink: var(--cv-accent);
   --cv-delta-flat: #5c646c;
+  --cv-delta-flat-ink: var(--cv-ink-subtle);
+  --cv-chart-current: var(--cv-ink);
   --cv-chart-1: #537feb;
   --cv-chart-2: #d65997;
   --cv-chart-3: #c87e10;
@@ -157,13 +185,15 @@
   --cv-warning-soft: #352206;
   --cv-danger-ink: #ef7cac;
   --cv-danger-soft: #3b1b20;
+  --cv-scrim: #000000b3;
   --cv-shadow-sm: 0 1px 2px #00000066;
   --cv-shadow-md: 0 8px 24px -4px #000000b3;
   --cv-shadow-lg: 0 24px 48px -12px #000000cc;
   --cv-focus-ring: 0 0 0 2px #0c1116, 0 0 0 4px #79a1fc;
 }
 
-/* Type scale */
+/* Type scale. Use these classes (or the matching Tailwind utilities listed in
+   docs/design/TOKEN_MAP.md) rather than ad-hoc sizes. */
 .cv-type-display-xl { font-family: var(--cv-font-sans); font-size: 64px; line-height: 68px; font-weight: 600; letter-spacing: -0.035em; }
 .cv-type-display { font-family: var(--cv-font-sans); font-size: 44px; line-height: 48px; font-weight: 600; letter-spacing: -0.03em; }
 .cv-type-title { font-family: var(--cv-font-sans); font-size: 28px; line-height: 34px; font-weight: 600; letter-spacing: -0.02em; }
@@ -174,6 +204,6 @@
 .cv-type-button { font-family: var(--cv-font-sans); font-size: 14px; line-height: 20px; font-weight: 600; }
 .cv-type-label { font-family: var(--cv-font-sans); font-size: 13px; line-height: 18px; font-weight: 500; letter-spacing: 0.005em; }
 .cv-type-caption { font-family: var(--cv-font-sans); font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.01em; }
-.cv-type-kpi { font-family: var(--cv-font-sans); font-size: 36px; line-height: 40px; font-weight: 600; letter-spacing: -0.02em; }
-.cv-type-figure { font-family: var(--cv-font-mono); font-size: 13px; line-height: 20px; font-weight: 400; }
+.cv-type-kpi { font-family: var(--cv-font-sans); font-size: 36px; line-height: 40px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.cv-type-figure { font-family: var(--cv-font-mono); font-size: 13px; line-height: 20px; font-weight: 400; font-variant-numeric: tabular-nums; }
 .cv-type-code { font-family: var(--cv-font-mono); font-size: 13px; line-height: 20px; font-weight: 400; }

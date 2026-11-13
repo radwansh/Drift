@@ -1,28 +1,21 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
-import localFont from "next/font/local";
 import "./globals.css";
+import { geistMono, instrumentSans } from "./fonts";
 import { Providers } from "./providers";
 
 /**
- * Self-hosted, for the reason given at length in `(marketing)/layout.tsx`:
- * `next/font/google` fetches at compile time, so it made every `next build`
- * depend on reaching fonts.googleapis.com, and twice it failed there on
- * changes that had nothing to do with fonts.
+ * Root layout.
  *
- * `latin` subset, matching the `subsets: ["latin"]` this replaces. Inter is a
- * variable font, so the one file covers the range.
+ * The Ink & Signal fonts (Instrument Sans + Geist Mono, see ./fonts.ts) are applied on
+ * <html>, so the app, the auth screens and the marketing pages all read the same
+ * --font-instrument-sans and --font-geist-mono. Inter is gone: the design system does not
+ * use it, and src/app/fonts/ now holds those two faces and nothing else.
  */
-const inter = localFont({
-  src: "./fonts/inter-latin.woff2",
-  weight: "400 700",
-  style: "normal",
-  display: "swap",
-});
-
 export const metadata: Metadata = {
   title: "Clarivo - Payroll Variance Analysis",
-  description: "Compare employee salaries between payroll periods. Spot variances, anomalies, and trends.",
+  description:
+    "Compare employee salaries between payroll periods. Spot variances, anomalies, and trends.",
   // The favicon had no reference at all: a bare public/favicon.svg was served
   // but never linked, and browsers only probe for /favicon.ico. Declaring the
   // icons here is what actually points the tab and home-screen icons at the
@@ -60,8 +53,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       signUpUrl="/sign-up"
       waitlistUrl="/waitlist"
     >
-      <html lang="en" suppressHydrationWarning>
-        <body className={inter.className}>
+      <html
+        lang="en"
+        suppressHydrationWarning
+        className={`${instrumentSans.variable} ${geistMono.variable}`}
+      >
+        <body className="font-sans antialiased">
           <Providers>{children}</Providers>
         </body>
       </html>

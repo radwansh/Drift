@@ -1,11 +1,17 @@
 "use client";
 
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Button, Panel, Variance } from "@/components/cv";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableFooter,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { formatCurrency } from "@/lib/utils";
-import { cn } from "@/lib/utils";
 
 interface DepartmentRow {
   department: string;
@@ -19,76 +25,108 @@ interface DepartmentRow {
 
 interface DepartmentBreakdownProps {
   departments?: DepartmentRow[];
-  /** The company currency (step 8b). */
   currency: string;
+  previousLabel?: string;
+  currentLabel?: string;
 }
 
-export function DepartmentBreakdown({ departments, currency }: DepartmentBreakdownProps) {
+/**
+ * Gross pay by department (redesign canvas: Dashboard, "Gross pay by department").
+ *
+ * Gross, not "payroll": these are what each department costs in pay. The change is a
+ * Variance (rust up, cobalt down, arrow and sign), not a green/red badge: a rise in pay
+ * is not a "success". Previous-period figures are ink-muted, current in ink, all in
+ * Geist Mono, right-aligned.
+ */
+export function DepartmentBreakdown({
+  departments,
+  currency,
+  previousLabel,
+  currentLabel,
+}: DepartmentBreakdownProps) {
+  const money = (n: number) => formatCurrency(n, currency);
+  const totals = (departments ?? []).reduce(
+    (acc, d) => ({
+      headcount: acc.headcount + d.headcountCurrent,
+      previous: acc.previous + d.totalPrevious,
+      current: acc.current + d.totalCurrent,
+    }),
+    { headcount: 0, previous: 0, current: 0 },
+  );
+  const totalChange = totals.current - totals.previous;
+  const totalPct = totals.previous !== 0 ? (totalChange / totals.previous) * 100 : null;
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-sm font-medium">Department Breakdown</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {!departments ? (
-          <div className="space-y-3">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-3/4" />
-          </div>
-        ) : departments.length === 0 ? (
-          <div className="flex items-center justify-center h-24 text-sm text-muted-foreground">
-            No department data available
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Department</TableHead>
-                  <TableHead className="text-right">Headcount (Current)</TableHead>
-                  <TableHead className="text-right">Headcount (Previous)</TableHead>
-                  {/* Gross, not "payroll": these are what the department costs
-                      in pay. They used to be the component sum, which carried
-                      the department's deductions as well. */}
-                  <TableHead className="text-right">Gross (Current)</TableHead>
-                  <TableHead className="text-right">Gross (Previous)</TableHead>
-                  {/* No currency symbol — the company's currency is threaded
-                      through in step 8b of docs/PAYROLL_AUDIT_FIX_PLAN.md. */}
-                  <TableHead className="text-right">Change</TableHead>
-                  <TableHead className="text-right">Change (%)</TableHead>
+    <Panel
+      headingId="dept-h"
+      title="Gross pay by department"
+      description="Which teams drive the change in salary cost."
+      actions={
+        <Button variant="ghost" size="sm" iconRight="arrow-right" href="/detailed">
+          Open Detailed View
+        </Button>
+      }
+    >
+      {!departments ? (
+        <div className="space-y-3" aria-busy="true">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-3/4" />
+        </div>
+      ) : departments.length === 0 ? (
+        <p className="m-0 py-8 text-center text-sm leading-5 text-cv-ink-subtle">
+          No departments in this comparison.
+        </p>
+      ) : (
+        <div className="overflow-x-auto rounded-cv-lg border border-cv-line">
+          <Table className="min-w-[680px]">
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead>Department</TableHead>
+                <TableHead className="text-right">Employees</TableHead>
+                <TableHead className="text-right">{previousLabel ?? "Previous"}</TableHead>
+                <TableHead className="text-right">{currentLabel ?? "Current"}</TableHead>
+                <TableHead className="text-right">Change</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {departments.map((dept) => (
+                <TableRow key={dept.department}>
+                  <TableCell className="font-medium">{dept.department}</TableCell>
+                  <TableCell className="cv-num">
+                    {dept.headcountCurrent}
+                    {dept.headcountPrevious !== dept.headcountCurrent && (
+                      <span className="text-cv-ink-subtle"> from {dept.headcountPrevious}</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="cv-num text-cv-ink-muted">
+                    {money(dept.totalPrevious)}
+                  </TableCell>
+                  <TableCell className="cv-num">{money(dept.totalCurrent)}</TableCell>
+                  <TableCell className="text-right">
+                    <Variance
+                      value={dept.absoluteChange}
+                      percent={dept.percentageChange}
+                      format={money}
+                    />
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {departments.map((dept) => {
-                  const isPositive = dept.absoluteChange >= 0;
-                  return (
-                    <TableRow key={dept.department}>
-                      <TableCell className="font-medium">{dept.department}</TableCell>
-                      <TableCell className="text-right">{dept.headcountCurrent}</TableCell>
-                      <TableCell className="text-right">{dept.headcountPrevious}</TableCell>
-                      <TableCell className="text-right font-mono text-xs">{formatCurrency(dept.totalCurrent, currency)}</TableCell>
-                      <TableCell className="text-right font-mono text-xs">{formatCurrency(dept.totalPrevious, currency)}</TableCell>
-                      <TableCell className={cn("text-right font-mono text-xs", isPositive ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-                        {isPositive ? "+" : ""}{formatCurrency(dept.absoluteChange, currency)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {dept.percentageChange !== null ? (
-                          <Badge variant={isPositive ? "success" : "destructive"} className="text-[10px]">
-                            {isPositive ? "+" : ""}{dept.percentageChange.toFixed(1)}%
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+              ))}
+            </TableBody>
+            <TableFooter>
+              <TableRow className="hover:bg-transparent">
+                <TableCell>Total</TableCell>
+                <TableCell className="cv-num">{totals.headcount}</TableCell>
+                <TableCell className="cv-num">{money(totals.previous)}</TableCell>
+                <TableCell className="cv-num">{money(totals.current)}</TableCell>
+                <TableCell className="text-right">
+                  <Variance value={totalChange} percent={totalPct} format={money} />
+                </TableCell>
+              </TableRow>
+            </TableFooter>
+          </Table>
+        </div>
+      )}
+    </Panel>
   );
 }

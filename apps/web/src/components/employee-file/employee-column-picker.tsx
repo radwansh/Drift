@@ -1,7 +1,6 @@
 "use client";
 
-import { Columns3 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/cv";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -51,8 +50,7 @@ export function EmployeeColumnPicker({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm">
-          <Columns3 className="mr-2 h-4 w-4" aria-hidden="true" />
+        <Button variant="secondary" iconLeft="columns">
           Columns
         </Button>
       </DropdownMenuTrigger>
@@ -71,7 +69,7 @@ export function EmployeeColumnPicker({
             <span className="flex flex-col gap-0.5">
               <span>{column.label}</span>
               {column.note && (
-                <span className="text-xs text-muted-foreground">{column.note}</span>
+                <span className="text-xs leading-4 text-cv-ink-subtle">{column.note}</span>
               )}
             </span>
           </DropdownMenuCheckboxItem>
@@ -79,7 +77,7 @@ export function EmployeeColumnPicker({
         {unavailable.length > 0 && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel className="font-normal text-xs text-muted-foreground">
+            <DropdownMenuLabel className="text-xs font-normal text-cv-ink-subtle">
               Not in this register
             </DropdownMenuLabel>
             {unavailable.map((column) => (
@@ -87,7 +85,7 @@ export function EmployeeColumnPicker({
                 <span className="flex flex-col gap-0.5">
                   <span>{column.label}</span>
                   {column.note && (
-                    <span className="text-xs text-muted-foreground">{column.note}</span>
+                    <span className="text-xs leading-4 text-cv-ink-subtle">{column.note}</span>
                   )}
                 </span>
               </DropdownMenuItem>

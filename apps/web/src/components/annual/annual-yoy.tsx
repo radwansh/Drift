@@ -8,40 +8,53 @@ interface AnnualYoYProps {
   summary: AnnualSummary | null;
 }
 
+function Figure({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <p className="m-0 text-xs leading-4 text-cv-ink-subtle">{label}</p>
+      <p className="m-0 mt-0.5 text-lg font-semibold leading-6 tabular-nums text-cv-ink">
+        {children}
+      </p>
+    </div>
+  );
+}
+
 export function AnnualYoY({ summary }: AnnualYoYProps) {
   if (!summary) {
-    return <Skeleton className="h-16 w-full rounded-xl" />;
+    return <Skeleton className="h-16 w-full rounded-cv-lg" />;
   }
 
   if (!summary.yoy.available) return null;
 
   const yoy = summary.yoy;
   return (
-    <div className="flex flex-wrap items-center gap-x-8 gap-y-3 rounded-xl border bg-card p-4">
+    <section
+      data-slot="card"
+      aria-label="Year-on-year"
+      className="flex min-w-0 flex-wrap items-center gap-x-8 gap-y-3 rounded-cv-lg border border-cv-line bg-cv-surface p-4"
+    >
       <div className="min-w-0">
-        <p className="text-sm font-semibold">Year-on-year</p>
-        <p className="text-xs text-muted-foreground">Like-for-like, {yoy.comparablePeriods} periods</p>
+        <p className="m-0 text-base font-semibold leading-6 text-cv-ink">Year-on-year</p>
+        <p className="m-0 text-xs leading-4 text-cv-ink-subtle">
+          Like-for-like, {yoy.comparablePeriods} periods
+        </p>
       </div>
+      <Figure label="Gross YTD vs LY">{formatPct(yoy.changePct.gross)}</Figure>
+      <Figure label="Net YTD vs LY">{formatPct(yoy.changePct.net)}</Figure>
       <div className="min-w-0">
-        <p className="text-xs text-muted-foreground">Gross YTD vs LY</p>
-        <p className="text-lg font-semibold tabular-nums">{formatPct(yoy.changePct.gross)}</p>
-      </div>
-      <div className="min-w-0">
-        <p className="text-xs text-muted-foreground">Net YTD vs LY</p>
-        <p className="text-lg font-semibold tabular-nums">{formatPct(yoy.changePct.net)}</p>
-      </div>
-      <div className="min-w-0">
-        <p className="text-xs text-muted-foreground">Gross {summary.year} (to date) vs LY</p>
-        <p className="text-sm tabular-nums">
-          {formatCompact(yoy.currentGross, summary.currency)} vs {formatCompact(yoy.previousGross, summary.currency)}
+        <p className="m-0 text-xs leading-4 text-cv-ink-subtle">
+          Gross {summary.year} (to date) vs LY
+        </p>
+        <p className="m-0 mt-0.5 font-cv-mono text-sm leading-5 tabular-nums text-cv-ink">
+          {formatCompact(yoy.currentGross, summary.currency)} vs{" "}
+          {formatCompact(yoy.previousGross, summary.currency)}
         </p>
       </div>
       {yoy.forecastVsLastYearPct !== null && (
-        <div className="min-w-0">
-          <p className="text-xs text-muted-foreground">Forecast year vs last full year</p>
-          <p className="text-lg font-semibold tabular-nums">{formatPct(yoy.forecastVsLastYearPct)}</p>
-        </div>
+        <Figure label="Forecast year vs last full year">
+          {formatPct(yoy.forecastVsLastYearPct)}
+        </Figure>
       )}
-    </div>
+    </section>
   );
 }

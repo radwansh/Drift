@@ -1,8 +1,8 @@
 import {
-  LayoutDashboard,
-  Table,
-  Calendar,
+  BarChart3,
   CalendarRange,
+  Columns3,
+  Layers,
   Plug,
   Settings,
   Users,
@@ -11,6 +11,11 @@ import {
 
 /**
  * The sidebar's icon registry, as component references rather than elements.
+ *
+ * Icons follow the redesign canvas: Employee File = users, Dashboard = chart,
+ * Annual salaries = calendar range, Detailed View = columns, Payroll periods = layers,
+ * Integrations = plug, Settings = gear. Lucide, drawn at the design system's 1.75 stroke
+ * (globals.css sets `svg.lucide { stroke-width: 1.75 }`), 20px in the menu.
  *
  * This was an inline `Record<string, React.ReactNode>` inside `sidebar.tsx`,
  * which is the trap the Employee File spec names in section 1.3: the lookup is
@@ -28,13 +33,13 @@ import {
  * literal key union instead of collapsing to `string`.
  */
 export const NAV_ICONS = {
-  LayoutDashboard,
-  Table,
-  Calendar,
+  Users,
+  BarChart3,
   CalendarRange,
+  Columns3,
+  Layers,
   Plug,
   Settings,
-  Users,
 } satisfies Record<string, LucideIcon>;
 
 export type NavIconName = keyof typeof NAV_ICONS;
