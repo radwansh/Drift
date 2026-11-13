@@ -1,12 +1,11 @@
 export const APP_NAME = "Clarivo";
 export const APP_TAGLINE = "Payroll variance analysis, simplified";
-export const COMPANY_EMPLOYEE_RANGES = [
-  { label: "1-50 employees", value: "1-50" },
-  { label: "51-200 employees", value: "51-200" },
-  { label: "201-500 employees", value: "201-500" },
-  { label: "501-2000 employees", value: "501-2000" },
-  { label: "2000+ employees", value: "2000+" },
-] as const;
+/**
+ * `COMPANY_EMPLOYEE_RANGES` was here, and `(main)/settings/page.tsx` was its
+ * only consumer. The dropdown it filled was not persisted anywhere — see that
+ * file for why the field was dropped rather than wired — so the list went with
+ * it instead of becoming a constant nothing reads.
+ */
 
 export const PERIOD_TYPE_LABELS: Record<string, string> = {
   monthly: "Monthly",
