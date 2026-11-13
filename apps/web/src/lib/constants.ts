@@ -85,22 +85,25 @@ export const NAV_ITEMS: readonly NavItem[] = [
  * ungated items. A lookup failure must hide the link rather than show a broken
  * one. `null` for the plan means the same thing and does the same.
  *
- * **`plan` omitted is not the same as `null`.** Omitted means the caller knows
- * nothing about plans, and then the plan axis does not filter at all — which
- * is the one-argument contract four assertions in
- * `test/employee-file-ui.test.ts` pin, and is safe because the page is the
- * real gate. Every caller in the app passes a plan: `(main)/layout.tsx`
- * resolves it with the role, from one lookup.
+ * **`plan` is required, and there is no "don't filter" value.** It was briefly
+ * optional, with an omitted plan skipping the plan axis entirely, so that four
+ * one-argument assertions in `test/employee-file-ui.test.ts` kept passing
+ * unedited. That made the default answer for a capability gate "show it" — a
+ * caller who forgot the argument got Integrations back in the nav, and the
+ * type checker had nothing to say about it. A gate whose default is open to
+ * save a test file an edit is the wrong way round, so the argument is required
+ * and those assertions name a plan. `null` is the value for "unknown", and it
+ * closes the gate like every other unresolved lookup here.
  */
 export function visibleNavItems(
   role: string | null | undefined,
-  plan?: PlanId | null,
+  plan: PlanId | null,
 ): readonly NavItem[] {
   return NAV_ITEMS.filter((item) => {
     if (item.roles && !(role !== null && role !== undefined && item.roles.includes(role))) {
       return false;
     }
-    if (item.plans && plan !== undefined && !(plan !== null && item.plans.includes(plan))) {
+    if (item.plans && !(plan !== null && item.plans.includes(plan))) {
       return false;
     }
     return true;

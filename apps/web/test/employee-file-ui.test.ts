@@ -99,9 +99,16 @@ describe("sidebar navigation (step A4)", () => {
     }
   });
 
+  /**
+   * These four assertions are about the **role** axis, so they name the one
+   * plan that gates nothing — `"enterprise"` — and the counts below therefore
+   * still mean "every item" and "every item but one". Passing `null` would
+   * also close the Integrations gate and make the arithmetic measure two
+   * things at once.
+   */
   it("shows the Employee File link to an admin and a manager", () => {
     for (const role of PAY_DETAIL_ROLES) {
-      const hrefs = visibleNavItems(role).map((i) => i.href);
+      const hrefs = visibleNavItems(role, "enterprise").map((i) => i.href);
       expect(hrefs).toContain("/employees");
       expect(hrefs).toHaveLength(NAV_ITEMS.length);
     }
@@ -111,7 +118,7 @@ describe("sidebar navigation (step A4)", () => {
     // `null` is what the layout passes when the user lookup fails. A failure
     // must hide the link rather than render one that throws on click.
     for (const role of ["viewer", null, undefined, ""]) {
-      const hrefs = visibleNavItems(role).map((i) => i.href);
+      const hrefs = visibleNavItems(role, "enterprise").map((i) => i.href);
       expect(hrefs, `role ${JSON.stringify(role)}`).not.toContain("/employees");
       expect(hrefs).toHaveLength(NAV_ITEMS.length - 1);
     }
@@ -125,7 +132,7 @@ describe("sidebar navigation (step A4)", () => {
     for (const item of NAV_ITEMS) {
       if (!item.roles) continue;
       for (const role of ["admin", "manager", "viewer", "", null]) {
-        expect(visibleNavItems(role).includes(item)).toBe(canReadPayDetail(role));
+        expect(visibleNavItems(role, "enterprise").includes(item)).toBe(canReadPayDetail(role));
       }
     }
   });

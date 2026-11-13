@@ -10,10 +10,9 @@ import {
 /**
  * The plan axis on the sidebar, and the merge behind the integrations page.
  *
- * `test/employee-file-ui.test.ts` holds the role axis and is untouched — four
- * of its assertions call `visibleNavItems(role)` with one argument and count
- * the items, which is the contract this axis had to be added without
- * breaking. That is asserted here too, from the other side.
+ * `test/employee-file-ui.test.ts` holds the role axis. Four of its assertions
+ * count the items a role sees, so they name `"enterprise"` — the plan that
+ * gates nothing — and their arithmetic keeps measuring the role axis alone.
  */
 
 const EVERY_PLAN: readonly (PlanId | null)[] = [...PLAN_IDS, null];
@@ -73,14 +72,19 @@ describe("the sidebar's plan axis", () => {
   });
 
   /**
-   * An omitted plan is **not** `null`. Omitted means the caller knows nothing
-   * about plans, and the axis does not filter — the one-argument contract
-   * `employee-file-ui.test.ts` pins. The page is the real gate either way.
+   * **There is no "don't filter" value for the plan.** The axis shipped with
+   * `plan` optional and an omitted plan skipping the filter, so that four
+   * one-argument assertions in `employee-file-ui.test.ts` kept passing
+   * unedited. The default answer for a capability gate was therefore "show
+   * it", enforced by nothing: a caller who forgot the argument got
+   * Integrations back and the type checker stayed quiet. The argument is now
+   * required, those four assertions name a plan, and this is what is pinned
+   * instead — `null` is the value for "unknown", and it closes the gate.
    */
-  it("does not filter on plan when no plan is passed", () => {
-    expect(visibleNavItems("admin").map((item) => item.href)).toContain("/integrations");
-    expect(visibleNavItems("admin")).toHaveLength(NAV_ITEMS.length);
-    expect(visibleNavItems("viewer")).toHaveLength(NAV_ITEMS.length - 1);
+  it("closes the gate on an unknown plan rather than opening it", () => {
+    const hrefs = visibleNavItems("admin", null).map((item) => item.href);
+    expect(hrefs).not.toContain("/integrations");
+    expect(hrefs).toHaveLength(NAV_ITEMS.length - 1);
   });
 
   it("agrees with the predicate the page gates itself with", () => {
