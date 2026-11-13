@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { formatDate } from "@/lib/date";
-import { Plug, Zap, Settings, RefreshCw, Unplug, Building2, Database, Cloud, Briefcase, Wallet } from "lucide-react";
+import { Plug, Zap, Unplug, Building2, Database, Cloud, Briefcase, Wallet } from "lucide-react";
 
 const providerIcons: Record<string, React.ReactNode> = {
   sap: <Database className="h-8 w-8" />,
@@ -16,16 +15,36 @@ const providerIcons: Record<string, React.ReactNode> = {
   gusto: <Wallet className="h-8 w-8" />,
 };
 
+/**
+ * One connector.
+ *
+ * Three controls were removed rather than wired, because there is nothing
+ * behind any of them:
+ *
+ * - **Sync now** was a two-second `setTimeout` that then stamped
+ *   `new Date()` into "Last Sync". It invented the one figure on the card that
+ *   a customer would act on. There is no sync procedure in the router and no
+ *   sync code anywhere in the repo, so the button is gone instead of hooked to
+ *   something.
+ * - **Configure** had no `onClick` at all. `integrations.configure` takes an
+ *   arbitrary `config` record and no provider states what it needs, so there is
+ *   nothing to put in a form yet.
+ * - **Schedule** read "Daily at 2:00 AM" from the fixture and would now read
+ *   "Manual", which would promise a manual sync that does not exist.
+ *
+ * What is left is what the database actually knows: whether a provider was
+ * recorded, and when.
+ */
 interface IntegrationCardProps {
   name: string;
   description: string;
   provider: string;
   connected: boolean;
-  lastSyncAt: string | null;
-  syncSchedule: string | null;
+  connectedAt: string | null;
   onConnect: () => void;
   onDisconnect: () => void;
-  onSync: () => void;
+  /** A write is in flight — either this card's or another's. */
+  busy?: boolean;
 }
 
 export function IntegrationCard({
@@ -33,20 +52,11 @@ export function IntegrationCard({
   description,
   provider,
   connected,
-  lastSyncAt,
-  syncSchedule,
+  connectedAt,
   onConnect,
   onDisconnect,
-  onSync,
+  busy,
 }: IntegrationCardProps) {
-  const [syncing, setSyncing] = useState(false);
-
-  const handleSync = async () => {
-    setSyncing(true);
-    await onSync();
-    setSyncing(false);
-  };
-
   return (
     <Card className="flex flex-col">
       <CardHeader>
@@ -71,13 +81,16 @@ export function IntegrationCard({
           <>
             <Separator className="my-3" />
             <div className="space-y-1.5 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Last Sync</span>
-                <span>{lastSyncAt ? formatDate(lastSyncAt) : "Never"}</span>
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">Connected</span>
+                <span>{connectedAt ? formatDate(connectedAt) : "Not recorded"}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Schedule</span>
-                <span>{syncSchedule ?? "Manual"}</span>
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">Last sync</span>
+                {/* Never a date. `integrations.syncStatus` answers
+                    `not_synced` unconditionally and nothing in this repo
+                    syncs, so there is no sync to date. */}
+                <span className="text-muted-foreground">No sync recorded</span>
               </div>
             </div>
           </>
@@ -85,21 +98,18 @@ export function IntegrationCard({
       </CardContent>
       <CardFooter className="border-t pt-4">
         {connected ? (
-          <div className="flex w-full gap-2">
-            <Button variant="outline" size="sm" className="flex-1" onClick={handleSync} disabled={syncing}>
-              <RefreshCw className={`h-4 w-4 mr-2 ${syncing ? "animate-spin" : ""}`} />
-              {syncing ? "Syncing..." : "Sync Now"}
-            </Button>
-            <Button variant="outline" size="sm" className="flex-1">
-              <Settings className="h-4 w-4 mr-2" />
-              Configure
-            </Button>
-            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" onClick={onDisconnect}>
-              <Unplug className="h-4 w-4" />
-            </Button>
-          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full text-muted-foreground hover:text-destructive"
+            onClick={onDisconnect}
+            disabled={busy}
+          >
+            <Unplug className="h-4 w-4 mr-2" />
+            Disconnect
+          </Button>
         ) : (
-          <Button className="w-full" size="sm" onClick={onConnect}>
+          <Button className="w-full" size="sm" onClick={onConnect} disabled={busy}>
             <Zap className="h-4 w-4 mr-2" />
             Connect
           </Button>
