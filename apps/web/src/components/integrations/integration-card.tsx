@@ -1,39 +1,44 @@
 "use client";
 
-import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+import { Badge, Button, Panel } from "@/components/cv";
 import { formatDate } from "@/lib/date";
-import { Plug, Zap, Unplug, Building2, Database, Cloud, Briefcase, Wallet } from "lucide-react";
-
-const providerIcons: Record<string, React.ReactNode> = {
-  sap: <Database className="h-8 w-8" />,
-  adp: <Building2 className="h-8 w-8" />,
-  sage: <Briefcase className="h-8 w-8" />,
-  workday: <Cloud className="h-8 w-8" />,
-  gusto: <Wallet className="h-8 w-8" />,
-};
+import { Plug } from "lucide-react";
 
 /**
- * One connector.
+ * One connector, as board "Integrations" draws it: a `Panel` whose heading is
+ * the system's name, with a one-line description, its status, the facts the
+ * database actually holds, and the action that status allows.
  *
- * Three controls were removed rather than wired, because there is nothing
- * behind any of them:
+ * Three things the design system does not do, carried over from the rebuild:
  *
- * - **Sync now** was a two-second `setTimeout` that then stamped
- *   `new Date()` into "Last Sync". It invented the one figure on the card that
- *   a customer would act on. There is no sync procedure in the router and no
- *   sync code anywhere in the repo, so the button is gone instead of hooked to
- *   something.
- * - **Configure** had no `onClick` at all. `integrations.configure` takes an
+ * - **No third-party mark.** Every system used to get a 48px tile holding a
+ *   stand-in Lucide glyph — a database for SAP, a cloud for Workday, a wallet
+ *   for Gusto. A glyph picked per vendor reads as that vendor's logo while
+ *   being nothing of the sort, and the spec rules third-party logos out. The
+ *   name is the heading; that is the whole identification.
+ * - **No slug under the name.** `{provider}` printed with `capitalize` gave
+ *   "Sap" and "Adp" — an internal id dressed up as a label, beneath a heading
+ *   that already says the name properly.
+ * - **Status is a word with its icon**, never a bare coloured dot. Colour alone
+ *   is not a status anyone can read.
+ *
+ * Three controls are absent because there is nothing behind any of them. The
+ * redesign still drew all three, since it restyled this card while the screen
+ * was a fixture; wiring the router up is what established that they had no
+ * backing:
+ *
+ * - **Sync now** was a two-second `setTimeout` that then stamped `new Date()`
+ *   into "Last sync", inventing the one figure on the card a customer would act
+ *   on. There is no sync procedure in the router and no sync code anywhere in
+ *   the repo.
+ * - **Configure** never had an `onClick`. `integrations.configure` takes an
  *   arbitrary `config` record and no provider states what it needs, so there is
  *   nothing to put in a form yet.
- * - **Schedule** read "Daily at 2:00 AM" from the fixture and would now read
- *   "Manual", which would promise a manual sync that does not exist.
+ * - **Schedule** read "Daily at 2:00 AM" from the fixture. Its honest reading
+ *   would be "Not scheduled" on every card, which is a row that says nothing.
  *
- * What is left is what the database actually knows: whether a provider was
- * recorded, and when.
+ * What is left is what the database knows: whether a provider was recorded, and
+ * when.
  */
 interface IntegrationCardProps {
   name: string;
@@ -50,7 +55,6 @@ interface IntegrationCardProps {
 export function IntegrationCard({
   name,
   description,
-  provider,
   connected,
   connectedAt,
   onConnect,
@@ -58,63 +62,61 @@ export function IntegrationCard({
   busy,
 }: IntegrationCardProps) {
   return (
-    <Card className="flex flex-col">
-      <CardHeader>
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted">
-              {providerIcons[provider] ?? <Plug className="h-8 w-8 text-muted-foreground" />}
-            </div>
-            <div>
-              <h3 className="font-semibold">{name}</h3>
-              <p className="text-xs text-muted-foreground mt-0.5 capitalize">{provider}</p>
-            </div>
-          </div>
-          <Badge variant={connected ? "success" : "secondary"}>
-            {connected ? "Connected" : "Not Connected"}
+    <Panel
+      title={name}
+      description={description}
+      actions={
+        connected ? (
+          <Badge tone="success" icon="check">
+            Connected
           </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="flex-1">
-        <p className="text-sm text-muted-foreground">{description}</p>
-        {connected && (
-          <>
-            <Separator className="my-3" />
-            <div className="space-y-1.5 text-sm">
-              <div className="flex justify-between gap-3">
-                <span className="text-muted-foreground">Connected</span>
-                <span>{connectedAt ? formatDate(connectedAt) : "Not recorded"}</span>
-              </div>
-              <div className="flex justify-between gap-3">
-                <span className="text-muted-foreground">Last sync</span>
-                {/* Never a date. `integrations.syncStatus` answers
-                    `not_synced` unconditionally and nothing in this repo
-                    syncs, so there is no sync to date. */}
-                <span className="text-muted-foreground">No sync recorded</span>
-              </div>
-            </div>
-          </>
-        )}
-      </CardContent>
-      <CardFooter className="border-t pt-4">
-        {connected ? (
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full text-muted-foreground hover:text-destructive"
-            onClick={onDisconnect}
-            disabled={busy}
-          >
-            <Unplug className="h-4 w-4 mr-2" />
-            Disconnect
-          </Button>
         ) : (
-          <Button className="w-full" size="sm" onClick={onConnect} disabled={busy}>
-            <Zap className="h-4 w-4 mr-2" />
-            Connect
-          </Button>
+          <Badge tone="neutral">Not connected</Badge>
+        )
+      }
+    >
+      <div className="flex flex-col gap-5">
+        {/* Shown once connected, because neither fact has a reading before
+            then: an unconnected system has no connection date, and "no sync"
+            is not news about a system nobody has set up. */}
+        {connected && (
+          <dl className="m-0 grid grid-cols-2 gap-4 rounded-cv-md bg-cv-surface-sunken p-3">
+            <Fact label="Connected">
+              {connectedAt ? formatDate(connectedAt) : "Not recorded"}
+            </Fact>
+            {/* Never a date. `integrations.syncStatus` answers `not_synced`
+                unconditionally and nothing in this repo syncs, so there is no
+                sync to date. */}
+            <Fact label="Last sync">No sync recorded</Fact>
+          </dl>
         )}
-      </CardFooter>
-    </Card>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {connected ? (
+            <Button variant="ghost" size="sm" onClick={onDisconnect} disabled={busy}>
+              Disconnect
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              icon={<Plug aria-hidden="true" />}
+              onClick={onConnect}
+              disabled={busy}
+            >
+              Connect
+            </Button>
+          )}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function Fact({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[13px] font-medium leading-[18px] text-cv-ink-subtle">{label}</dt>
+      <dd className="m-0 mt-0.5 font-cv-mono text-[13px] leading-5 text-cv-ink">{children}</dd>
+    </div>
   );
 }

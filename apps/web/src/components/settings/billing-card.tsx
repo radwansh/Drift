@@ -1,9 +1,8 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Badge, Panel } from "@/components/cv";
 import { cn } from "@/lib/utils";
 
 /**
- * One rung of the pricing ladder, on the in-app billing page.
+ * One rung of the pricing ladder, on the in-app billing page, on Ink & Signal.
  *
  * This was `BillingCard`: a name, a `$299`, a hand-written feature list and a
  * CTA button with no `onClick` at all. The figures matched nothing — the
@@ -16,6 +15,11 @@ import { cn } from "@/lib/utils";
  * comes from `PRICING` in `components/marketing/content.ts`; see
  * `(main)/settings/billing/page.tsx` for why the figures are formatted with
  * `formatCurrency` here and with a bare symbol there.
+ *
+ * The figures are `cv-num` — Geist Mono, tabular — because the three cards sit
+ * side by side and a proportional digit makes one price ride wider than the
+ * next. The selected card is marked with a cobalt hairline and ring, the
+ * design system's selection, not a filled ground: a plan card is not a status.
  */
 interface PlanCardProps {
   name: string;
@@ -52,52 +56,60 @@ export function PlanCard({
   tag,
 }: PlanCardProps) {
   return (
-    <Card className={cn(current && "border-primary ring-1 ring-primary")}>
-      <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <CardTitle className="text-xl">{name}</CardTitle>
-            <CardDescription>{audience}</CardDescription>
-          </div>
-          {current ? (
-            <Badge variant="default">Current plan</Badge>
-          ) : (
-            tag && highlighted && <Badge variant="secondary">{tag}</Badge>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent>
-        {founderPrice ? (
-          /**
-           * List price struck through beside the founder price, as the
-           * marketing page has it. The `<s>` element rather than a
-           * line-through class so the "was" price is announced as struck, and
-           * each figure carries a visually hidden label because two prices
-           * read out in sequence are meaningless.
-           */
-          <p className="flex flex-wrap items-baseline gap-2">
-            {listPrice && (
-              <s className="text-sm text-muted-foreground">
-                <span className="sr-only">List price </span>
-                {listPrice}
-              </s>
-            )}
-            <span className="text-2xl font-bold tabular-nums">
-              <span className="sr-only">Founder price </span>
-              {founderPrice}
-            </span>
-            {interval && <span className="text-sm text-muted-foreground">{interval}</span>}
-          </p>
+    <Panel
+      title={name}
+      description={audience}
+      className={cn(current && "border-cv-accent ring-1 ring-cv-accent")}
+      actions={
+        current ? (
+          <Badge tone="accent">Current plan</Badge>
         ) : (
-          <p className="flex flex-wrap items-baseline gap-2">
-            <span className="text-2xl font-bold">{listPrice ?? onRequest}</span>
-            {listPrice && interval && (
-              <span className="text-sm text-muted-foreground">{interval}</span>
+          tag && highlighted && <Badge tone="accent">{tag}</Badge>
+        )
+      }
+    >
+      {founderPrice ? (
+        /**
+         * List price struck through beside the founder price, as the
+         * marketing page has it. The `<s>` element rather than a
+         * line-through class so the "was" price is announced as struck, and
+         * each figure carries a visually hidden label because two prices
+         * read out in sequence are meaningless.
+         */
+        <p className="m-0 flex flex-wrap items-baseline gap-2">
+          {listPrice && (
+            <s className="cv-num text-sm text-cv-ink-disabled">
+              <span className="sr-only">List price </span>
+              {listPrice}
+            </s>
+          )}
+          <span className="cv-num text-2xl font-medium tracking-[-0.02em] text-cv-ink">
+            <span className="sr-only">Founder price </span>
+            {founderPrice}
+          </span>
+          {interval && <span className="text-sm text-cv-ink-subtle">{interval}</span>}
+        </p>
+      ) : (
+        <p className="m-0 flex flex-wrap items-baseline gap-2">
+          <span
+            className={cn(
+              "text-2xl font-medium tracking-[-0.02em] text-cv-ink",
+              // "On request" is a sentence, not a figure: mono and tabular
+              // alignment are for digits, and applying them to words spaces
+              // the letters like a price.
+              listPrice && "cv-num",
             )}
-          </p>
-        )}
-        {footnote && <p className="mt-2 text-xs text-muted-foreground">{footnote}</p>}
-      </CardContent>
-    </Card>
+          >
+            {listPrice ?? onRequest}
+          </span>
+          {listPrice && interval && (
+            <span className="text-sm text-cv-ink-subtle">{interval}</span>
+          )}
+        </p>
+      )}
+      {footnote && (
+        <p className="m-0 mt-2 text-[13px] leading-[18px] text-cv-ink-subtle">{footnote}</p>
+      )}
+    </Panel>
   );
 }
