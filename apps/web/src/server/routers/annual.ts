@@ -27,6 +27,7 @@ import {
 } from "@saas/payroll-core";
 import { generateAnnualInsights, DEFAULT_MODEL, isAiAvailable, type AnnualInsightPayload } from "@saas/ai";
 import { memberProcedure, editorProcedure, payDetailProcedure, router, type MemberContext } from "../trpc";
+import { mergeCompanySettings } from "../company-settings";
 import { parseRows, Numeric, IntLike, toIsoDate, toIsoTimestamp } from "../parse-rows";
 import { CategoryEnum } from "../categories";
 import { buildAnnualWorkbook, annualWorkbookSheets } from "../export/annual-workbook";
@@ -1179,17 +1180,25 @@ export const annualRouter = router({
       };
     }),
 
-  /** Step 45: the company's fiscal-year start month. */
+  /**
+   * Step 45: the company's fiscal-year start month.
+   *
+   * **One statement.** This read `companies.settings`, spread the month into
+   * the object and wrote the whole thing back, which drops a concurrent write
+   * to any *other* key of that column — `aiEnabled` below, the connectors, the
+   * Stripe state — because the object it writes back is the one it read before
+   * the other UPDATE ran. `mergeCompanySettings` does it as a `jsonb ||` under
+   * the row lock instead, and the lookup goes with the read: two round trips
+   * rather than three.
+   */
   setFiscalStartMonth: editorProcedure
     .input(z.object({ month: z.number().int().min(1).max(12) }))
     .mutation(async ({ ctx, input }) => {
-      const company = await ctx.db.query.companies.findFirst({
-        where: eq(companies.id, ctx.companyId),
-        columns: { settings: true },
-      });
-      const settings = (company?.settings ?? {}) as Record<string, unknown>;
       await ctx.db.update(companies)
-        .set({ settings: { ...settings, fiscalStartMonth: input.month }, updatedAt: new Date() })
+        .set({
+          settings: mergeCompanySettings({ fiscalStartMonth: input.month }),
+          updatedAt: new Date(),
+        })
         .where(eq(companies.id, ctx.companyId));
       // The memo keys on inputs, not on settings, so it must be dropped when a
       // setting that changes every boundary is edited.
@@ -1203,17 +1212,20 @@ export const annualRouter = router({
    * Stored on `companies.settings`, so an organization that does not want its
    * payroll aggregates sent to a model can say so once rather than relying on
    * nobody pressing Generate.
+   *
+   * Merged in the UPDATE for the reason above it: a read-modify-write of a
+   * shared column loses whatever was written to another of its keys in the
+   * meantime, and switching AI off is the one write here that an organization
+   * would most want to be sure of.
    */
   setAiEnabled: editorProcedure
     .input(z.object({ enabled: z.boolean() }))
     .mutation(async ({ ctx, input }) => {
-      const company = await ctx.db.query.companies.findFirst({
-        where: eq(companies.id, ctx.companyId),
-        columns: { settings: true },
-      });
-      const settings = (company?.settings ?? {}) as Record<string, unknown>;
       await ctx.db.update(companies)
-        .set({ settings: { ...settings, aiEnabled: input.enabled }, updatedAt: new Date() })
+        .set({
+          settings: mergeCompanySettings({ aiEnabled: input.enabled }),
+          updatedAt: new Date(),
+        })
         .where(eq(companies.id, ctx.companyId));
       return { enabled: input.enabled };
     }),

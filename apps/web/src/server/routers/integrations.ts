@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { eq } from "drizzle-orm";
+import { eq, sql, type SQL } from "drizzle-orm";
 import { companies } from "@saas/db";
 import { hasIntegrations, planOfSettings, type PlanId } from "@/lib/plans";
 import { editorProcedure, memberProcedure, router, type MemberContext } from "../trpc";
+import { companySettingsObject, mergeCompanySettings } from "../company-settings";
 
 /**
  * Two gates, on two different axes, because they answer two different
@@ -62,6 +63,45 @@ async function resolveIntegrationsAccess(
 }
 
 /**
+ * `settings.integrations` as an array, guaranteed, evaluated against the row
+ * the UPDATE is already locking.
+ *
+ * The guard is the array counterpart of `companySettingsObject`'s: the key is
+ * free-form jsonb like everything else in that column, and the JS version
+ * crashed outright on a key holding anything but an array
+ * (`integrations.findIndex is not a function`). An absent key and a key
+ * holding a number both mean "no connectors" here, as `?? []` did for the
+ * absent one.
+ */
+function storedConnectors(): SQL {
+  const settings = companySettingsObject();
+  return sql`CASE WHEN jsonb_typeof((${settings})->'integrations') = 'array'
+                  THEN (${settings})->'integrations'
+                  ELSE '[]'::jsonb END`;
+}
+
+/**
+ * `settings` with its `integrations` key replaced by `connectors`, merged into
+ * the column rather than written over it: every other key in that column
+ * belongs to another feature and must survive a connector being added.
+ */
+function writeConnectors(connectors: SQL): SQL {
+  return mergeCompanySettings(sql`jsonb_build_object('integrations', ${connectors})`);
+}
+
+/**
+ * Matches the element of the connector array belonging to `provider`.
+ *
+ * `jsonb_typeof(e) = 'object'` first, so a scalar that found its way into the
+ * array matches nothing and is carried through untouched instead of being
+ * merged with a config object — `e || '{"k":1}'` on a scalar appends, which
+ * would turn one bad element into two.
+ */
+function elementMatches(provider: string): SQL {
+  return sql`jsonb_typeof(e) = 'object' AND e->>'provider' = ${provider}`;
+}
+
+/**
  * Reading the connector list. `memberProcedure` rather than
  * `protectedProcedure` for the reason CLAUDE.md gives for new code: it carries
  * `companyId`, so the handler needs no lookup of its own.
@@ -87,38 +127,80 @@ export const integrationsRouter = router({
     return (ctx.companySettings.integrations as Record<string, unknown>[]) ?? [];
   }),
 
+  /**
+   * Upsert by provider, **in one statement.**
+   *
+   * This read the column, edited the array in JS and wrote the whole object
+   * back, which loses a concurrent write to any other key of a column shared
+   * by five features — including the billing state. It is the awkward half of
+   * that change, because the edit is per *element* rather than per key: a
+   * plain `||` of one key cannot express "merge the config into the element
+   * that is already there, or append a new one", so the array is rebuilt with
+   * `jsonb_agg` over `jsonb_array_elements` of the locked row.
+   *
+   * Being per element, it preserves more than the neighbouring keys: two
+   * admins connecting two *different* providers at once now both land, where a
+   * whole-object write kept whichever finished second.
+   *
+   * The semantics are the JS ones, deliberately unchanged:
+   * - an existing element is merged with the config **in place**, keeping its
+   *   position and its original `connectedAt`, and letting the config override
+   *   any key it names — `e || config` is `{...element, ...config}`;
+   * - a new element is appended as `{provider, ...config, connectedAt}`, so a
+   *   config carrying `provider` still overrides it and one carrying
+   *   `connectedAt` still does not. The stamp is taken here rather than from
+   *   `now()` so that it stays the ISO-8601 string the page reads.
+   *
+   * `WITH ORDINALITY` and the `ORDER BY` are what keep the array in its own
+   * order: `jsonb_agg` over a set has no inherent order to rely on.
+   */
   configure: integrationsWriteProcedure
     .input(z.object({
       provider: z.string().min(1),
       config: z.record(z.string(), z.unknown()),
     }))
     .mutation(async ({ ctx, input }) => {
-      const settings = ctx.companySettings;
-      const integrations = (settings.integrations as Record<string, unknown>[]) ?? [];
-      const existing = integrations.findIndex((i: Record<string, unknown>) => i.provider === input.provider);
+      const stored = storedConnectors();
+      const appended = {
+        provider: input.provider,
+        ...input.config,
+        connectedAt: new Date().toISOString(),
+      };
 
-      if (existing >= 0) {
-        integrations[existing] = { ...integrations[existing], ...input.config };
-      } else {
-        integrations.push({ provider: input.provider, ...input.config, connectedAt: new Date().toISOString() });
-      }
+      const connectors = sql`
+        CASE WHEN EXISTS (SELECT 1
+                          FROM jsonb_array_elements(${stored}) AS e
+                          WHERE ${elementMatches(input.provider)})
+             THEN (SELECT jsonb_agg(CASE WHEN ${elementMatches(input.provider)}
+                                         THEN e || ${JSON.stringify(input.config)}::jsonb
+                                         ELSE e END
+                                    ORDER BY ord)
+                   FROM jsonb_array_elements(${stored}) WITH ORDINALITY AS t(e, ord))
+             ELSE (${stored}) || jsonb_build_array(${JSON.stringify(appended)}::jsonb)
+        END`;
 
       await ctx.db.update(companies)
-        .set({ settings: { ...settings, integrations }, updatedAt: new Date() })
+        .set({ settings: writeConnectors(connectors), updatedAt: new Date() })
         .where(eq(companies.id, ctx.companyId));
 
       return { provider: input.provider, configured: true };
     }),
 
+  /**
+   * The same, filtering instead of upserting. `COALESCE` because `jsonb_agg`
+   * over an empty set is SQL NULL, and disconnecting the last connector has to
+   * leave the empty array the JS `filter` left rather than a null key.
+   */
   disconnect: integrationsWriteProcedure
     .input(z.object({ provider: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const settings = ctx.companySettings;
-      const integrations = (settings.integrations as Record<string, unknown>[]) ?? [];
-      const filtered = integrations.filter((i: Record<string, unknown>) => i.provider !== input.provider);
+      const connectors = sql`
+        COALESCE((SELECT jsonb_agg(e ORDER BY ord)
+                  FROM jsonb_array_elements(${storedConnectors()}) WITH ORDINALITY AS t(e, ord)
+                  WHERE NOT (${elementMatches(input.provider)})), '[]'::jsonb)`;
 
       await ctx.db.update(companies)
-        .set({ settings: { ...settings, integrations: filtered }, updatedAt: new Date() })
+        .set({ settings: writeConnectors(connectors), updatedAt: new Date() })
         .where(eq(companies.id, ctx.companyId));
 
       return { provider: input.provider, disconnected: true };

@@ -1,8 +1,13 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { users, companies } from "@saas/db";
 import { editorProcedure, protectedProcedure, router } from "../trpc";
+import {
+  companySettingsObject,
+  mergeCompanySettings,
+  unsetCompanySettingsKeys,
+} from "../company-settings";
 
 /**
  * The keys of `companies.settings` this endpoint may write.
@@ -109,11 +114,12 @@ export const settingsRouter = router({
    * **The merge is one `jsonb ||` in the UPDATE, not a read-modify-write.** It
    * is therefore atomic: the read and the write happen under the same row lock,
    * so a concurrent `integrations.configure` cannot be lost between them.
-   * Read-then-write in application code was the other option and is what
-   * `integrations.configure`, `annual.setFiscalStartMonth` and
-   * `annual.setAiEnabled` all still do; each of those can drop a concurrent
-   * write to a different key, and doing it in SQL here means one fewer place
-   * that can.
+   * Read-then-write in application code was the other option, and was what
+   * `integrations.configure`, `integrations.disconnect`,
+   * `annual.setFiscalStartMonth` and `annual.setAiEnabled` all did — each able
+   * to drop a concurrent write to a different key of the same column. All four
+   * have since moved onto the same expressions, in
+   * `server/company-settings.ts`.
    *
    * **Deleting a key** is `unsetSettings: ["key"]`, which appends `- 'key'` to
    * the same statement. It is a separate field rather than RFC 7396's
@@ -153,23 +159,14 @@ export const settingsRouter = router({
       if (input.currencyCode) updateData.currencyCode = input.currencyCode;
 
       if (patchKeys.length > 0 || unsetKeys.length > 0) {
-        // `jsonb || jsonb` merges two objects, but appends when either side is
-        // not one: a column somehow holding `'null'::jsonb` or a scalar — the
-        // column is NOT NULL DEFAULT '{}', but a direct write is how `plan`
-        // gets set, so a typo there is reachable — would concatenate into an
-        // array and every `settings.plan` read would go quietly undefined.
-        // Treating a non-object as `{}` keeps the merge a merge.
-        let expr = sql`CASE WHEN jsonb_typeof(${companies.settings}) = 'object' THEN ${companies.settings} ELSE '{}'::jsonb END`;
-        if (patchKeys.length > 0) {
-          expr = sql`${expr} || ${JSON.stringify(patch)}::jsonb`;
-        }
-        // One `- 'key'::text` per key, each a bind parameter. The cast is
-        // required: `jsonb - integer` deletes an array element, so an untyped
-        // parameter leaves Postgres unable to pick the operator (42725).
-        for (const key of unsetKeys) {
-          expr = sql`(${expr}) - ${key}::text`;
-        }
-        updateData.settings = expr;
+        // `server/company-settings.ts` holds the merge, the non-object guard
+        // and the `::text` cast on a delete, because this is no longer the only
+        // writer doing it in SQL: `annual.setFiscalStartMonth`,
+        // `annual.setAiEnabled`, `integrations.configure` and
+        // `integrations.disconnect` all moved onto the same expressions, and
+        // five copies of a guard are five things to keep in step.
+        const base = patchKeys.length > 0 ? mergeCompanySettings(patch) : companySettingsObject();
+        updateData.settings = unsetCompanySettingsKeys(base, unsetKeys);
       }
 
       const [updated] = await ctx.db.update(companies)
