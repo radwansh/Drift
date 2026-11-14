@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -9,17 +9,44 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { CheckCircle2, AlertCircle } from "lucide-react";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
+import { Button, Notice, TextField } from "@/components/cv";
+
+/**
+ * Invite a user — the dialog on board "Settings: users", re-skinned onto the
+ * design system: `TextField` for Name and Email, a labelled select for Role,
+ * and the result as a `Notice` rather than a shadcn `Alert`.
+ *
+ * The validation, the 1s wait, the `onInvite` call and the 1.5s auto-close are
+ * the ones that were here. So is the fact that **nothing is sent**: `onInvite`
+ * pushes a row onto the Users page's `useState` fixture, and no mail, no
+ * `users` row and no Clerk invitation follows it. The copy below therefore says
+ * what it does rather than promising delivery.
+ *
+ * The role hints are unchanged, because they are accurate: Admin and Manager
+ * are `EDITOR_ROLES`, so both may upload and change company-wide settings, and
+ * a Viewer is read-only. "Read-only access to comparisons" is also the whole
+ * truth — a viewer does see the Dashboard and Detailed View, both of which name
+ * individuals and their pay.
+ */
 
 interface UserInviteDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onInvite: (name: string, email: string, role: string) => void;
 }
+
+const ROLE_HINTS: Record<string, string> = {
+  admin: "Full access to all settings and data",
+  manager: "Can upload and compare payroll data",
+  viewer: "Read-only access to comparisons",
+};
 
 export function UserInviteDialog({ open, onOpenChange, onInvite }: UserInviteDialogProps) {
   const [name, setName] = useState("");
@@ -28,6 +55,7 @@ export function UserInviteDialog({ open, onOpenChange, onInvite }: UserInviteDia
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [sending, setSending] = useState(false);
+  const roleId = useId();
 
   const handleSubmit = async () => {
     setError(null);
@@ -73,46 +101,43 @@ export function UserInviteDialog({ open, onOpenChange, onInvite }: UserInviteDia
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Invite User</DialogTitle>
+          <DialogTitle>Invite a user</DialogTitle>
           <DialogDescription>
-            Send an invitation to join your organization
+            They are added to this company with the role you choose.
           </DialogDescription>
         </DialogHeader>
 
         {success ? (
-          <Alert variant="info">
-            <CheckCircle2 className="h-4 w-4" />
-            <AlertDescription>Invitation sent successfully!</AlertDescription>
-          </Alert>
+          <Notice tone="success" title="Invitation sent">
+            They appear in the users list as Invited.
+          </Notice>
         ) : (
-          <div className="space-y-4 py-2">
-            {error && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Name</label>
-              <Input
-                placeholder="John Doe"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Email</label>
-              <Input
-                type="email"
-                placeholder="john@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Role</label>
+          <div className="flex flex-col gap-4 py-2">
+            {error && <Notice tone="danger">{error}</Notice>}
+
+            <TextField
+              label="Name"
+              placeholder="John Doe"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <TextField
+              label="Email"
+              type="email"
+              placeholder="john@company.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <label
+                htmlFor={roleId}
+                className="text-[13px] font-medium leading-[18px] tracking-[0.005em] text-cv-ink"
+              >
+                Role
+              </label>
               <Select value={role} onValueChange={setRole}>
-                <SelectTrigger>
+                <SelectTrigger id={roleId}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -121,18 +146,17 @@ export function UserInviteDialog({ open, onOpenChange, onInvite }: UserInviteDia
                   <SelectItem value="viewer">Viewer</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-xs text-muted-foreground">
-                {role === "admin" ? "Full access to all settings and data" :
-                 role === "manager" ? "Can upload and compare payroll data" :
-                 "Read-only access to comparisons"}
+              <p className="m-0 text-[13px] leading-[18px] text-cv-ink-subtle">
+                {ROLE_HINTS[role]}
               </p>
             </div>
+
             <DialogFooter>
-              <Button variant="outline" onClick={() => handleOpenChange(false)}>
+              <Button variant="secondary" onClick={() => handleOpenChange(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleSubmit} disabled={sending}>
-                {sending ? "Sending..." : "Send Invitation"}
+              <Button onClick={() => void handleSubmit()} disabled={sending} loading={sending}>
+                {sending ? "Sending…" : "Send invitation"}
               </Button>
             </DialogFooter>
           </div>

@@ -1,34 +1,39 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Badge,
+  Button,
+  DriftStrip,
+  Notice,
+  PageHeader,
+  Panel,
+  PanelFoot,
+  TextField,
+} from "@/components/cv";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { CURRENCY_OPTIONS } from "@/lib/currency";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
-import { Save, Building2, TriangleAlert, Loader2 } from "lucide-react";
 
 /**
- * The company profile, read from and written to `companies`.
+ * The company profile, read from and written to `companies`, on Ink & Signal.
  *
  * It was five `useState` literals — `"Acme Corp"`, a tax id, a Manhattan
  * address — and a `handleSave` that waited a second and said "Saved!". So a
  * customer could not change their own company name, and the form told them
- * they had.
+ * they had. The redesign restyled that version of the form, which is why its
+ * copy of this file was discarded rather than merged: the markup its styling
+ * belonged to is gone.
  *
  * **Two fields, because the table has two.** Tax ID, Address and Employee
  * Range are gone rather than wired, and were not folded into
  * `companies.settings` either:
  *
- * - `settings.updateCompany`'s `settings` input **replaces** the whole JSON
- *   object, and that object is where `plan`, the Stripe subscription keys and
- *   `integrations` live. Persisting three profile fields through it would need
- *   the write to become a read-modify-write first; getting that wrong wipes a
- *   company's billing and integration state, which is a worse failure than not
- *   having a tax-id field.
+ * - `settings.updateCompany` now merges its `settings` patch instead of
+ *   replacing the column, but it only accepts the keys on its own allow-list,
+ *   and a profile field is not one of them. `plan`, the Stripe keys and
+ *   `integrations` all live in that object and are each refused by name, so
+ *   there is deliberately no route from this form to them.
  * - Nothing in the product reads a tax id, a registered address or a
  *   self-reported employee band: no screen, no export, no payroll rule. A
  *   stored value nothing reads is still a decoration — a persistent one — and
@@ -43,18 +48,18 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Settings</h2>
-        <p className="text-muted-foreground mt-1">Manage your company profile and preferences</p>
-      </div>
+      <PageHeader
+        eyebrow="Settings"
+        title="Company profile"
+        lede="The name and currency every screen in Clarivo is labelled with."
+      />
 
-      {company.isPending && <CompanyProfileSkeleton />}
+      {company.isPending && <CompanyProfileLoading />}
 
       {company.error && (
-        <Alert variant="destructive">
-          <TriangleAlert className="h-4 w-4" aria-hidden="true" />
-          <AlertDescription>{company.error.message}</AlertDescription>
-        </Alert>
+        <Notice tone="danger" title="Could not load your company">
+          {company.error.message}
+        </Notice>
       )}
 
       {company.data && (
@@ -103,37 +108,38 @@ function CompanyProfileForm({ company }: { company: RouterOutputs["settings"]["g
       ];
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center gap-2">
-          <Building2 className="h-5 w-5 text-muted-foreground" />
-          <CardTitle>Company Profile</CardTitle>
-        </div>
-        <CardDescription>Update your organization&apos;s details</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <label htmlFor="company-name" className="text-sm font-medium">
-              Company Name
-            </label>
-            <Input
-              id="company-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              aria-invalid={invalidName}
-            />
-            {invalidName && (
-              <p className="text-xs text-destructive">
-                {trimmed.length === 0
+    <Panel
+      title="Company profile"
+      description="Changing either of these is a company-wide change: both are admin or manager only."
+    >
+      <div className="flex flex-col gap-5">
+        <div className="grid gap-5 sm:grid-cols-2">
+          <TextField
+            id="company-name"
+            label="Company name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            error={
+              invalidName
+                ? trimmed.length === 0
                   ? "A company name is required."
-                  : "A company name is at most 200 characters."}
-              </p>
-            )}
-          </div>
-          <div className="space-y-2">
-            <label htmlFor="company-currency" className="text-sm font-medium">
-              Base Currency
+                  : "A company name is at most 200 characters."
+                : undefined
+            }
+          />
+
+          {/*
+            The one control here the design system does not ship: a listbox is
+            `components/ui/select`, re-skinned onto the same tokens. Its label
+            is hand-built to match `TextField`'s, so the two sit level in the
+            grid rather than one riding 2px high.
+          */}
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="company-currency"
+              className="text-[13px] font-medium leading-[18px] text-cv-ink"
+            >
+              Base currency
             </label>
             <Select value={currency} onValueChange={setCurrency}>
               <SelectTrigger id="company-currency">
@@ -147,7 +153,7 @@ function CompanyProfileForm({ company }: { company: RouterOutputs["settings"]["g
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">
+            <p className="m-0 text-[13px] leading-[18px] text-cv-ink-subtle">
               Labels every amount in the product. It does not convert anything: amounts are
               reported in the currency they were uploaded in.
             </p>
@@ -155,19 +161,17 @@ function CompanyProfileForm({ company }: { company: RouterOutputs["settings"]["g
         </div>
 
         {save.error && (
-          <Alert variant="destructive">
-            <TriangleAlert className="h-4 w-4" aria-hidden="true" />
-            <AlertDescription>
-              {/* The procedure's own sentence names the annual feature, which is
-                  no longer the only thing behind this gate. */}
-              {save.error.data?.code === "FORBIDDEN"
-                ? "Changing the company profile requires the admin or manager role."
-                : save.error.message}
-            </AlertDescription>
-          </Alert>
+          <Notice tone="danger" title="That change did not save">
+            {/* The procedure's own sentence names the annual feature, which is
+                no longer the only thing behind this gate. */}
+            {save.error.data?.code === "FORBIDDEN"
+              ? "Changing the company profile requires the admin or manager role."
+              : save.error.message}
+          </Notice>
         )}
-      </CardContent>
-      <CardFooter className="border-t px-6 py-4">
+      </div>
+
+      <PanelFoot>
         <div className="ml-auto flex items-center gap-3">
           {/**
             * Only for a write the database acknowledged, and only while what
@@ -175,42 +179,41 @@ function CompanyProfileForm({ company }: { company: RouterOutputs["settings"]["g
             * "Saved!" after a `setTimeout` and went on saying it while the
             * fields were edited again.
             */}
+          {/* TOKEN_MAP maps green text on "Saved" to a success badge with its
+              icon: a status colour never carries a meaning on its own here. */}
           {save.isSuccess && unchanged && (
-            <span className="text-sm text-muted-foreground">Saved</span>
+            <Badge tone="success" icon="check">
+              Saved
+            </Badge>
           )}
           <Button
-            onClick={() => save.mutate({ name: trimmed, currencyCode: currency })}
+            loading={save.isPending}
             disabled={save.isPending || invalidName || unchanged}
+            onClick={() => save.mutate({ name: trimmed, currencyCode: currency })}
           >
-            {save.isPending ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />
-            ) : (
-              <Save className="h-4 w-4 mr-2" />
-            )}
-            {save.isPending ? "Saving..." : "Save Changes"}
+            {save.isPending ? "Saving" : "Save changes"}
           </Button>
         </div>
-      </CardFooter>
-    </Card>
+      </PanelFoot>
+    </Panel>
   );
 }
 
-function CompanyProfileSkeleton() {
+/**
+ * The design system's loading state is the scanning baseline — not two grey
+ * rectangles shaped like the fields, which promise a particular form before
+ * anyone knows the request succeeded.
+ */
+function CompanyProfileLoading() {
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center gap-2">
-          <Building2 className="h-5 w-5 text-muted-foreground" />
-          <CardTitle>Company Profile</CardTitle>
-        </div>
-        <CardDescription>Update your organization&apos;s details</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Skeleton className="h-16" />
-          <Skeleton className="h-16" />
-        </div>
-      </CardContent>
-    </Card>
+    <Panel title="Company profile">
+      <div
+        className="flex flex-col items-center justify-center gap-3 py-10"
+        aria-busy="true"
+      >
+        <DriftStrip size="lg" count={24} animate="scan" label="Loading your company" />
+        <p className="m-0 text-sm text-cv-ink-subtle">Loading your company</p>
+      </div>
+    </Panel>
   );
 }

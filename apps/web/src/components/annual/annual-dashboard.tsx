@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { keepPreviousData } from "@tanstack/react-query";
 import { trpc } from "@/lib/trpc";
-import { Button } from "@/components/ui/button";
+import { Badge, Button, EmptyState, Notice, PageHeader } from "@/components/cv";
 import {
   Select,
   SelectTrigger,
@@ -30,8 +30,7 @@ import { AnnualInsights } from "@/components/annual/annual-insights";
 import { AnnualExport } from "@/components/annual/annual-export";
 import { AnnualScenario } from "@/components/annual/annual-scenario";
 import { AnnualAuditTrail } from "@/components/annual/annual-audit-trail";
-import { AlertCircle, CalendarDays, RefreshCw } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { RefreshCw } from "lucide-react";
 import { PERIOD_TYPE_LABELS } from "@/lib/constants";
 
 const METHOD_LABELS: Record<string, string> = {
@@ -47,7 +46,8 @@ const PERIOD_TYPES: PeriodTypeValue[] = ["monthly", "weekly", "bi_monthly", "bi_
 const METHODS: MethodValue[] = ["run_rate", "average", "prior_year"];
 
 /**
- * The annual dashboard (step 38, findings U12, U13, U14).
+ * The annual dashboard (step 38, findings U12, U13, U14), on Ink & Signal
+ * (canvas board "Annual salaries").
  *
  * Controls live in the URL rather than in component state. Two things follow.
  * First, a pasted or reloaded URL reproduces the exact view — previously only
@@ -57,6 +57,11 @@ const METHODS: MethodValue[] = ["run_rate", "average", "prior_year"];
  * query key and triggered a second request on every load and year change
  * (finding U13). The server resolves its own defaults and the client simply
  * leaves those params absent until the user picks something.
+ *
+ * The rebuild moved the page's furniture and nothing else: the header carries
+ * the three actions, the toolbar carries the four selectors, and the panels
+ * below are unchanged in order and in data. `getSummary` is still one query, so
+ * the round-trip budget `test/annual-router.test.ts` asserts still holds.
  */
 export function AnnualDashboard({
   initialYear,
@@ -79,12 +84,13 @@ export function AnnualDashboard({
     : undefined;
 
   const currencyParam = searchParams.get("currency");
-  const currency = currencyParam && /^[A-Za-z]{3}$/.test(currencyParam)
-    ? currencyParam.toUpperCase()
-    : undefined;
+  const currency =
+    currencyParam && /^[A-Za-z]{3}$/.test(currencyParam) ? currencyParam.toUpperCase() : undefined;
 
   const methodParam = searchParams.get("method");
-  const method = METHODS.includes(methodParam as MethodValue) ? (methodParam as MethodValue) : undefined;
+  const method = METHODS.includes(methodParam as MethodValue)
+    ? (methodParam as MethodValue)
+    : undefined;
 
   const setParams = useCallback(
     (next: Record<string, string | null>) => {
@@ -122,29 +128,44 @@ export function AnnualDashboard({
   }, []);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold">Annual salaries</h2>
-          <p className="mt-1 text-muted-foreground">Calendar-year payroll totals and forecast</p>
-        </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        eyebrow="Annual salaries"
+        title={String(year)}
+        lede="Calendar-year payroll totals and forecast"
+        actions={
+          summary ? (
+            <>
+              <CategoryManager
+                year={summary.year}
+                currency={summary.currency}
+                periodType={summary.periodType}
+                hasUncategorised={summary.warnings.some((w) => w.code === "UNCATEGORISED")}
+                openSignal={categoriserOpen}
+              />
+              <BudgetInput
+                key={`${summary.year}-${summary.currency}`}
+                year={summary.year}
+                currency={summary.currency}
+                disabled={summary.coverage.expected === 0}
+              />
+              <AnnualExport summary={summary} />
+            </>
+          ) : undefined
+        }
+      />
+
+      <div className="flex flex-wrap items-center gap-3 rounded-cv-lg border border-cv-line bg-cv-surface px-4 py-3">
         <YearSelector
           initialYear={year}
           availableYears={availableYears}
           // Changing the year clears the cadence and currency so the server can
           // resolve them again for that year.
-          onYearChange={(next) =>
-            setParams({ year: String(next), cadence: null, currency: null })
-          }
+          onYearChange={(next) => setParams({ year: String(next), cadence: null, currency: null })}
         />
-      </div>
 
-      <div className="flex flex-wrap items-center gap-3">
         {summary && summary.allPeriodTypes.length > 1 && (
-          <Select
-            value={summary.periodType}
-            onValueChange={(v) => setParams({ cadence: v })}
-          >
+          <Select value={summary.periodType} onValueChange={(v) => setParams({ cadence: v })}>
             <SelectTrigger aria-label="Pay cadence" className="w-44">
               <SelectValue />
             </SelectTrigger>
@@ -190,45 +211,20 @@ export function AnnualDashboard({
         </Select>
 
         {summary && (
-          <span
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium",
-              summary.missingLabels.length > 0 ? "anomaly-warning" : "anomaly-info",
-            )}
+          /* Coverage is a fact until something is missing, and a warning once
+             it is: a year short of a period is a year whose totals are short. */
+          <Badge
+            tone={summary.missingLabels.length > 0 ? "warning" : "neutral"}
+            icon={summary.missingLabels.length > 0 ? "alert" : undefined}
           >
-            <CalendarDays className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             {summary.coverage.uploaded} of {summary.coverage.expected} periods
-            {summary.coverage.estimatedLabels.length > 0 && (
-              <span className="font-normal">
-                · {summary.coverage.estimatedLabels.length} estimated
-              </span>
-            )}
-          </span>
+            {summary.coverage.estimatedLabels.length > 0 &&
+              ` · ${summary.coverage.estimatedLabels.length} estimated`}
+          </Badge>
         )}
-
-        {summary && (
-          <CategoryManager
-            year={summary.year}
-            currency={summary.currency}
-            periodType={summary.periodType}
-            hasUncategorised={summary.warnings.some((w) => w.code === "UNCATEGORISED")}
-            openSignal={categoriserOpen}
-          />
-        )}
-
-        {summary && (
-          <BudgetInput
-            key={`${summary.year}-${summary.currency}`}
-            year={summary.year}
-            currency={summary.currency}
-            disabled={summary.coverage.expected === 0}
-          />
-        )}
-
-        {summary && <AnnualExport summary={summary} />}
 
         {summaryQuery.isFetching && !summaryQuery.isLoading && (
-          <span className="text-xs text-muted-foreground" role="status">
+          <span className="text-xs leading-4 text-cv-ink-subtle" role="status">
             Updating…
           </span>
         )}
@@ -245,38 +241,36 @@ export function AnnualDashboard({
       {summaryQuery.isLoading ? (
         <AnnualKpiCards summary={null} />
       ) : summaryQuery.isError ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border bg-card py-16 text-center">
-          <AlertCircle className="h-8 w-8 text-destructive" aria-hidden="true" />
-          <h3 className="mt-4 text-lg font-semibold">Could not load the annual summary</h3>
-          {/* A plain message: error.tsx used to print the raw error (finding U15). */}
-          <p className="mt-1 max-w-md text-sm text-muted-foreground">
-            Something went wrong while building the figures for {year}. Retrying usually works; if it
-            does not, the payroll data for this year may need re-uploading.
-          </p>
-          <Button className="mt-4" onClick={() => summaryQuery.refetch()}>
-            <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
-            Retry
-          </Button>
-        </div>
+        /* A plain message: error.tsx used to print the raw error (finding U15). */
+        <Notice
+          tone="danger"
+          title="Could not load the annual summary"
+          action={
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={<RefreshCw aria-hidden="true" />}
+              onClick={() => summaryQuery.refetch()}
+            >
+              Retry
+            </Button>
+          }
+        >
+          Something went wrong while building the figures for {year}. Retrying usually works; if it
+          does not, the payroll data for this year may need re-uploading.
+        </Notice>
       ) : summary && summary.coverage.uploaded === 0 ? (
         /* The empty state now shows whenever nothing is uploaded. It used to
            require `expected === 0` as well, but coverage always expects 12
            monthly slots, so a year with no data rendered a page of zeros
            instead (finding U12). */
-        <div className="flex flex-col items-center justify-center rounded-xl border bg-card py-16 text-center">
-          <div className="rounded-full bg-muted p-4">
-            <CalendarDays className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
-          </div>
-          <h3 className="mt-4 text-lg font-semibold">No payroll uploaded for {summary.year}</h3>
-          <p className="mt-1 max-w-md text-sm text-muted-foreground">
-            Upload a payroll period to start building the annual view. A period counts toward
-            {" "}
-            {summary.year} when its status is ready and its end date falls in that year.
-          </p>
-          <Button className="mt-4" onClick={() => router.push("/payroll-periods")}>
-            Go to payroll periods
-          </Button>
-        </div>
+        <EmptyState
+          title={`No payroll uploaded for ${summary.year}`}
+          description={`Upload a payroll period to start building the annual view. A period counts toward ${summary.year} when its status is ready and its end date falls in that year.`}
+          action={
+            <Button onClick={() => router.push("/payroll-periods")}>Go to payroll periods</Button>
+          }
+        />
       ) : summary ? (
         <>
           <AnnualKpiCards summary={summary} />

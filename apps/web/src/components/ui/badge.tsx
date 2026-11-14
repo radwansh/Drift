@@ -2,18 +2,32 @@ import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
+/**
+ * shadcn/ui Badge, re-skinned onto the design system's badge tones. Same API; each
+ * variant lands on a tone:
+ *
+ *   default, secondary -> neutral      outline -> hairline neutral
+ *   success -> success                  warning -> warning
+ *   destructive -> danger               info -> accent (cobalt)
+ *   signal (new) -> rust, for a flagged change above threshold
+ *
+ * Do NOT use success/destructive to show the direction of a change (a rise in pay is
+ * not "success"); use <Variance> from "@/components/cv". New code can use the cv Badge,
+ * which also draws the square signal mark and an icon.
+ */
 const badgeVariants = cva(
-  "inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+  "inline-flex h-[22px] items-center gap-1.5 whitespace-nowrap rounded-sm border border-transparent px-2 text-xs font-semibold leading-4 tracking-[0.01em] transition-colors focus:outline-none focus-visible:shadow-cv-focus-ring",
   {
     variants: {
       variant: {
-        default: "border-transparent bg-primary text-primary-foreground shadow",
-        secondary: "border-transparent bg-secondary text-secondary-foreground",
-        destructive: "border-transparent bg-destructive text-destructive-foreground shadow",
-        outline: "text-foreground",
-        success: "border-transparent bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100",
-        warning: "border-transparent bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-100",
-        info: "border-transparent bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100",
+        default: "bg-cv-surface-sunken text-cv-ink-muted",
+        secondary: "bg-cv-surface-sunken text-cv-ink-muted",
+        destructive: "bg-cv-danger-soft text-cv-danger-ink",
+        outline: "border-cv-line bg-transparent text-cv-ink-muted",
+        success: "bg-cv-success-soft text-cv-success-ink",
+        warning: "bg-cv-warning-soft text-cv-warning-ink",
+        info: "bg-cv-accent-soft text-cv-accent",
+        signal: "bg-cv-signal-soft text-cv-signal-ink",
       },
     },
     defaultVariants: {
@@ -22,7 +36,8 @@ const badgeVariants = cva(
   },
 );
 
-export interface BadgeProps extends React.HTMLAttributes<HTMLDivElement>, VariantProps<typeof badgeVariants> {}
+export interface BadgeProps
+  extends React.HTMLAttributes<HTMLDivElement>, VariantProps<typeof badgeVariants> {}
 
 function Badge({ className, variant, ...props }: BadgeProps) {
   return <div className={cn(badgeVariants({ variant }), className)} {...props} />;

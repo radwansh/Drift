@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Download, FileSpreadsheet, Loader2, Printer } from "lucide-react";
+import { FileSpreadsheet, Printer } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import type { AnnualSummary } from "@saas/payroll-core";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/cv";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -17,7 +17,7 @@ interface AnnualExportProps {
 }
 
 /**
- * Export (step 42).
+ * Export (step 42), on Ink & Signal.
  *
  * Excel is built server-side from the same summary the page renders, so the
  * workbook cannot drift from the screen. The board pack is the browser's own
@@ -59,12 +59,14 @@ export function AnnualExport({ summary }: AnnualExportProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" size="sm" variant="outline" disabled={downloading}>
-          {downloading ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
-          ) : (
-            <Download className="mr-2 h-4 w-4" aria-hidden="true" />
-          )}
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          iconLeft="download"
+          loading={downloading}
+          disabled={downloading}
+        >
           Export
         </Button>
       </DropdownMenuTrigger>

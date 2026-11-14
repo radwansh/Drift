@@ -1,25 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  Loader2,
-  PiggyBank,
-  TrendingUp,
-  TrendingDown,
-  Gauge,
-  CircleCheck,
-  TriangleAlert,
-} from "lucide-react";
+import { PiggyBank } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import type { AnnualSummary } from "@saas/payroll-core";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-} from "@/components/ui/card";
+import { Button, Notice, Panel, TextField, Variance } from "@/components/cv";
 import {
   Dialog,
   DialogContent,
@@ -35,8 +21,6 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { formatMoney, formatPct, formatSignedPct } from "@/components/annual/annual-utils";
 
 type Basis = "gross" | "employer_cost" | "net";
@@ -69,7 +53,7 @@ interface BudgetInputProps {
 }
 
 /**
- * The budget editor (step 37, finding U6).
+ * The budget editor (step 37, finding U6), on Ink & Signal.
  *
  * v1 was a bare number input in the toolbar that saved 600ms after every
  * keystroke — so typing "1200000" fired a save for 1, 12, 120, 1200 and so on,
@@ -78,7 +62,9 @@ interface BudgetInputProps {
  * and the placeholder was clipped to "Set annual bu".
  *
  * It is now a dialog with a grouped text input, a basis select and an explicit
- * Save, so exactly one write happens per edit.
+ * Save, so exactly one write happens per edit. The amount is a `TextField mono`
+ * with the currency as its prefix, so the code sits beside the figure rather
+ * than inside the label.
  */
 export function BudgetInput({ year, currency, disabled }: BudgetInputProps) {
   const [open, setOpen] = useState(false);
@@ -115,11 +101,11 @@ export function BudgetInput({ year, currency, disabled }: BudgetInputProps) {
       <Button
         type="button"
         size="sm"
-        variant="outline"
+        variant="secondary"
+        icon={<PiggyBank aria-hidden="true" />}
         disabled={disabled || query.isLoading}
         onClick={() => setOpen(true)}
       >
-        <PiggyBank className="mr-2 h-4 w-4" aria-hidden="true" />
         {current === null ? "Set annual budget" : `Budget ${formatMoney(current, currency)}`}
       </Button>
 
@@ -132,34 +118,28 @@ export function BudgetInput({ year, currency, disabled }: BudgetInputProps) {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="space-y-1.5">
-              <label htmlFor="budget-amount" className="text-sm font-medium">
-                Amount ({currency})
-              </label>
-              <input
-                id="budget-amount"
-                // Text, not number: a number input cannot display separators.
-                type="text"
-                inputMode="decimal"
-                autoComplete="off"
-                value={display}
-                onChange={(e) => setDisplay(formatWithSeparators(e.target.value))}
-                placeholder="e.g. 1,200,000"
-                aria-invalid={invalid}
-                className={cn(
-                  "h-10 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm tabular-nums",
-                  "placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  invalid && "border-destructive",
-                )}
-              />
-              <p className="text-xs text-muted-foreground">
-                Leave empty to remove the budget.
-              </p>
-            </div>
+          <div className="flex flex-col gap-4">
+            <TextField
+              id="budget-amount"
+              label="Amount"
+              mono
+              prefix={currency}
+              // Text, not number: a number input cannot display separators.
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              value={display}
+              onChange={(e) => setDisplay(formatWithSeparators(e.target.value))}
+              placeholder="e.g. 1,200,000"
+              error={invalid ? "Enter the amount as a number." : undefined}
+              hint="Leave empty to remove the budget."
+            />
 
-            <div className="space-y-1.5">
-              <label htmlFor="budget-basis" className="text-sm font-medium">
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="budget-basis"
+                className="text-[13px] font-medium leading-[18px] tracking-[0.005em] text-cv-ink"
+              >
                 Measured against
               </label>
               <Select value={basis} onValueChange={(v) => setBasis(v as Basis)}>
@@ -178,26 +158,23 @@ export function BudgetInput({ year, currency, disabled }: BudgetInputProps) {
 
             {/* A real error state: a failed save was previously silent. */}
             {save.error && (
-              <Alert variant="destructive">
-                <TriangleAlert className="h-4 w-4" aria-hidden="true" />
-                <AlertDescription>
-                  {save.error.data?.code === "FORBIDDEN"
-                    ? "Setting the budget requires the admin or manager role."
-                    : save.error.message}
-                </AlertDescription>
-              </Alert>
+              <Notice tone="danger" title="Could not save the budget">
+                {save.error.data?.code === "FORBIDDEN"
+                  ? "Setting the budget requires the admin or manager role."
+                  : save.error.message}
+              </Notice>
             )}
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)} disabled={save.isPending}>
+            <Button variant="secondary" onClick={() => setOpen(false)} disabled={save.isPending}>
               Cancel
             </Button>
             <Button
               onClick={() => save.mutate({ year, currency, amount: parsed, basis })}
               disabled={save.isPending || invalid}
+              loading={save.isPending}
             >
-              {save.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
               Save
             </Button>
           </DialogFooter>
@@ -207,12 +184,27 @@ export function BudgetInput({ year, currency, disabled }: BudgetInputProps) {
   );
 }
 
-function Metric({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function Metric({
+  label,
+  value,
+  sub,
+  children,
+}: {
+  label: string;
+  value?: string;
+  sub?: string;
+  children?: React.ReactNode;
+}) {
   return (
     <div className="min-w-0">
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className="mt-1 break-words text-lg font-semibold tabular-nums">{value}</p>
-      {sub && <p className="mt-0.5 break-words text-xs text-muted-foreground">{sub}</p>}
+      <p className="m-0 text-xs leading-4 font-medium text-cv-ink-muted">{label}</p>
+      {value !== undefined && (
+        <p className="m-0 mt-1 break-words text-lg font-semibold leading-6 tabular-nums text-cv-ink">
+          {value}
+        </p>
+      )}
+      {children}
+      {sub && <p className="m-0 mt-0.5 break-words text-xs leading-4 text-cv-ink-subtle">{sub}</p>}
     </div>
   );
 }
@@ -220,8 +212,11 @@ function Metric({ label, value, sub }: { label: string; value: string; sub?: str
 function ProgressBar({ pct, className }: { pct: number | null; className?: string }) {
   const width = pct === null || pct < 0 ? 0 : Math.min(pct, 100);
   return (
-    <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-      <div className={cn("h-full rounded-full bg-primary", className)} style={{ width: `${width}%` }} />
+    <div className="h-1.5 w-full overflow-hidden rounded-cv-full bg-cv-surface-sunken">
+      <div
+        className={cn("h-full rounded-cv-full bg-cv-ink", className)}
+        style={{ width: `${width}%` }}
+      />
     </div>
   );
 }
@@ -267,80 +262,64 @@ export function AnnualBudgetCard({ summary }: { summary: AnnualSummary }) {
   const over = variance > 0;
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between space-y-0 p-4">
-        <div>
-          <CardTitle className="text-sm font-semibold">Budget vs forecast</CardTitle>
-          <CardDescription>
-            {summary.year} · {currency} · {BASIS_LABELS[basis].toLowerCase()}
-          </CardDescription>
-        </div>
-        <PiggyBank className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-      </CardHeader>
-      <CardContent className="p-4 pt-1">
-        {budget === null ? (
-          <p className="text-sm text-muted-foreground">
-            No budget set yet. Use the Set annual budget button to compare one against the full-year
-            forecast.
-          </p>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <Metric
-              label="Annual budget"
-              value={formatMoney(budget, currency)}
-              sub={`${summary.coverage.uploaded} of ${summary.coverage.expected} periods uploaded`}
-            />
-            <Metric
-              label={`Full-year forecast (${BASIS_LABELS[basis].toLowerCase()})`}
-              value={formatMoney(forecastOnBasis, currency)}
-              sub={
-                summary.coverage.estimatedLabels.length > 0
-                  ? `incl. ${summary.coverage.estimatedLabels.length} estimated`
-                  : undefined
-              }
-            />
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-muted-foreground">Variance vs budget</p>
-              {/* Red or green, with an icon and words — not a bare number. */}
-              <p
-                className={cn(
-                  "mt-1 flex items-center gap-1.5 break-words text-lg font-semibold tabular-nums",
-                  over ? "text-destructive" : "text-emerald-600 dark:text-emerald-500",
-                )}
-              >
-                {over ? (
-                  <TrendingUp className="h-4 w-4 shrink-0" aria-hidden="true" />
-                ) : (
-                  <TrendingDown className="h-4 w-4 shrink-0" aria-hidden="true" />
-                )}
-                {formatMoney(Math.abs(variance), currency)}
-              </p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {formatSignedPct(variancePct)} · {over ? "over budget" : "under budget"}
-              </p>
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-muted-foreground">Budget used vs year elapsed</p>
-              <div className="mt-3 space-y-2">
-                <div className="flex items-center gap-2">
-                  <Gauge className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                  <ProgressBar pct={consumed !== null ? consumed * 100 : null} />
-                  <span className="w-14 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-                    {consumed === null ? "0%" : formatPct(consumed * 100)}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CircleCheck className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-                  <ProgressBar pct={elapsed * 100} className="bg-muted-foreground/50" />
-                  <span className="w-14 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
-                    {formatPct(elapsed * 100)}
-                  </span>
-                </div>
+    <Panel
+      compact
+      headingId="annual-budget-h"
+      title="Budget vs forecast"
+      description={`${summary.year} · ${currency} · ${BASIS_LABELS[basis].toLowerCase()}`}
+    >
+      {budget === null ? (
+        <p className="m-0 text-sm leading-5 text-cv-ink-muted">
+          No budget set yet. Use the Set annual budget button to compare one against the full-year
+          forecast.
+        </p>
+      ) : (
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+          <Metric
+            label="Annual budget"
+            value={formatMoney(budget, currency)}
+            sub={`${summary.coverage.uploaded} of ${summary.coverage.expected} periods uploaded`}
+          />
+          <Metric
+            label={`Full-year forecast (${BASIS_LABELS[basis].toLowerCase()})`}
+            value={formatMoney(forecastOnBasis, currency)}
+            sub={
+              summary.coverage.estimatedLabels.length > 0
+                ? `incl. ${summary.coverage.estimatedLabels.length} estimated`
+                : undefined
+            }
+          />
+          <Metric
+            label="Variance vs budget"
+            /* An arrow, a sign and a colour, through the money formatter: over
+               budget is rust because on a payroll bill up is the thing to look
+               at, and under budget is cobalt. Neither is a success or an error. */
+            sub={`${formatSignedPct(variancePct)} · ${over ? "over budget" : "under budget"}`}
+          >
+            <span className="mt-1 block">
+              <Variance value={variance} size="lg" format={(n) => formatMoney(n, currency)} />
+            </span>
+          </Metric>
+          <Metric label="Budget used vs year elapsed">
+            <div className="mt-3 flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <span className="w-14 shrink-0 text-xs leading-4 text-cv-ink-subtle">Used</span>
+                <ProgressBar pct={consumed !== null ? consumed * 100 : null} />
+                <span className="w-14 shrink-0 text-right font-cv-mono text-xs tabular-nums text-cv-ink-muted">
+                  {consumed === null ? "0%" : formatPct(consumed * 100)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-14 shrink-0 text-xs leading-4 text-cv-ink-subtle">Elapsed</span>
+                <ProgressBar pct={elapsed * 100} className="bg-cv-ink-subtle" />
+                <span className="w-14 shrink-0 text-right font-cv-mono text-xs tabular-nums text-cv-ink-muted">
+                  {formatPct(elapsed * 100)}
+                </span>
               </div>
             </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          </Metric>
+        </div>
+      )}
+    </Panel>
   );
 }

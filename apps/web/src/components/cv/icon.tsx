@@ -1,16 +1,17 @@
 /**
- * Clarivo design-system Icon.
+ * Icon — the Clarivo design system's built-in set, ported from bundle.js.
  *
- * The paths are copied verbatim from
- * docs/landing/design-system/components/bundle.js (`ICONS`). The README is
- * explicit about porting them rather than substituting another icon set: the
- * 20x20 grid, 1.75 stroke and round caps are what make them sit correctly
- * against the type, and lucide's 24x24 geometry does not match.
+ * 20px grid, 1.75 stroke, round caps and joins, `currentColor`. It covers the product
+ * (arrows, status, upload, columns, chart) and the website's trust points. For anything
+ * else use Lucide (`lucide-react`, already a dependency) — globals.css sets every Lucide
+ * icon to the same 1.75 stroke. No filled, duotone or emoji icons.
  *
- * Server component — no state, no effects, so it renders statically.
+ * Up and down arrows mean the direction of a change and nothing else.
+ *
+ * Decorative by default (aria-hidden). Pass `title` when the icon is the only thing
+ * that says what a control does — or better, put `aria-label` on the button.
  */
 
-/** Shared circle for the icons drawn inside a ring. */
 const RING = "M10 1.75a8.25 8.25 0 1 1 0 16.5a8.25 8.25 0 1 1 0-16.5z";
 
 export const ICONS = {
@@ -60,7 +61,13 @@ export const ICONS = {
     "M14.5 12.4c1.8.5 3 2.1 3.25 4.6",
   ],
   ban: [RING, "M4.2 4.2l11.6 11.6"],
-  trash: ["M3.5 5.5h13", "M8 5.5V3.75h4V5.5", "M5 5.5l.75 11h8.5L15 5.5", "M8.5 8.75v5", "M11.5 8.75v5"],
+  trash: [
+    "M3.5 5.5h13",
+    "M8 5.5V3.75h4V5.5",
+    "M5 5.5l.75 11h8.5L15 5.5",
+    "M8.5 8.75v5",
+    "M11.5 8.75v5",
+  ],
   mail: [
     "M3 4.75h14a.75.75 0 0 1 .75.75v9a.75.75 0 0 1-.75.75H3a.75.75 0 0 1-.75-.75v-9A.75.75 0 0 1 3 4.75z",
     "M2.5 5.5 10 11l7.5-5.5",
@@ -75,9 +82,10 @@ export type IconName = keyof typeof ICONS;
 
 export interface IconProps {
   name: IconName;
+  /** Pixels. 16 in buttons and dense UI, 20 in navigation. */
   size?: number;
   strokeWidth?: number;
-  /** Accessible name. Without it the icon is aria-hidden, which is the default. */
+  /** Accessible name. Omit for a decorative icon. */
   title?: string;
   className?: string;
 }

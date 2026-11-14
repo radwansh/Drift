@@ -1,11 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import type { AnnualSummary, Category } from "@saas/payroll-core";
 import { CATEGORY_LABELS } from "@saas/payroll-core";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Button, Panel } from "@/components/cv";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Button } from "@/components/ui/button";
 import {
   Table,
   TableHeader,
@@ -48,7 +47,7 @@ interface CategoryRow {
 }
 
 /**
- * Salary components by category (step 36, KPI 5).
+ * Salary components by category (step 36, KPI 5), on Ink & Signal.
  *
  * Three fixes. The table showed to-date figures only, so it could not be read
  * against the forecast. It had no earnings-balance row, so the categories did not
@@ -122,7 +121,10 @@ export function AnnualCategories({ summary, onCategorise }: AnnualCategoriesProp
       out.push({
         id: "uncategorised",
         label: "Uncategorised components",
-        toDate: summary.categories.uncategorisedKeys.reduce((acc, k) => acc + (byKey[k]?.total ?? 0), 0),
+        toDate: summary.categories.uncategorisedKeys.reduce(
+          (acc, k) => acc + (byKey[k]?.total ?? 0),
+          0,
+        ),
         forecast: 0,
         fullYear: 0,
         kind: "uncategorised",
@@ -137,14 +139,9 @@ export function AnnualCategories({ summary, onCategorise }: AnnualCategoriesProp
 
   if (!summary) {
     return (
-      <Card className="min-w-0">
-        <CardHeader>
-          <CardTitle className="text-sm font-medium">Salary components</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-56 w-full" />
-        </CardContent>
-      </Card>
+      <Panel headingId="annual-categories-h" title="Salary components">
+        <Skeleton className="h-56 w-full" />
+      </Panel>
     );
   }
 
@@ -167,139 +164,162 @@ export function AnnualCategories({ summary, onCategorise }: AnnualCategoriesProp
   }
 
   return (
-    <Card className="min-w-0">
-      <CardHeader>
-        <CardTitle className="text-sm font-medium">Salary components</CardTitle>
-        <CardDescription>
-          Earnings by category. Earnings plus any uncategorised balance add up to gross.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ScrollShadow>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="sticky left-0 top-0 z-30 bg-background">Category</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-background text-right">To date</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-background text-right">Forecast</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-background text-right">Full year</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-background text-right">% of gross</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => {
-                const isExpanded = expanded.has(row.id);
-                const hasDetail = row.components.length > 0;
-                const pct = gross !== 0 ? (row.toDate / gross) * 100 : null;
+    <Panel
+      headingId="annual-categories-h"
+      title="Salary components"
+      description="Earnings by category. Earnings plus any uncategorised balance add up to gross."
+    >
+      <ScrollShadow>
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="sticky left-0 top-0 z-30 bg-cv-surface-sunken">
+                Category
+              </TableHead>
+              <TableHead className="sticky top-0 z-20 bg-cv-surface-sunken text-right">
+                To date
+              </TableHead>
+              <TableHead className="sticky top-0 z-20 bg-cv-surface-sunken text-right">
+                Forecast
+              </TableHead>
+              <TableHead className="sticky top-0 z-20 bg-cv-surface-sunken text-right">
+                Full year
+              </TableHead>
+              <TableHead className="sticky top-0 z-20 bg-cv-surface-sunken text-right">
+                % of gross
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row) => {
+              const isExpanded = expanded.has(row.id);
+              const hasDetail = row.components.length > 0;
+              const pct = gross !== 0 ? (row.toDate / gross) * 100 : null;
+              /* Uncategorised money is a warning: it is inside gross but inside
+                 no bucket, so every category figure below it reads low. */
+              const groundClass =
+                row.kind === "uncategorised"
+                  ? "bg-cv-warning-soft hover:bg-cv-warning-soft"
+                  : row.kind === "balance"
+                    ? "bg-cv-surface-sunken"
+                    : row.kind === "memo"
+                      ? "bg-cv-surface-sunken text-cv-ink-muted"
+                      : undefined;
+              const stickyGround =
+                row.kind === "uncategorised"
+                  ? "bg-cv-warning-soft"
+                  : row.kind === "balance" || row.kind === "memo"
+                    ? "bg-cv-surface-sunken"
+                    : "bg-cv-surface";
 
-                return (
-                  <>
-                    <TableRow
-                      key={row.id}
+              return (
+                <Fragment key={row.id}>
+                  <TableRow className={groundClass}>
+                    <TableCell
                       className={cn(
-                        row.kind === "uncategorised" && "bg-amber-500/10",
-                        row.kind === "balance" && "bg-muted/40",
-                        row.kind === "memo" && "bg-muted/40 text-muted-foreground",
+                        "sticky left-0 z-10 whitespace-nowrap font-medium",
+                        stickyGround,
                       )}
                     >
-                      <TableCell className="sticky left-0 z-10 whitespace-nowrap bg-background font-medium">
-                        {hasDetail ? (
-                          // A real button, so it is focusable and operable with
-                          // the keyboard and announces its state.
-                          <button
-                            type="button"
-                            onClick={() => toggle(row.id)}
-                            aria-expanded={isExpanded}
-                            className="inline-flex items-center gap-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          >
-                            {isExpanded ? (
-                              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                            )}
-                            {row.label}
-                          </button>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 pl-5">{row.label}</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-right tabular-nums">
-                        {formatMoney(row.toDate, currency)}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-right tabular-nums">
-                        {row.kind === "uncategorised" || row.kind === "memo"
-                          ? "—"
-                          : formatMoney(row.forecast, currency)}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-right tabular-nums">
-                        {row.kind === "uncategorised" || row.kind === "memo"
-                          ? "—"
-                          : formatMoney(row.fullYear, currency)}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-right tabular-nums">
-                        {formatPct(pct)}
+                      {hasDetail ? (
+                        // A real button, so it is focusable and operable with
+                        // the keyboard and announces its state.
+                        <button
+                          type="button"
+                          onClick={() => toggle(row.id)}
+                          aria-expanded={isExpanded}
+                          className="inline-flex items-center gap-1 rounded-cv-sm focus-visible:outline-none focus-visible:shadow-cv-focus-ring"
+                        >
+                          {isExpanded ? (
+                            <ChevronDown
+                              className="h-4 w-4 shrink-0 text-cv-ink-subtle"
+                              aria-hidden="true"
+                            />
+                          ) : (
+                            <ChevronRight
+                              className="h-4 w-4 shrink-0 text-cv-ink-subtle"
+                              aria-hidden="true"
+                            />
+                          )}
+                          {row.label}
+                        </button>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 pl-5">{row.label}</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="cv-num">{formatMoney(row.toDate, currency)}</TableCell>
+                    <TableCell className="cv-num">
+                      {row.kind === "uncategorised" || row.kind === "memo"
+                        ? "—"
+                        : formatMoney(row.forecast, currency)}
+                    </TableCell>
+                    <TableCell className="cv-num">
+                      {row.kind === "uncategorised" || row.kind === "memo"
+                        ? "—"
+                        : formatMoney(row.fullYear, currency)}
+                    </TableCell>
+                    <TableCell className="cv-num">{formatPct(pct)}</TableCell>
+                  </TableRow>
+
+                  {isExpanded && hasDetail && (
+                    <TableRow className="bg-cv-surface-sunken hover:bg-cv-surface-sunken">
+                      <TableCell colSpan={5}>
+                        <div className="flex flex-col gap-1 py-1">
+                          {row.components.map((c) => (
+                            <div
+                              key={c.key}
+                              className="flex items-center justify-between gap-4 text-sm leading-5"
+                            >
+                              <span className="truncate text-cv-ink-muted">{c.label}</span>
+                              <span className="cv-num text-cv-ink">
+                                {formatMoney(c.total, currency)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       </TableCell>
                     </TableRow>
+                  )}
+                </Fragment>
+              );
+            })}
 
-                    {isExpanded && hasDetail && (
-                      <TableRow key={`${row.id}-detail`} className="bg-muted/30">
-                        <TableCell colSpan={5}>
-                          <div className="space-y-1 py-1">
-                            {row.components.map((c) => (
-                              <div key={c.key} className="flex items-center justify-between gap-4 text-sm">
-                                <span className="truncate text-muted-foreground">{c.label}</span>
-                                <span className="whitespace-nowrap text-right tabular-nums">
-                                  {formatMoney(c.total, currency)}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </>
-                );
-              })}
+            <TableRow className="border-t-2 border-t-cv-border font-medium">
+              <TableCell className="sticky left-0 z-10 whitespace-nowrap bg-cv-surface">
+                Gross
+              </TableCell>
+              <TableCell className="cv-num">{formatMoney(gross, currency)}</TableCell>
+              <TableCell className="cv-num">
+                {formatMoney(summary.bridge.forecast.gross, currency)}
+              </TableCell>
+              <TableCell className="cv-num">
+                {formatMoney(summary.bridge.fullYear.gross, currency)}
+              </TableCell>
+              <TableCell className="cv-num">100.0%</TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </ScrollShadow>
 
-              <TableRow className="border-t-2 font-medium">
-                <TableCell className="sticky left-0 z-10 whitespace-nowrap bg-background">
-                  Gross
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-right tabular-nums">
-                  {formatMoney(gross, currency)}
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-right tabular-nums">
-                  {formatMoney(summary.bridge.forecast.gross, currency)}
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-right tabular-nums">
-                  {formatMoney(summary.bridge.fullYear.gross, currency)}
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-right tabular-nums">100.0%</TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-        </ScrollShadow>
-
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs leading-4 text-cv-ink-subtle">
+        <span>
+          {reconciles
+            ? "Categories add up to gross."
+            : `Categories are ${formatMoney(Math.abs(gross - earningsTotal), currency)} short of gross.`}
+        </span>
+        {summary.oneOffsExcluded.total !== 0 && (
           <span>
-            {reconciles
-              ? "Categories add up to gross."
-              : `Categories are ${formatMoney(Math.abs(gross - earningsTotal), currency)} short of gross.`}
+            {formatMoney(summary.oneOffsExcluded.total, currency)} of one-offs is counted in the
+            period it was paid and is not projected into the remaining periods, so it is already
+            inside the figures above and is not added again.
           </span>
-          {summary.oneOffsExcluded.total !== 0 && (
-            <span>
-              {formatMoney(summary.oneOffsExcluded.total, currency)} of one-offs is counted in the
-              period it was paid and is not projected into the remaining periods, so it is already
-              inside the figures above and is not added again.
-            </span>
-          )}
-          {summary.categories.uncategorisedKeys.length > 0 && onCategorise && (
-            <Button size="sm" variant="outline" onClick={onCategorise}>
-              Categorise components
-            </Button>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+        )}
+        {summary.categories.uncategorisedKeys.length > 0 && onCategorise && (
+          <Button size="sm" variant="secondary" onClick={onCategorise}>
+            Categorise components
+          </Button>
+        )}
+      </div>
+    </Panel>
   );
 }

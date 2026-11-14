@@ -1,20 +1,26 @@
 import Link from "next/link";
+import { forwardRef } from "react";
 import { cn } from "@/lib/utils";
 import { Icon, type IconName } from "./icon";
 import { DriftStrip } from "./drift-strip";
 
 /**
- * Clarivo design-system Button, ported from
- * docs/landing/design-system/components/ (Button/README.md + bundle.css).
+ * Button — the design system's button, rebuilt as Tailwind utilities on the cv- tokens.
  *
- * The styles are rebuilt as Tailwind utilities on the cv- tokens rather than
- * importing bundle.css, which the hand-off README rules out: that stylesheet
- * reads unprefixed `var(--accent)` and `var(--primary)`, and shadcn/ui already
- * defines those names as HSL channel triplets. Loading both would corrupt
- * each other's colours.
+ * Variants and when to use them:
+ * - primary (Ink): the one main action on a screen in the app — "Compare periods",
+ *   "Upload period", "Save changes".
+ * - accent (cobalt): the website's sign-up call to action ("Get early access") only.
+ * - secondary: everything else that matters — Export, Columns, Cancel in a dialog.
+ * - ghost: low-emphasis actions inside cards and toolbars — Regenerate, Clear.
+ * - danger: destructive confirmations — Delete period, Remove user.
+ * Never fill a button with rust: rust means change, not action.
  *
- * `href` renders a real anchor with the same look, which is what the marketing
- * page needs for every call to action.
+ * Do not import the design system's bundle.css here: it reads unprefixed var(--accent)
+ * and var(--primary), which shadcn/ui defines as HSL triplets, so the two would corrupt
+ * each other. That is why every class below reads a cv- token.
+ *
+ * `href` renders a real link (next/link for internal paths) with the same look.
  */
 
 type Variant = "primary" | "accent" | "secondary" | "ghost" | "danger";
@@ -44,42 +50,58 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
   iconLeft?: IconName;
   /** Only `arrow-right`, and only on a forward-moving call to action. */
   iconRight?: IconName;
+  /** Any icon node (a Lucide icon, for one the built-in set lacks). Wins over iconLeft. */
+  icon?: React.ReactNode;
   iconOnly?: boolean;
   /** Swaps the left icon for a scanning drift strip and sets aria-busy. */
   loading?: boolean;
   children?: React.ReactNode;
 }
 
-export function Button({
+export function buttonClasses({
   variant = "primary",
   size = "md",
-  href,
-  iconLeft,
-  iconRight,
   iconOnly,
-  loading,
   className,
-  children,
-  type,
-  ...rest
-}: ButtonProps) {
-  const classes = cn(
+}: Pick<ButtonProps, "variant" | "size" | "iconOnly" | "className">) {
+  return cn(
     "inline-flex select-none items-center justify-center whitespace-nowrap rounded-cv-md border border-transparent font-cv-sans font-semibold no-underline transition-colors",
     "focus-visible:outline-none focus-visible:shadow-cv-focus-ring",
     "disabled:cursor-not-allowed disabled:border-cv-line disabled:bg-cv-surface-sunken disabled:text-cv-ink-disabled",
+    "[&_svg]:size-4 [&_svg]:shrink-0",
     VARIANTS[variant],
     SIZES[size],
     iconOnly && ICON_ONLY[size],
-    variant === "ghost" && "disabled:bg-transparent disabled:border-transparent",
+    variant === "ghost" && "disabled:border-transparent disabled:bg-transparent",
     className,
   );
+}
+
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  {
+    variant = "primary",
+    size = "md",
+    href,
+    iconLeft,
+    iconRight,
+    icon,
+    iconOnly,
+    loading,
+    className,
+    children,
+    type,
+    ...rest
+  },
+  ref,
+) {
+  const classes = buttonClasses({ variant, size, iconOnly, className });
 
   const content = (
     <>
       {loading ? (
         <DriftStrip count={5} size="xs" animate="scan" />
       ) : (
-        iconLeft && <Icon name={iconLeft} />
+        (icon ?? (iconLeft && <Icon name={iconLeft} />))
       )}
       {!iconOnly && <span>{children}</span>}
       {iconRight && !loading && <Icon name={iconRight} />}
@@ -109,6 +131,7 @@ export function Button({
 
   return (
     <button
+      ref={ref}
       type={type ?? "button"}
       className={classes}
       aria-busy={loading ? true : undefined}
@@ -118,4 +141,4 @@ export function Button({
       {content}
     </button>
   );
-}
+});

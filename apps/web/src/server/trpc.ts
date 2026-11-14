@@ -16,9 +16,10 @@ export async function createContext() {
  *
  * A preview deployment ran migration-0011 code against an 0008 database and put
  * `column "control_total_gross" does not exist` on the user's screen, because
- * `payroll-periods/page.tsx:210` and `dashboard/page.tsx:127` both render
- * `{error.message}` into an `AlertDescription`. `server/schema-drift.ts` has the
- * detection, the reasoning and the message.
+ * `payroll-periods/page.tsx:285` and `dashboard/page.tsx:130` both render
+ * `{error.message}` verbatim — into a `Notice tone="danger"` since the Ink &
+ * Signal rebuild, an `AlertDescription` before it. `server/schema-drift.ts` has
+ * the detection, the reasoning and the message.
  *
  * It takes two halves because `errorFormatter` is **synchronous** — in
  * @trpc/server 11.18 `ErrorFormatter` is `(opts) => TShape`, not

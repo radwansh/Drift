@@ -21,7 +21,7 @@ pnpm install --frozen-lockfile    # lockfile is committed; keep it authoritative
 pnpm dev                          # turbo dev -> next dev on apps/web (port 3000)
 pnpm build                        # effectively just `next build`; see "No build step" below
 pnpm typecheck                    # tsc --noEmit in all 5 packages; currently 0 errors
-pnpm lint                         # eslint; currently 0 errors, 34 warnings
+pnpm lint                         # eslint; currently 0 errors, 17 warnings (all in apps/web)
 pnpm test                         # all three test projects
 pnpm format                       # prettier --write across the repo
 ```
@@ -83,7 +83,7 @@ Until those secrets exist, a preview points at whatever `DATABASE_URL` its Verce
 - **`packages/db/src/seed/index.ts` refuses to run against a non-local host**, printing the host it resolved either way, and `ALLOW_SEED=1` is the only override. This is the one that matters: the five-month incident was a laptop, and "check what `DATABASE_URL` resolves to first" is a rule that depends on remembering.
 - **`ci.yml` fails a build when a non-comment line in `.github/workflows/*.yml` contains the literal `db:seed`.** That is narrower than it sounds — it does not scan composite actions under `.github/actions/**`, and it does not catch the script invoked by another name (`tsx src/seed/index.ts`). It closes the copied-step route, not every route.
 
-**When drift happens anyway**, `apps/web/src/server/schema-drift.ts`, wired into `server/trpc.ts`, replaces the driver's sentence with "9 of 12 migrations are applied; … are not". It has to be, because `payroll-periods/page.tsx:210` and `dashboard/page.tsx:127` both render `{error.message}` into an alert, so a raw Postgres string is a user-facing string. `GET /api/schema-status` reports the same applied-versus-expected without waiting for anyone to hit an error — 200 in step, 503 behind — and is the thing to check after a deploy and after a migration. It is listed in `middleware.ts`'s `PUBLIC_ROUTE_PATTERNS`, and must stay there: the matcher catches every path without a dot in it, so an unlisted route answers a 307 to `/sign-in`. It shipped unlisted, which made it useless for the one case it exists for — a database too far behind to serve the sign-in page either. `test/public-routes.test.ts` pins it. Both work out *which* migrations are pending from the **row count** in `drizzle.__drizzle_migrations`, because that table stores a hash and a timestamp and **not** the tag, so there is nothing to join on by name; drizzle applies strictly in journal order and writes one row each, so N rows means the first N entries of `migrations/meta/_journal.json` are applied and the rest are not.
+**When drift happens anyway**, `apps/web/src/server/schema-drift.ts`, wired into `server/trpc.ts`, replaces the driver's sentence with "9 of 12 migrations are applied; … are not". It has to be, because `payroll-periods/page.tsx:285` and `dashboard/page.tsx:130` both render `{error.message}` verbatim — into a `Notice tone="danger"` since the Ink & Signal rebuild, an `AlertDescription` before it — and `app/error.tsx:25` does the same for anything that escapes a page. A raw Postgres string is a user-facing string. `GET /api/schema-status` reports the same applied-versus-expected without waiting for anyone to hit an error — 200 in step, 503 behind — and is the thing to check after a deploy and after a migration. It is listed in `middleware.ts`'s `PUBLIC_ROUTE_PATTERNS`, and must stay there: the matcher catches every path without a dot in it, so an unlisted route answers a 307 to `/sign-in`. It shipped unlisted, which made it useless for the one case it exists for — a database too far behind to serve the sign-in page either. `test/public-routes.test.ts` pins it. Both work out *which* migrations are pending from the **row count** in `drizzle.__drizzle_migrations`, because that table stores a hash and a timestamp and **not** the tag, so there is nothing to join on by name; drizzle applies strictly in journal order and writes one row each, so N rows means the first N entries of `migrations/meta/_journal.json` are applied and the rest are not.
 
 ## Architecture
 
@@ -150,7 +150,7 @@ Every tenant-scoped table carries `companyId`. There is **no row-level security 
 | `publicProcedure` | anyone | unauthenticated endpoints |
 | `protectedProcedure` | signed in | when you only need `ctx.userId` and `ctx.db` |
 | `memberProcedure` | signed in | **the default.** Resolves the user once and puts `ctx.companyId` and `ctx.currentUser` on the context |
-| `editorProcedure` | admin, manager | any company-wide write (categories, budget, settings, AI generation) |
+| `editorProcedure` | admin, manager | any company-wide write — component categories, the budget, the fiscal start, `payrollPeriods.ingest`/`.delete`, `annual.setAiEnabled`, `annual.generateInsights`, `settings.updateCompany`, and `integrations.configure`/`.disconnect` |
 | `payDetailProcedure` | admin, manager | reading an individual's pay detail (`employees.*`, `annual.drillDownEmployees`, `employeeFile.*`) |
 | `adminProcedure` | admin | reserved; nothing uses it after the Employee File change |
 
@@ -158,7 +158,24 @@ Every tenant-scoped table carries `companyId`. There is **no row-level security 
 
 **`comparisons.getById` is the widest employee-level surface in the product, and it is a `memberProcedure`.** It returns every `comparison_results` row — employee name, gross, net, per-component deltas — to any signed-in member, viewers included, and the Dashboard and Detailed View are built on it. So the role table above describes `employees.*` and the annual drill-down, not the product's actual exposure of individual pay. Narrowing `comparisons.getById` would remove the Dashboard and Detailed View from viewers, which is a product decision rather than a tidy-up; do not change it as part of unrelated work.
 
+**The table says what each procedure means, not that every endpoint uses the right one.** Two gaps remain, each found by reading the routers rather than by anything failing. Both are scoped to the caller's own `companyId`, so neither is a cross-tenant leak — they are role gaps, which is a smaller and different thing:
+
+- **The whole `ai.*` router is `protectedProcedure`.** `getNarrative`, `getAnomalyRefinement`, `askQuestion` and `getAuditSummary` are open to any signed-in user, viewers included, so a viewer can spend a Claude call on the company's data. "AI generation" in the table above means `annual.setAiEnabled` and `annual.generateInsights` and nothing else.
+- **`api/upload/route.ts` has no role check** — it tests `authResult.userId`, then writes an `upload_sessions` row for the caller's company and returns the file's header row; `payrollPeriods.getUploadUrl` is a `protectedProcedure` doing the same. A viewer still cannot land a period, because `payrollPeriods.ingest` is correctly `editorProcedure`, so the cost is an orphan session row and a column list rather than payroll data.
+
+`settings.updateCompany` **used to be the third**, and that entry is gone because the hole is closed: the company form is wired, the write is `editorProcedure`, and `test/settings-router.test.ts` pins a viewer's refusal. Do not "fix" it again.
+
 Prefer `memberProcedure` over `protectedProcedure` in new code: it supplies `companyId` and saves a query. Forgetting to scope by `companyId` is a cross-tenant data leak, not just a bug.
+
+### Plans are a second axis, and `companies.settings` is not one capability
+
+**A role is who the person is; a plan is what the company bought.** They are separate gates and the constants stay separate: `PAY_DETAIL_ROLES`/`EDITOR_ROLES` in `lib/roles.ts`, `INTEGRATION_PLANS` in `lib/plans.ts`. `NAV_ITEMS` carries `roles` and `plans` as two optional fields and `visibleNavItems(role, plan)` filters on both; **neither argument is optional and neither has a "do not filter" value** — `null` means "unknown" and closes the gate. The axis first shipped with `plan` optional so four one-argument assertions in a test needed no edit, which made a capability gate default to open with nothing enforcing it. Don't reintroduce that.
+
+The plan comes from `companies.settings.plan` through `planOfSettings()`, read once per request by `currentAccount()` — which is still **one query**, a join on `users.clerk_user_id` picking up `companies.settings`, with `ensureUser` running only when the join finds nothing. `routers/integrations.ts` reads the same `hasIntegrations()` predicate, so the hidden sidebar entry, the page's panel and the router's refusal cannot disagree.
+
+**Nothing in the app writes `plan`.** Every company reads `"free"`, so Integrations is hidden from everyone including the account owner — intended while the screen advertises five connectors that do not exist (there is no sync procedure and no sync code anywhere in the repo; `integrations.syncStatus` is a stub returning `not_synced` unconditionally and wants a `periodId` the page does not have). Enterprise today is a direct write: `UPDATE companies SET settings = settings || '{"plan":"enterprise"}'::jsonb WHERE id = '…'`.
+
+**`companies.settings` is one jsonb column shared by five features, so "write the settings" is not one capability.** It holds `plan`, `stripeSubscriptionId`/`…Status`/`subscriptionPeriodEnd`, `integrations`, `fiscalStartMonth`, `aiEnabled` and `tolerances`. `settings.updateCompany` merges a patch into it with `jsonb ||` **inside the UPDATE** — atomic under the row lock, unlike the read-modify-write that `integrations.configure`, `annual.setFiscalStartMonth` and `annual.setAiEnabled` still do — and deletes keys through a separate `unsetSettings` array, not RFC 7396's null-means-delete, which would leave no way to store a JSON `null`. It writes only the keys on `WRITABLE_SETTINGS_KEYS` (today: `tolerances`, the one key with a reader and no writer) and refuses the rest **by name**, pointing at whatever owns them. That allow-list is load-bearing: the merge replaced a whole-object write, and a merge accepting arbitrary keys would let any admin set `plan: "enterprise"` through the settings form and unlock Integrations for their own company. The replace could only ever destroy that key; the merge could grant it.
 
 ### Raw SQL: alias and parse, never cast
 
@@ -193,7 +210,7 @@ One employee with two rows in one period is handled **three different ways** in 
 | Where | What it does |
 |---|---|
 | `comparator.ts:35` | **refuses** — throws `DuplicateEmployeeIdsError` |
-| `routers/annual.ts:162` and `packages/db/src/aggregates/periodComponentTotals.ts:29` | keeps **one** row, via `DISTINCT ON (...) ORDER BY created_at DESC` |
+| `routers/annual.ts:147` and `packages/db/src/aggregates/periodComponentTotals.ts:29` | keeps **one** row, via `DISTINCT ON (...) ORDER BY created_at DESC` |
 | Employee File (`packages/payroll-core/src/employee/`) | **sums every row** and flags the slot `duplicate`, excluding it from every average and delta |
 
 The fact that makes the middle answer indefensible: `processUpload` inserts every row of a period in **one statement** and `created_at` defaults to transaction time, so all the rows of a period share a timestamp and the `created_at DESC` tie-break picks an arbitrary row — possibly a different one between runs. There is no `DISTINCT ON` anywhere in the Employee File for that reason.
@@ -248,9 +265,23 @@ Set chart colours with explicit `fill`/`stroke` props, **not** a Tailwind `class
 
 `components/annual/chart-frame.tsx` and `annual-utils.ts` are **shared presentation primitives, not part of the gated annual dashboard** — the Employee File imports both in place rather than copying or moving them.
 
+### Design system: Ink & Signal
+
+The whole app — marketing and `(main)` — draws from the Clarivo design system. Its React implementation is `apps/web/src/components/cv` (import from `@/components/cv`); the tokens are `src/app/clarivo-tokens.css`, mapped for Tailwind in `tailwind.config.ts` as `cv-` utilities. The skill `.claude/skills/clarivo-design-system` carries the rules; `docs/design/` holds the brief, the screen map and the token map. The target screens are the canvas "Clarivo SaaS Redesign".
+
+- **Colour means change.** Rust (`delta-up`) for increases, cobalt (`delta-down`) for decreases, grey for none, always with an arrow and a sign — use `<Variance>`. Status colours (`success`, `warning`, `danger`) only with an icon and a word. Danger is crimson, kept away from rust: a change is not an error. Nothing else gets a hue, and no button is filled with rust.
+- **Two vocabularies, one palette.** `globals.css` maps shadcn's HSL variables (`--primary`, `--muted-foreground`…) onto the tokens, so `components/ui` and classes like `bg-card` repaint on their own. New code uses `cv-` utilities. Opacity modifiers do not work on `cv-` colours (a complete colour has no channels): use the `-soft` tokens or `bg-cv-scrim`. shadcn's `--accent` is a hover ground, not cobalt.
+- **Themes.** Light on `:root`; Dark on `.dark` (next-themes), `[data-theme="dark"]` and `[data-cv-theme="dark"]`, which scopes a dark region: the side menu uses it. The marketing layout pins `data-theme="light"`. **Printing obeys the live theme**, which is an open issue rather than a decision: a panel keeps `bg-cv-surface`, that resolves dark under `.dark`, and the `print-color-adjust: exact` in `@media print` (there to stop Chrome erasing chart fills) prints it as drawn — so a board pack produced from dark mode comes out dark. Switch to light before printing until that is fixed.
+- **Money** still goes through `formatCurrency` / `formatMoney`; pass `format` to `<Variance>` so a component never formats money itself.
+- **Charts** take colours from `lib/chart-palette.ts` (`CHART`, `seriesColor`, `deltaColor`) as explicit `fill`/`stroke`; categories use `chart-1…6` in order and fold a seventh into "Other".
+- **`test/design-system.test.ts`** fails on raw Tailwind palette colours, hex colours, `hsl(var(--…))` used as a colour and the legacy `increase-text`/`decrease-text`/`anomaly-*` class names, anywhere under `src/`. `lib/clerk-appearance.ts` is the one exemption: Clerk needs concrete hex values, which mirror the tokens there. Those legacy utilities no longer exist in `globals.css`, so the names are caught rather than silently working; `docs/design/TOKEN_MAP.md` names the replacement for each.
+- **Type** is Instrument Sans (words) and Geist Mono (figures, ids, codes), self-hosted through `src/app/fonts.ts`. Sentence case everywhere; product names keep capitals (Dashboard, Detailed View, Employee File).
+
 ### `saved_views` is dead schema
 
-Nothing in the app reads or writes `saved_views`. The only references are the table definition, its export from `packages/db/src/schema/index.ts`, and migration `0000`. **Column preferences actually live in `localStorage`** — `drift_saved_views` for the detailed view (`apps/web/src/hooks/use-saved-views.ts`) and `drift_employee_columns` for the Employee File list (`use-employee-columns.ts`). Persisting a new preference there is the pattern to follow; wiring `saved_views` up is a migration-shaped decision, not a tidy-up.
+Nothing in the app reads or writes `saved_views`. The only references are the table definition, its export from `packages/db/src/schema/index.ts`, and migration `0000`. **Column preferences actually live in `localStorage`** — under `saas-saved-views` for the detailed view (`components/detailed-view/saved-views.tsx`, which keeps `{id, name, columns}`) and `drift_employee_columns` for the Employee File list (`hooks/use-employee-columns.ts`). Persisting a new preference there is the pattern to follow; wiring `saved_views` up is a migration-shaped decision, not a tidy-up.
+
+**`hooks/use-saved-views.ts` is dead too, and it is the trap here.** It is a complete hook over the key `drift_saved_views` with its own `SavedView` shape (`columnConfig`, `createdAt`) — and **nothing imports it**. The live component is the one named above, it writes a different key and a different shape, and this file said `drift_saved_views` for months. Read the component for the key, never the hook. Renaming either side to match the other would make every existing user's saved views unreadable — a silent data loss dressed as a tidy-up — so the two names stay and the doc is what moved.
 
 The detailed view's column picker is also not reusable as a component: its model is `{component, visible, mode}` where `mode` is `current | previous | side_by_side | delta_only`, which is comparison semantics. Reusing it for a list renders four meaningless mode buttons per column, which is why the Employee File has its own.
 
@@ -280,13 +311,13 @@ Practical effects:
 
 Steps 1–47 are done. Outstanding: **step 48** (the release itself — needs GitHub auth, a production database and a 24-hour watch). Acceptance checks stated as probe IDs (`P1`, `R5`, `AI2`) were verified against the described behaviour, because those probe files were never committed. Playwright snapshot checks (steps 32, 35, 47) are unrunnable here — no browsers, no baselines — though the fixtures themselves are covered by `packages/payroll-core/src/annual/qa-fixtures.test.ts`.
 
-`.github/workflows/deploy.yml` should be deleted (it duplicates Vercel's Git integration and fails); the removal was blocked locally.
+`.github/workflows/deploy.yml` is gone — it duplicated Vercel's Git integration and failed on every push. It was deleted in `68800ac`, which is on `main`; the three workflows left are `ci.yml`, `migrate-preview.yml` and `migrate-production.yml`. Do not add a deploy workflow back: Vercel builds from the Git integration, and a second one racing it is what this was.
 
 ## The Employee File plan and its spec
 
 `docs/EMPLOYEE_FILE_PLAN.md` is a 34-step implementation plan in seven phases; `docs/EMPLOYEE_FILE_SPEC.md` is the payroll spec it checks against. Read it the same way as the annual review: **most of the shapes in this feature are the result of a numbered finding**, and the plan's section 1 lists eleven places where the spec and the codebase disagreed, each with what was done instead. Commit messages cite them (`feat(employee-file): …`, findings `F1`-`F11`).
 
-The narrowings worth knowing before changing anything here: the list's flag column is the three SQL-expressible flags only (F5 — the identity breaches need the classifier and live on the file page); there is **no AI narrative and no "all clear" badge** (F11, spec section 10); the export, the dimension columns and filters, and the §7.4 id-change badge are deferred, each with its reason; and `annual.ts:1113`'s `MAX(employee_name)` is the **alphabetical** maximum rather than the latest, so do not copy it — use `(array_agg(employee_name ORDER BY period_end DESC, created_at DESC))[1]`.
+The narrowings worth knowing before changing anything here: the list's flag column is the three SQL-expressible flags only (F5 — the identity breaches need the classifier and live on the file page); there is **no AI narrative and no "all clear" badge** (F11, spec section 10); the export, the dimension columns and filters, and the §7.4 id-change badge are deferred, each with its reason; and `annual.ts:1106`'s `MAX(r.employee_name)` is the **alphabetical** maximum rather than the latest, so do not copy it — use `(array_agg(employee_name ORDER BY period_end DESC, created_at DESC))[1]`.
 
 ## Other directories
 

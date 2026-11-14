@@ -1,8 +1,13 @@
 "use client";
 
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { CalendarDays, ArrowRight } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Button, SegmentedControl } from "@/components/cv";
 import { PERIOD_TYPE_LABELS } from "@/lib/constants";
 import type { PeriodOption } from "@/hooks/use-period-options";
 
@@ -17,15 +22,21 @@ interface PeriodSelectorProps {
   onPreviousPeriodChange: (id: string) => void;
   onCompare: () => void;
   loading?: boolean;
+  /** Extra actions at the end of the bar (Export on the Detailed View). */
+  actions?: React.ReactNode;
 }
 
 /**
- * Step 3.4 of docs/ANNUAL_PAGE_FIX_PLAN.md: the options arrive as a prop and
- * are keyed by period id.
+ * The comparison toolbar (redesign canvas: Dashboard, Detailed View).
  *
- * This read `usePayrollStore` directly and keyed the selects by *label*, which
- * is not unique — two periods with the same label were de-duplicated out of
- * the list, and selecting one could resolve to the other.
+ *   [Monthly | Bi-monthly | Bi-weekly | Weekly]  Compare [July 2026 v] with [June 2026 v]   ...   [Compare periods]
+ *
+ * Same props as before, so the Dashboard and the Detailed View both keep working.
+ * Step 3.4 of docs/ANNUAL_PAGE_FIX_PLAN.md still holds: options arrive as a prop and are
+ * keyed by period id, never by label (labels are not unique).
+ *
+ * "Compare periods" is the screen's one primary (Ink) action; while it runs it shows the
+ * scanning drift strip.
  */
 export function PeriodSelector({
   periodType,
@@ -37,70 +48,69 @@ export function PeriodSelector({
   onPreviousPeriodChange,
   onCompare,
   loading,
+  actions,
 }: PeriodSelectorProps) {
   const periodOptions = periods.map((p) => ({ value: p.id, label: p.label }));
   const canCompare =
     currentPeriodId !== "" && previousPeriodId !== "" && currentPeriodId !== previousPeriodId;
+  const cadences = Object.entries(PERIOD_TYPE_LABELS).map(([value, label]) => ({ value, label }));
 
   return (
-    <div className="rounded-xl border bg-card p-4 sm:p-6 shadow-sm">
-      <div className="flex flex-wrap items-end gap-3 sm:gap-4">
-        <div className="space-y-1.5 w-full sm:w-auto">
-          <label className="text-sm font-medium text-foreground">Period Type</label>
-          <Select value={periodType} onValueChange={onPeriodTypeChange}>
-            <SelectTrigger className="w-full sm:w-44 lg:w-56">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.entries(PERIOD_TYPE_LABELS).map(([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+    <div
+      role="group"
+      aria-label="Comparison"
+      className="flex flex-wrap items-center gap-3 rounded-cv-lg border border-cv-line bg-cv-surface px-4 py-3"
+    >
+      {/* Scrolls sideways rather than overflowing the toolbar on a 360px phone. */}
+      <div className="-mx-1 max-w-full overflow-x-auto px-1">
+        <SegmentedControl
+          label="Payroll cadence"
+          options={cadences}
+          value={periodType}
+          onChange={onPeriodTypeChange}
+        />
+      </div>
 
-        <div className="space-y-1.5 w-full sm:w-auto">
-          <label className="text-sm font-medium text-foreground">Previous Period</label>
-          <Select value={previousPeriodId} onValueChange={onPreviousPeriodChange}>
-            <SelectTrigger className="w-full sm:w-40 lg:w-44">
-              <CalendarDays className="h-4 w-4 mr-2 text-muted-foreground shrink-0" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {periodOptions.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      <div className="flex flex-wrap items-center gap-2 sm:ml-2">
+        <span className="text-[13px] font-medium text-cv-ink-muted">Compare</span>
+        <Select value={currentPeriodId} onValueChange={onCurrentPeriodChange}>
+          <SelectTrigger aria-label="Current period" className="w-40 lg:w-44">
+            <SelectValue placeholder="Current period" />
+          </SelectTrigger>
+          <SelectContent>
+            {periodOptions.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <span className="text-[13px] font-medium text-cv-ink-muted">with</span>
+        <Select value={previousPeriodId} onValueChange={onPreviousPeriodChange}>
+          <SelectTrigger aria-label="Previous period" className="w-40 lg:w-44">
+            <SelectValue placeholder="Previous period" />
+          </SelectTrigger>
+          <SelectContent>
+            {periodOptions.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
-        <div className="flex items-center pb-2 w-full sm:w-auto justify-center sm:justify-start">
-          <ArrowRight className="h-5 w-5 text-muted-foreground" />
-        </div>
+      <span className="hidden flex-1 sm:block" />
 
-        <div className="space-y-1.5 w-full sm:w-auto">
-          <label className="text-sm font-medium text-foreground">Current Period</label>
-          <Select value={currentPeriodId} onValueChange={onCurrentPeriodChange}>
-            <SelectTrigger className="w-full sm:w-40 lg:w-44">
-              <CalendarDays className="h-4 w-4 mr-2 text-muted-foreground shrink-0" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {periodOptions.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <Button onClick={onCompare} disabled={loading || !canCompare} className="w-full sm:w-auto">
-          {loading ? "Comparing..." : "Compare"}
+      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+        {actions}
+        <Button
+          variant="primary"
+          onClick={onCompare}
+          disabled={loading || !canCompare}
+          loading={loading}
+        >
+          {loading ? "Comparing" : "Compare periods"}
         </Button>
       </div>
     </div>

@@ -1,10 +1,23 @@
 "use client";
 
 import { useEffect } from "react";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { AlertCircle, ArrowLeft, RefreshCw } from "lucide-react";
+import { ArrowLeft, RefreshCw } from "lucide-react";
+import { Button, Notice } from "@/components/cv";
 
+/**
+ * The Employee File's page-level error, on Ink & Signal (canvas board
+ * "Patterns", phase 5). A `Notice tone="danger"`: danger renders `role="alert"`,
+ * so the failure is announced rather than only drawn.
+ *
+ * Both actions sit in the Notice body rather than its `action` slot, which is
+ * `flex-none` — two buttons there take ~250px of a 390px screen and leave the
+ * message almost no column at all. In the body they wrap beneath it.
+ *
+ * "Try again" is secondary and the back link ghost, which keeps the order of
+ * emphasis the filled/outline pair had before.
+ *
+ * Copy, `reset()` and the console line are unchanged.
+ */
 export default function EmployeeFileError({
   error,
   reset,
@@ -17,30 +30,30 @@ export default function EmployeeFileError({
   }, [error]);
 
   return (
-    <div className="flex flex-col items-center justify-center py-24">
-      <div className="rounded-full bg-destructive/10 p-4">
-        <AlertCircle className="h-10 w-10 text-destructive" aria-hidden="true" />
-      </div>
-      <h2 className="mt-6 text-2xl font-bold text-foreground">Could not load this file</h2>
-      <p className="mt-2 max-w-md text-center text-muted-foreground">
-        Something went wrong while assembling this employee&apos;s year. Trying again usually
-        works. An id that is not on this company&apos;s register will not load at all.
+    <Notice tone="danger" title="Could not load this file">
+      <p>
+        Something went wrong while assembling this employee&apos;s year. Trying again usually works.
+        An id that is not on this company&apos;s register will not load at all.
       </p>
       {error.digest && (
-        <p className="mt-1 text-xs text-muted-foreground">Reference: {error.digest}</p>
+        /* A div, not a <p>: Notice zeroes the margin of every <p> it holds. */
+        <div className="mt-1 break-words font-cv-mono text-xs leading-4 text-cv-ink-subtle">
+          Reference: {error.digest}
+        </div>
       )}
-      <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-        <Button onClick={reset}>
-          <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant="secondary"
+          icon={<RefreshCw aria-hidden="true" />}
+          onClick={reset}
+        >
           Try again
         </Button>
-        <Button variant="outline" asChild>
-          <Link href="/employees">
-            <ArrowLeft className="mr-2 h-4 w-4" aria-hidden="true" />
-            Back to the list
-          </Link>
+        <Button size="sm" variant="ghost" href="/employees" icon={<ArrowLeft aria-hidden="true" />}>
+          Back to the list
         </Button>
       </div>
-    </div>
+    </Notice>
   );
 }

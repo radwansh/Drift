@@ -1,28 +1,27 @@
 "use client";
 import { SignUp } from "@clerk/nextjs";
-import { useTheme } from "next-themes";
-import { dark } from "@clerk/themes";
+import { AuthFrame } from "@/components/shared/auth-frame";
+import { useIsDark } from "@/components/shared/theme-toggle";
+import { getClerkAppearance } from "@/lib/clerk-appearance";
 
 /**
- * /sign-up — Clerk's prebuilt screen. While `launch.waitlistMode` is on the
- * landing page sends visitors to /waitlist instead, so this route is reached
- * only by an approved invitation from the waiting list, or directly.
+ * /sign-up — Clerk's prebuilt screen, framed and themed to Ink & Signal. While
+ * `launch.waitlistMode` is on the landing page sends visitors to /waitlist instead,
+ * so this route is reached only by an approved invitation from the waiting list, or
+ * directly.
  *
  * Step 7 of the rename plan replaces this with the custom Registration Form
  * from the sign-up diagram; until then Clerk's own screen handles the bot
  * check and the email code. /signup redirects here in middleware.
  */
 export default function SignUpPage() {
-  const { theme } = useTheme();
+  const isDark = useIsDark();
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
-      <div className="w-full max-w-md p-8">
-        <div className="mb-8 text-center">
-          <img src="/brand/clarivo-lockup.svg" alt="Clarivo" className="mx-auto mb-4 h-10" />
-          <p className="text-sm text-slate-500 dark:text-slate-400">Create your company account</p>
-        </div>
-        <SignUp appearance={{ baseTheme: theme === "dark" ? dark : undefined }} />
-      </div>
-    </div>
+    <AuthFrame
+      title="Create your company account"
+      lede="Upload two payroll periods and Clarivo shows every change between them: who, which component, and by how much."
+    >
+      <SignUp appearance={getClerkAppearance(isDark)} />
+    </AuthFrame>
   );
 }

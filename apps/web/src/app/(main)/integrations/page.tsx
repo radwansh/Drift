@@ -1,9 +1,8 @@
 import { redirect } from "next/navigation";
-import { EmptyState } from "@/components/shared/empty-state";
+import { EmptyState } from "@/components/cv";
 import { IntegrationsList } from "@/components/integrations/integrations-list";
 import { hasIntegrations } from "@/lib/plans";
 import { currentAccount } from "@/server/current-account";
-import { AlertCircle, Lock } from "lucide-react";
 
 /**
  * Integrations, gated to Enterprise.
@@ -45,6 +44,11 @@ export const dynamic = "force-dynamic";
  * and puts `configure` and `disconnect` behind `editorProcedure` as
  * company-wide writes. This panel stays because a gate the user can read is
  * worth more than a 403, not because it is load-bearing.
+ *
+ * Both panels are `EmptyState visual={null}`, matching the Employee File's
+ * role panels: the drift strip means "nothing here yet", and neither a refusal
+ * nor a failed lookup is that. A dead end is not an alarm, so the icon in a
+ * tinted circle went with it.
  */
 export default async function IntegrationsPage() {
   let account;
@@ -53,11 +57,14 @@ export default async function IntegrationsPage() {
   } catch (error) {
     console.error("Integrations: could not resolve the signed-in account:", error);
     return (
-      <EmptyState
-        icon={AlertCircle}
-        title="Could not open your account"
-        description="You are signed in, but we could not load the company this page belongs to. Reloading usually works; if it keeps happening the account needs attention rather than another attempt."
-      />
+      <section aria-label="Could not open your account">
+        <EmptyState
+          visual={null}
+          title="Could not open your account"
+          description="You are signed in, but we could not load the company this page belongs to. Reloading usually works. If it keeps happening, the account needs attention rather than another attempt."
+          className="py-24"
+        />
+      </section>
     );
   }
 
@@ -68,11 +75,14 @@ export default async function IntegrationsPage() {
 
   if (!hasIntegrations(account.plan)) {
     return (
-      <EmptyState
-        icon={Lock}
-        title="Integrations are an Enterprise feature"
-        description="Connectors to SAP, ADP, Sage, Workday and Gusto are part of the Enterprise plan. Until then, payroll data comes in by upload — which is how every comparison in Clarivo is built today. See Settings → Billing for the plans."
-      />
+      <section aria-label="Integrations are an Enterprise feature">
+        <EmptyState
+          visual={null}
+          title="Integrations are an Enterprise feature"
+          description="Connectors to SAP, ADP, Sage, Workday and Gusto are part of the Enterprise plan. Until then, payroll data comes in by upload, which is how every comparison in Clarivo is built today. See Settings → Billing for the plans."
+          className="py-24"
+        />
+      </section>
     );
   }
 

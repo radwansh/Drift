@@ -1,14 +1,12 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { keepPreviousData } from "@tanstack/react-query";
-import { ArrowLeft, UserX } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import type { PeriodType } from "@saas/payroll-core";
 import { trpc } from "@/lib/trpc";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Button, EmptyState, Notice } from "@/components/cv";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
@@ -17,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import { PERIOD_TYPE_LABELS } from "@/lib/constants";
 import { buildPeriodRows } from "@/components/employee-file/employee-chart-data";
 import { EmployeeFileHeader } from "@/components/employee-file/employee-file-header";
@@ -40,7 +39,8 @@ import {
 } from "@/components/employee-file/employee-list-url";
 
 /**
- * One employee's file (steps E5 and E6).
+ * One employee's file (steps E5 and E6), on Ink & Signal (canvas board
+ * "Employee File: one person").
  *
  * The parent owns the URL here too, for the same reason as the list: a file
  * opened at a range should reopen at that range from a bookmark, and two
@@ -50,6 +50,14 @@ import {
  * **no memo** on it, so every view is a cold three requests — deliberate, since
  * the list and the file are different pages with different inputs and a memo
  * here would add a cache-invalidation surface and save nothing.
+ *
+ * The rebuild is presentation only: the back link and the scope selects in a
+ * toolbar row, the identity `Panel` carrying the page's heading, then the
+ * spec's order unchanged — summary band, reconciliation, every period, the
+ * chart, the component history, and exceptions beside the change log. Every
+ * query, handler, figure and formatter is the one that was here before. There
+ * is still **no AI narrative and no "all clear" badge** (finding F11): nothing
+ * on this page summarises the file in a reassuring sentence.
  */
 export function EmployeeFileView({ externalId }: { externalId: string }) {
   const router = useRouter();
@@ -81,43 +89,38 @@ export function EmployeeFileView({ externalId }: { externalId: string }) {
 
   const data = fileQuery.data;
   const file = data?.file;
-  const rows = useMemo(
-    () => (file ? buildPeriodRows(file.slots, file.cadence) : []),
-    [file],
-  );
+  const rows = useMemo(() => (file ? buildPeriodRows(file.slots, file.cadence) : []), [file]);
 
   const notFound = fileQuery.error?.data?.code === "NOT_FOUND";
 
   if (notFound) {
     return (
-      <div className="flex flex-col items-center justify-center py-24">
-        <div className="rounded-full bg-muted p-4">
-          <UserX className="h-10 w-10 text-muted-foreground" aria-hidden="true" />
-        </div>
-        <h2 className="mt-6 text-2xl font-bold">Not on this register</h2>
-        <p className="mt-2 max-w-md text-center text-muted-foreground">
-          No ready period for this company has a row for <code>{externalId}</code>. An id that
-          exists but has nothing in the selected range opens as an empty file instead, so this
-          means the id itself is unknown here.
-        </p>
-        <Button variant="outline" className="mt-6" asChild>
-          <Link href="/employees">
-            <ArrowLeft className="mr-2 h-4 w-4" aria-hidden="true" />
+      <EmptyState
+        visual={null}
+        title="Not on this register"
+        description={
+          <>
+            No ready period for this company has a row for{" "}
+            <span className="font-cv-mono text-cv-ink">{externalId}</span>. An id that exists but
+            has nothing in the selected range opens as an empty file instead, so this means the id
+            itself is unknown here.
+          </>
+        }
+        action={
+          <Button variant="secondary" href="/employees" icon={<ArrowLeft />}>
             Back to the list
-          </Link>
-        </Button>
-      </div>
+          </Button>
+        }
+        className="py-20"
+      />
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Button variant="ghost" size="sm" asChild>
-          <Link href="/employees">
-            <ArrowLeft className="mr-2 h-4 w-4" aria-hidden="true" />
-            All employees
-          </Link>
+        <Button variant="ghost" size="sm" href="/employees" icon={<ArrowLeft />}>
+          All employees
         </Button>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -183,8 +186,8 @@ export function EmployeeFileView({ externalId }: { externalId: string }) {
                     key={`${option.periodType}|${option.currency}`}
                     value={`${option.periodType}|${option.currency}`}
                   >
-                    {PERIOD_TYPE_LABELS[option.periodType] ?? option.periodType} ·{" "}
-                    {option.currency} ({option.periods})
+                    {PERIOD_TYPE_LABELS[option.periodType] ?? option.periodType} · {option.currency}{" "}
+                    ({option.periods})
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -194,7 +197,7 @@ export function EmployeeFileView({ externalId }: { externalId: string }) {
       </div>
 
       {fileQuery.isPending || !file || !data ? (
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4" aria-busy="true">
           <Skeleton className="h-40 w-full" />
           <Skeleton className="h-64 w-full" />
         </div>
@@ -214,12 +217,10 @@ export function EmployeeFileView({ externalId }: { externalId: string }) {
           {/* An id with nothing in this range is a valid, empty file — not a
               404 — so every bookmark does not break each January. */}
           {file.kpis.coverage.paid === 0 && (
-            <Card>
-              <CardContent className="p-6 text-sm text-muted-foreground">
-                Nothing was paid to this employee in {data.scope.label}. They are on this
-                company&apos;s register, so try another year or a wider range.
-              </CardContent>
-            </Card>
+            <Notice tone="info">
+              Nothing was paid to this employee in {data.scope.label}. They are on this
+              company&apos;s register, so try another year or a wider range.
+            </Notice>
           )}
 
           {/*
@@ -232,8 +233,16 @@ export function EmployeeFileView({ externalId }: { externalId: string }) {
           <EmployeePeriodTable rows={rows} flags={file.flags} currency={file.currency} />
           <EmployeePeriodChart rows={rows} currency={file.currency} />
           <EmployeeComponentMatrix file={file} rows={rows} />
-          <EmployeeExceptions file={file} />
-          <EmployeeChangeLog entries={file.changeLog} currency={file.currency} />
+
+          {/* Side by side on desktop, as the board draws them — but only when
+              there is a change log to sit beside: it renders nothing at all on
+              a file with no movements, and a two-column grid with one empty
+              column would leave the exceptions panel half a page wide for no
+              reason. */}
+          <div className={cn("grid gap-6", file.changeLog.length > 0 && "lg:grid-cols-2")}>
+            <EmployeeExceptions file={file} />
+            <EmployeeChangeLog entries={file.changeLog} currency={file.currency} />
+          </div>
         </>
       )}
     </div>

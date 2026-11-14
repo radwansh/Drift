@@ -1,11 +1,9 @@
 "use client";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Skeleton } from "@/components/ui/skeleton";
+import { DriftStrip, Notice, PageHeader } from "@/components/cv";
 import { IntegrationCard } from "@/components/integrations/integration-card";
-import { INTEGRATION_PROVIDERS, mergeIntegrations } from "@/components/integrations/providers";
+import { mergeIntegrations } from "@/components/integrations/providers";
 import { trpc } from "@/lib/trpc";
-import { TriangleAlert } from "lucide-react";
 
 /**
  * The connector list, read from and written to `companies.settings`.
@@ -47,40 +45,41 @@ export function IntegrationsList() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Integrations</h2>
-        <p className="text-muted-foreground mt-1">
-          Connect your HR and payroll systems for automatic data synchronization
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Integrations"
+        title="Systems you can connect"
+        lede="Record the HR and payroll systems this company uses."
+      />
 
-      <Alert>
-        <AlertDescription>
-          No connector transfers data yet. Connecting records the provider against this company so
-          the connection can be set up; payroll data still arrives by upload, and nothing has
-          synced.
-        </AlertDescription>
-      </Alert>
+      {/* `info`, not `success`: the point of this line is that connecting does
+          not move data. A tone that reads as good news would undo it. */}
+      <Notice tone="info" title="No connector transfers data yet">
+        Connecting records the provider against this company so the connection can be set up.
+        Payroll data still arrives by upload, and nothing has synced.
+      </Notice>
 
       {list.error && (
-        <Alert variant="destructive">
-          <TriangleAlert className="h-4 w-4" aria-hidden="true" />
-          <AlertDescription>{list.error.message}</AlertDescription>
-        </Alert>
+        <Notice tone="danger" title="Could not load your connectors">
+          {list.error.message}
+        </Notice>
       )}
 
       {writeError && (
-        <Alert variant="destructive">
-          <TriangleAlert className="h-4 w-4" aria-hidden="true" />
-          <AlertDescription>{writeError.message}</AlertDescription>
-        </Alert>
+        <Notice tone="danger" title="That change did not save">
+          {writeError.message}
+        </Notice>
       )}
 
       {list.isPending ? (
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {INTEGRATION_PROVIDERS.map((entry) => (
-            <Skeleton key={entry.provider} className="h-64" />
-          ))}
+        // The design system's loading state is the scanning baseline, not a
+        // grid of grey rectangles pretending to be five cards that may not
+        // arrive. `aria-busy` carries it to a screen reader.
+        <div
+          className="flex flex-col items-center justify-center gap-3 rounded-cv-lg border border-cv-line bg-cv-surface py-16"
+          aria-busy="true"
+        >
+          <DriftStrip size="lg" count={24} animate="scan" label="Loading your connectors" />
+          <p className="m-0 text-sm text-cv-ink-subtle">Loading your connectors</p>
         </div>
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">

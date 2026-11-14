@@ -4,8 +4,8 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { sql, eq, and } from "drizzle-orm";
 import { requireDb, payrollPeriods } from "@saas/db";
 import { AnnualDashboard } from "@/components/annual/annual-dashboard";
+import { Notice, PageHeader } from "@/components/cv";
 import { ensureUser } from "@/server/ensure-user";
-import { AlertCircle } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -31,16 +31,12 @@ function parseYear(value: string | undefined): number | null {
  */
 function AccountUnavailable() {
   return (
-    <div className="flex flex-col items-center justify-center py-24">
-      <div className="rounded-full bg-destructive/10 p-4">
-        <AlertCircle className="h-10 w-10 text-destructive" aria-hidden="true" />
-      </div>
-      <h2 className="mt-6 text-2xl font-bold text-foreground">Could not open your account</h2>
-      <p className="mt-2 max-w-md text-center text-muted-foreground">
-        You are signed in, but we could not load the company this page belongs to. Reloading
-        usually works. If it keeps happening, the account needs attention rather than another
-        attempt.
-      </p>
+    <div className="flex flex-col gap-6">
+      <PageHeader eyebrow="Annual salaries" title="Could not open your account" />
+      <Notice tone="danger" title="The company behind this page did not load">
+        You are signed in, but we could not load the company this page belongs to. Reloading usually
+        works. If it keeps happening, the account needs attention rather than another attempt.
+      </Notice>
     </div>
   );
 }
@@ -75,10 +71,7 @@ export default async function AnnualSalariesPage({
     })
     .from(payrollPeriods)
     .where(
-      and(
-        eq(payrollPeriods.companyId, account.companyId),
-        eq(payrollPeriods.status, "ready"),
-      ),
+      and(eq(payrollPeriods.companyId, account.companyId), eq(payrollPeriods.status, "ready")),
     );
 
   const currentYear = new Date().getFullYear();
@@ -93,9 +86,7 @@ export default async function AnnualSalariesPage({
     new Set([...dataYears, currentYear - 1, currentYear, currentYear + 1]),
   ).sort((a, b) => b - a);
 
-  const defaultYear = dataYears.includes(currentYear)
-    ? currentYear
-    : dataYears[0] ?? currentYear;
+  const defaultYear = dataYears.includes(currentYear) ? currentYear : (dataYears[0] ?? currentYear);
 
   const resolvedParams = await searchParams;
   const rawQueryYear = typeof resolvedParams.year === "string" ? resolvedParams.year : undefined;

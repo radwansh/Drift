@@ -1,9 +1,6 @@
 "use client";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Badge, DriftStrip, Notice, PageHeader, Panel } from "@/components/cv";
 import { PlanCard } from "@/components/settings/billing-card";
 import {
   LIST_CURRENCY,
@@ -13,10 +10,9 @@ import {
 import { PRICING, SITE, money } from "@/components/marketing/content";
 import { parsePlan } from "@/lib/plans";
 import { trpc } from "@/lib/trpc";
-import { CreditCard, FileText, TriangleAlert } from "lucide-react";
 
 /**
- * Billing, from `settings.getBillingInfo`.
+ * Billing, from `settings.getBillingInfo`, on Ink & Signal.
  *
  * What this page used to show, none of which came from anywhere: a
  * "Professional" plan at $299 marked Active, **four paid invoices**
@@ -25,7 +21,8 @@ import { CreditCard, FileText, TriangleAlert } from "lucide-react";
  * $99 / $299 / Custom ladder with hand-written per-plan feature lists. The
  * marketing site says the product is free in beta, so this page told a
  * customer they had been charged about a thousand dollars they had not been
- * charged.
+ * charged. The redesign restyled that page; its copy was discarded rather than
+ * merged, because every number its styling framed has since been deleted.
  *
  * Three rules hold the replacement together:
  *
@@ -59,42 +56,48 @@ export default function BillingPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">Billing &amp; Subscription</h2>
-        <p className="text-muted-foreground mt-1">Your plan, and what Clarivo costs</p>
-      </div>
+      <PageHeader
+        eyebrow="Billing"
+        title="Your plan"
+        lede="What this company is on today, and what Clarivo costs."
+      />
 
-      {billing.isPending && <Skeleton className="h-44" />}
+      {billing.isPending && (
+        <Panel title="Current plan">
+          <div className="flex flex-col items-center justify-center gap-3 py-10" aria-busy="true">
+            <DriftStrip size="lg" count={24} animate="scan" label="Loading your plan" />
+            <p className="m-0 text-sm text-cv-ink-subtle">Loading your plan</p>
+          </div>
+        </Panel>
+      )}
 
       {billing.error && (
-        <Alert variant="destructive">
-          <TriangleAlert className="h-4 w-4" aria-hidden="true" />
-          <AlertDescription>{billing.error.message}</AlertDescription>
-        </Alert>
+        <Notice tone="danger" title="Could not load your billing">
+          {billing.error.message}
+        </Notice>
       )}
 
       {billing.data && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-              Current plan
-            </CardTitle>
-            {/* A plain div rather than `CardDescription`, which renders a
-                `<p>`: `Badge` is a div, and a div inside a p is nesting the
-                browser silently unwinds. */}
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-              <span>{planDisplayName(plan, billing.data.plan)}</span>
-              <Badge variant={billing.data.status === "active" ? "success" : "secondary"}>
+        <Panel
+          title="Current plan"
+          actions={
+            /* `status` is a raw string from free-form JSON, so it is shown as
+               it is stored rather than mapped to a word this page invents. */
+            billing.data.status === "active" ? (
+              <Badge tone="success" icon="check">
                 {billing.data.status}
               </Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm text-muted-foreground">
+            ) : (
+              <Badge tone="neutral">{billing.data.status}</Badge>
+            )
+          }
+          description={planDisplayName(plan, billing.data.plan)}
+        >
+          <div className="flex flex-col gap-3 text-sm leading-relaxed text-cv-ink-muted">
             {plan === "free" && (
               /* The promise the site makes, in the terms it makes it — a
                  customer reading both must not find two stories. */
-              <p>
+              <p className="m-0">
                 Clarivo is free while it is in beta, and no payment method is held. When billing
                 starts, every company that joined during the beta pays the founder price below for
                 24 months.
@@ -102,96 +105,106 @@ export default function BillingPage() {
             )}
 
             {unrecognised && (
-              <p>
+              <p className="m-0">
                 This company is recorded on a plan this page does not publish. Nothing is billed
                 through the app, so what applies is whatever was agreed directly.
               </p>
             )}
 
             {billing.data.subscriptionId === null ? (
-              <p>No subscription on record, so there is nothing to renew or cancel.</p>
+              <p className="m-0">No subscription on record, so there is nothing to renew or cancel.</p>
             ) : (
-              <p>
+              <p className="m-0">
                 Subscription{" "}
-                <code className="rounded bg-muted px-1.5 py-0.5">
+                <code className="rounded-cv-sm bg-cv-surface-sunken px-1.5 py-0.5 font-cv-mono text-[13px] text-cv-ink">
                   {billing.data.subscriptionId}
                 </code>
                 {periodEndSentence(billing.data.periodEnd)}
               </p>
             )}
 
-            <p>
+            <p className="m-0">
               Billing is handled by a person rather than by this screen: write to{" "}
-              <a className="underline" href={`mailto:${SITE.email}`}>
+              <a
+                className="text-cv-accent underline underline-offset-2"
+                href={`mailto:${SITE.email}`}
+              >
                 {SITE.email}
               </a>{" "}
               to change plan, ask about an invoice, or close the account.
             </p>
-          </CardContent>
-        </Card>
+          </div>
+        </Panel>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-            Invoices
-          </CardTitle>
-          <CardDescription>Nothing has been billed yet</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {/* Four invented paid invoices stood here. There is no invoice source
-              in this product, so the empty state is the whole truth — and a
-              real state, not a placeholder for the table to come back to. */}
-          <p className="text-sm text-muted-foreground">
-            No invoices yet. Clarivo has not charged this company; invoices will appear here once
-            billing starts.
-          </p>
-        </CardContent>
-      </Card>
+      <Panel title="Invoices" description="Nothing has been billed yet.">
+        {/* Four invented paid invoices stood here. There is no invoice source
+            in this product, so the empty state is the whole truth — and a
+            real state, not a placeholder for the table to come back to. */}
+        <p className="m-0 text-sm leading-relaxed text-cv-ink-muted">
+          No invoices yet. Clarivo has not charged this company; invoices will appear here once
+          billing starts.
+        </p>
+      </Panel>
 
-      <div>
-        <h3 className="text-lg font-semibold">Plans</h3>
-        <p className="text-muted-foreground mt-1 text-sm">By employee count, per company.</p>
-        <div className="mt-4 grid gap-4 lg:grid-cols-3">
-          {ladder.map((rung) => (
-            <PlanCard
-              key={rung.name}
-              name={rung.name}
-              audience={rung.audience}
-              listPrice={rung.listPrice}
-              founderPrice={rung.founderPrice}
-              interval={rung.interval}
-              onRequest={rung.onRequest}
-              footnote={rung.footnote}
-              current={plan !== null && rung.id === plan}
-              highlighted={rung.highlighted}
-              tag={rung.tag}
-            />
-          ))}
+      {/* Not a Panel: each rung below is one, and a card inside a card reads
+          as a nesting rather than a list. A heading and the grid instead. */}
+      <section aria-labelledby="plans-heading" className="flex flex-col gap-4">
+        <div>
+          <h3
+            id="plans-heading"
+            className="m-0 text-[20px] font-semibold leading-7 tracking-[-0.01em] text-cv-ink"
+          >
+            Plans
+          </h3>
+          <p className="m-0 mt-1 text-sm text-cv-ink-muted">By employee count, per company.</p>
         </div>
 
-        <div className="mt-6 space-y-2">
-          <h4 className="text-sm font-semibold">{PRICING.includesTitle}</h4>
-          {/* One list for every plan, because that is how they are sold. The
-              per-plan feature lists this page used to carry said the opposite
-              — "10 comparisons/month" on Starter — and contradicted
-              `PRICING.includes` as well as each other. */}
-          <ul className="grid gap-1.5 text-sm text-muted-foreground sm:grid-cols-2">
-            {PRICING.includes.map((item) => (
-              <li key={item}>{item}</li>
+        <div className="flex flex-col gap-6">
+          <div className="grid gap-4 lg:grid-cols-3">
+            {ladder.map((rung) => (
+              <PlanCard
+                key={rung.name}
+                name={rung.name}
+                audience={rung.audience}
+                listPrice={rung.listPrice}
+                founderPrice={rung.founderPrice}
+                interval={rung.interval}
+                onRequest={rung.onRequest}
+                footnote={rung.footnote}
+                current={plan !== null && rung.id === plan}
+                highlighted={rung.highlighted}
+                tag={rung.tag}
+              />
             ))}
-          </ul>
-          <p className="pt-2 text-xs text-muted-foreground">{PRICING.sizeLine}</p>
-          {/* The published terms, verbatim and in one place: VAT, cancellation,
-              how long the founder price lasts. Through `money()` because it is
-              prose quoted from the site rather than a figure this page
-              computed, so a `¤` added to it later still renders. */}
-          <p className="text-xs text-muted-foreground">
-            {money(PRICING.smallPrint, LIST_CURRENCY)}
-          </p>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <h4 className="m-0 text-[15px] font-semibold leading-[22px] text-cv-ink">
+              {PRICING.includesTitle}
+            </h4>
+            {/* One list for every plan, because that is how they are sold. The
+                per-plan feature lists this page used to carry said the opposite
+                — "10 comparisons/month" on Starter — and contradicted
+                `PRICING.includes` as well as each other. */}
+            <ul className="m-0 grid list-none gap-1.5 p-0 text-sm text-cv-ink-muted sm:grid-cols-2">
+              {PRICING.includes.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+            <p className="m-0 pt-2 text-[13px] leading-[18px] text-cv-ink-subtle">
+              {PRICING.sizeLine}
+            </p>
+            {/* The published terms, verbatim and in one place: VAT, cancellation,
+                how long the founder price lasts. Through `money()` because it is
+                prose quoted from the site rather than a figure this page
+                computed, so a `¤` added to it later still renders. */}
+            <p className="m-0 text-[13px] leading-[18px] text-cv-ink-subtle">
+              {money(PRICING.smallPrint, LIST_CURRENCY)}
+            </p>
+          </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

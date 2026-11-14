@@ -1,5 +1,8 @@
 "use client";
 
+import { useId } from "react";
+import { Badge, Icon } from "@/components/cv";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectTrigger,
@@ -7,7 +10,6 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-import { AlertCircle, CheckCircle2, XCircle, Brain, HelpCircle } from "lucide-react";
 import {
   SNAPSHOT_FIELDS,
   ambiguityFor,
@@ -16,6 +18,25 @@ import {
   type SnapshotField,
 } from "@saas/payroll-core";
 import { cn, formatComponentName } from "@/lib/utils";
+
+/**
+ * One column of the uploaded file, on Ink & Signal (canvas board "Upload
+ * payroll file", step 3).
+ *
+ * The board's row is: the source column over a sample of its values, an arrow,
+ * the mapping select, then the role select and the suggestion's confidence in
+ * Geist Mono. The rebuild changed the colours and the shape and nothing else —
+ * every rule below (the record role clearing the identifier flags, the
+ * ambiguity question keyed on the mapped component, the required-mapping
+ * state) is the one that was here before.
+ *
+ * The one colour that was deliberately dropped is the confidence chip's
+ * green/amber/red tiering. The number it tiered is `0.75 + (index % 3) * 0.08`
+ * — a function of the row's position in the file, not of anything about the
+ * column — and painting a fabricated figure in status colours makes it read
+ * as a measurement. It stays (nothing about behaviour changed) as a mono
+ * figure in ink-subtle, where it reads as the hint it is.
+ */
 
 /**
  * Step 9: what a column records, beyond the five identifier flags.
@@ -34,10 +55,18 @@ const SNAPSHOT_FIELD_LABELS: Record<SnapshotField, string> = {
   fte: "FTE",
 };
 
+const RECORD_AS_LABELS: Record<string, string> = {
+  [RECORD_AS_COMPONENT]: "Pay component",
+  [RECORD_AS_DIMENSION]: "Reporting dimension",
+  ...SNAPSHOT_FIELD_LABELS,
+};
+
 interface MappingRowProps {
   sourceColumn: string;
   mappedComponent: string;
   aiConfidence: number | null;
+  /** The first value under this header, as it was read from the file. */
+  sample?: string | null;
   isEmployeeId: boolean;
   isEmployeeName: boolean;
   isDepartment: boolean;
@@ -68,6 +97,7 @@ export function MappingRow({
   sourceColumn,
   mappedComponent,
   aiConfidence,
+  sample = null,
   isEmployeeId,
   isEmployeeName,
   isDepartment,
@@ -80,6 +110,8 @@ export function MappingRow({
   availableComponents,
   onChange,
 }: MappingRowProps) {
+  const fieldId = useId();
+
   // Step 9: a column recorded as a date, an FTE or a dimension needs no pay
   // component, so the "pick a mapping" prompt does not apply to it. Everything
   // else below is the rule that was already here.
@@ -105,17 +137,19 @@ export function MappingRow({
       : ambiguityFor(mappedComponent);
   const needsAnswer = ambiguity !== undefined && !alreadyAnswered && resolvedCategory === null;
 
-  const update = (partial: Partial<{
-    mappedComponent: string;
-    isEmployeeId: boolean;
-    isEmployeeName: boolean;
-    isDepartment: boolean;
-    isGrossSalary: boolean;
-    isNetSalary: boolean;
-    snapshotField: SnapshotField | null;
-    dimensionName: string | null;
-    resolvedCategory: Category | null;
-  }>) => {
+  const update = (
+    partial: Partial<{
+      mappedComponent: string;
+      isEmployeeId: boolean;
+      isEmployeeName: boolean;
+      isDepartment: boolean;
+      isGrossSalary: boolean;
+      isNetSalary: boolean;
+      snapshotField: SnapshotField | null;
+      dimensionName: string | null;
+      resolvedCategory: Category | null;
+    }>,
+  ) => {
     onChange({
       sourceColumn,
       mappedComponent,
@@ -131,7 +165,8 @@ export function MappingRow({
     });
   };
 
-  const recordAs = snapshotField ?? (dimensionName !== null ? RECORD_AS_DIMENSION : RECORD_AS_COMPONENT);
+  const recordAs =
+    snapshotField ?? (dimensionName !== null ? RECORD_AS_DIMENSION : RECORD_AS_COMPONENT);
 
   /**
    * A column is one thing. Taking a record role clears the identifier flags and
@@ -164,43 +199,56 @@ export function MappingRow({
     label: string;
   }> = [
     { key: "isEmployeeId", label: "Employee ID" },
-    { key: "isEmployeeName", label: "Employee Name" },
+    { key: "isEmployeeName", label: "Employee name" },
     { key: "isDepartment", label: "Department" },
-    { key: "isGrossSalary", label: "Gross Salary" },
-    { key: "isNetSalary", label: "Net Salary" },
+    { key: "isGrossSalary", label: "Gross salary" },
+    { key: "isNetSalary", label: "Net salary" },
   ];
 
+  /** The mapping's state, as an icon with a word (never colour on its own). */
+  const status = isRequiredMissing
+    ? {
+        icon: "x-circle" as const,
+        tone: "text-cv-danger-ink",
+        word: "Needs a mapping or an identifier",
+      }
+    : mappedComponent && mappedComponent !== "ignore"
+      ? { icon: "check-circle" as const, tone: "text-cv-success-ink", word: "Mapped" }
+      : { icon: "alert" as const, tone: "text-cv-warning-ink", word: "Not imported" };
+
   return (
-    <div className={cn(
-      "rounded-lg border bg-card px-3 py-2.5 transition-colors space-y-2",
-      isRequiredMissing && "border-destructive/30 bg-destructive/[0.02]",
-      // Step 11b: an unanswered question blocks the import, so the row has to
-      // look like something that needs doing.
-      needsAnswer && "border-amber-300/70 dark:border-amber-900/60",
-    )}>
+    <div
+      className={cn(
+        "space-y-2 rounded-cv-md border border-cv-line bg-cv-surface px-3 py-2.5 transition-colors duration-[120ms]",
+        isRequiredMissing && "border-cv-danger",
+        // Step 11b: an unanswered question blocks the import, so the row has to
+        // look like something that needs doing.
+        needsAnswer && "border-cv-warning",
+      )}
+    >
       <div className="flex items-center gap-2">
-        <div className="flex w-36 items-center gap-2">
-          <span className="flex-1 truncate text-sm font-medium" title={sourceColumn}>
+        <div className="w-32 min-w-0 shrink-0">
+          <p
+            className="m-0 truncate text-sm font-medium leading-5 text-cv-ink"
+            title={sourceColumn}
+          >
             {sourceColumn}
-          </span>
-          {aiConfidence !== null && (
-            <span
-              className={cn(
-                "flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-medium",
-                aiConfidence >= 0.8
-                  ? "bg-green-100 text-green-700"
-                  : aiConfidence >= 0.5
-                    ? "bg-amber-100 text-amber-700"
-                    : "bg-red-100 text-red-700",
-              )}
+          </p>
+          {/* The first value under the header, so the admin can tell two
+              similarly named columns apart without reopening the file. */}
+          {sample !== null && sample !== "" && (
+            <p
+              className="m-0 truncate font-cv-mono text-xs leading-4 text-cv-ink-subtle"
+              title={sample}
             >
-              <Brain className="h-3 w-3" />
-              {Math.round(aiConfidence * 100)}%
-            </span>
+              {sample}
+            </p>
           )}
         </div>
 
-        <div className="flex-1">
+        <Icon name="arrow-right" size={16} className="shrink-0 text-cv-ink-subtle" />
+
+        <div className="min-w-0 flex-1">
           <Select
             value={mappedComponent || ""}
             disabled={hasRecordRole}
@@ -212,13 +260,10 @@ export function MappingRow({
             }}
           >
             <SelectTrigger
-              className={cn(
-                "w-full",
-                !mappedComponent && "text-muted-foreground",
-                mappedComponent === "ignore" && "border-dashed",
-              )}
+              aria-label={`What ${sourceColumn} maps to`}
+              className={cn("h-9 w-full", mappedComponent === "ignore" && "border-dashed")}
             >
-              <SelectValue placeholder="Select mapping..." />
+              <SelectValue placeholder="Select mapping…" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="ignore">Ignore column</SelectItem>
@@ -231,15 +276,10 @@ export function MappingRow({
           </Select>
         </div>
 
-        <div className="shrink-0">
-          {isRequiredMissing ? (
-            <XCircle className="h-4 w-4 text-destructive" />
-          ) : mappedComponent && mappedComponent !== "ignore" ? (
-            <CheckCircle2 className="h-4 w-4 text-green-500" />
-          ) : (
-            <AlertCircle className="h-4 w-4 text-amber-500" />
-          )}
-        </div>
+        <span className="flex shrink-0 items-center" title={status.word}>
+          <Icon name={status.icon} size={16} className={status.tone} />
+          <span className="sr-only">{status.word}</span>
+        </span>
       </div>
 
       {/*
@@ -251,24 +291,22 @@ export function MappingRow({
       {ambiguity && (
         <div
           className={cn(
-            "rounded-md border px-2.5 py-2",
-            needsAnswer
-              ? "border-amber-300 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/30"
-              : "border-border bg-muted/40",
+            "rounded-cv-md px-2.5 py-2",
+            needsAnswer ? "bg-cv-warning-soft" : "bg-cv-surface-sunken",
           )}
         >
-          <p className="flex items-start gap-1.5 text-[11px] leading-snug">
-            <HelpCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+          <p className="m-0 flex items-start gap-1.5 text-[13px] leading-[18px] text-cv-ink">
+            <Icon name="info" size={16} className="mt-px shrink-0 text-cv-ink-muted" />
             <span>
-              <span className="font-medium">{mappedComponent}</span> {ambiguity.question}
+              <span className="font-semibold">{mappedComponent}</span> {ambiguity.question}
             </span>
           </p>
           {alreadyAnswered ? (
-            <p className="mt-1.5 pl-5 text-[11px] text-muted-foreground">
+            <p className="m-0 mt-1.5 pl-[22px] text-[13px] leading-[18px] text-cv-ink-subtle">
               Already answered for this company, in Settings → Categories.
             </p>
           ) : (
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-5">
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-[22px]">
               {ambiguity.candidates.map((candidate) => (
                 <button
                   key={candidate}
@@ -282,17 +320,19 @@ export function MappingRow({
                     })
                   }
                   className={cn(
-                    "rounded-md px-2 py-1 text-xs font-medium transition-colors",
+                    "rounded-cv-md px-2 py-1 text-xs font-semibold transition-colors duration-[120ms]",
+                    "focus-visible:shadow-cv-focus-ring focus-visible:outline-none",
                     resolvedCategory === candidate
-                      ? "bg-primary text-primary-foreground"
-                      : "border bg-background hover:bg-muted",
+                      ? "bg-cv-primary text-cv-on-primary"
+                      : "border border-cv-border bg-cv-surface text-cv-ink hover:bg-cv-surface-sunken",
                   )}
                 >
                   {CATEGORY_LABELS[candidate]}
                 </button>
               ))}
               {needsAnswer && (
-                <span className="text-[11px] text-amber-800 dark:text-amber-300">
+                <span className="flex items-center gap-1 text-[13px] leading-[18px] text-cv-danger-ink">
+                  <Icon name="x-circle" size={14} />
                   Required before importing.
                 </span>
               )}
@@ -307,8 +347,8 @@ export function MappingRow({
         upload had no way to populate those columns, so a hire date was
         classified and summed as money.
       */}
-      <div className="flex items-center gap-2">
-        <span className="w-20 shrink-0 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="w-16 shrink-0 text-xs font-medium leading-4 text-cv-ink-subtle">
           Records
         </span>
         <Select
@@ -325,8 +365,14 @@ export function MappingRow({
             }
           }}
         >
-          <SelectTrigger className="h-8 w-44 text-xs">
-            <SelectValue />
+          <SelectTrigger
+            aria-label={`What ${sourceColumn} records`}
+            className="h-8 w-44 text-[13px]"
+          >
+            {/* The trigger names the role on its own, so the items can carry
+                their one-line gloss without it leaking into the closed
+                control. */}
+            <SelectValue>{RECORD_AS_LABELS[recordAs] ?? recordAs}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={RECORD_AS_COMPONENT}>Pay component</SelectItem>
@@ -347,49 +393,65 @@ export function MappingRow({
             placeholder="Dimension name"
             aria-label={`Dimension name for ${sourceColumn}`}
             onChange={(e) => update({ dimensionName: e.target.value })}
-            className="h-8 flex-1 rounded-md border bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary/30"
+            className="h-8 min-w-0 flex-1 rounded-cv-md border border-cv-border bg-cv-surface px-2 text-[13px] text-cv-ink transition-[border-color,box-shadow] placeholder:text-cv-ink-subtle hover:border-cv-ink-muted focus-visible:border-cv-accent focus-visible:shadow-cv-focus-ring focus-visible:outline-none"
           />
         )}
 
         {snapshotField !== null && (
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-[13px] leading-[18px] text-cv-ink-subtle">
             {snapshotField === "fte"
               ? "A fraction of a full post: 0.5 or 50%."
               : "Dates are read per column; an ambiguous column is reported, not guessed."}
           </span>
         )}
+
+        {/* The suggestion's own confidence, in mono, as the board draws it. */}
+        {aiConfidence !== null && (
+          <Badge tone="neutral" className="ml-auto font-cv-mono tabular-nums">
+            AI {Math.round(aiConfidence * 100)}%
+          </Badge>
+        )}
       </div>
 
-      <div className={cn("flex flex-wrap items-center gap-1", hasRecordRole && "hidden")}>
-        <span className="w-full text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Identifiers</span>
+      <div className={cn("flex flex-wrap items-center gap-1.5", hasRecordRole && "hidden")}>
+        <span className="w-16 shrink-0 text-xs font-medium leading-4 text-cv-ink-subtle">
+          Identifiers
+        </span>
         {identifierFields.map(({ key, label }) => {
           const checked = (() => {
             switch (key) {
-              case "isEmployeeId": return isEmployeeId;
-              case "isEmployeeName": return isEmployeeName;
-              case "isDepartment": return isDepartment;
-              case "isGrossSalary": return isGrossSalary;
-              case "isNetSalary": return isNetSalary;
+              case "isEmployeeId":
+                return isEmployeeId;
+              case "isEmployeeName":
+                return isEmployeeName;
+              case "isDepartment":
+                return isDepartment;
+              case "isGrossSalary":
+                return isGrossSalary;
+              case "isNetSalary":
+                return isNetSalary;
             }
           })();
+          const id = `${fieldId}-${key}`;
           return (
-            <label
+            <span
               key={key}
               className={cn(
-                "flex cursor-pointer select-none items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors",
+                "flex select-none items-center gap-1.5 rounded-cv-md px-2 py-1 text-xs font-medium transition-colors duration-[120ms]",
                 checked
-                  ? "bg-primary/10 text-primary ring-1 ring-primary/20"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  ? "bg-cv-accent-soft text-cv-accent ring-1 ring-cv-accent"
+                  : "text-cv-ink-muted hover:bg-cv-surface-sunken hover:text-cv-ink",
               )}
             >
-              <input
-                type="checkbox"
+              <Checkbox
+                id={id}
                 checked={checked}
-                onChange={(e) => update({ [key]: e.target.checked })}
-                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/30"
+                onCheckedChange={(next) => update({ [key]: next === true })}
               />
-              {label}
-            </label>
+              <label htmlFor={id} className="cursor-pointer">
+                {label}
+              </label>
+            </span>
           );
         })}
       </div>

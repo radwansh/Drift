@@ -1,7 +1,7 @@
 "use client";
 
 import type { AnnualSummary } from "@saas/payroll-core";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Panel } from "@/components/cv";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatMoney, formatPct } from "@/components/annual/annual-utils";
 
@@ -12,14 +12,9 @@ interface AnnualMixProps {
 export function AnnualMix({ summary }: AnnualMixProps) {
   if (!summary) {
     return (
-      <Card className="min-w-0">
-        <CardHeader>
-          <CardTitle className="text-sm font-medium">Fixed vs Variable Pay</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-28 w-full" />
-        </CardContent>
-      </Card>
+      <Panel compact headingId="annual-mix-h" title="Fixed vs variable pay">
+        <Skeleton className="h-28 w-full" />
+      </Panel>
     );
   }
 
@@ -28,55 +23,59 @@ export function AnnualMix({ summary }: AnnualMixProps) {
   const fixedShare = gross !== 0 ? (mix.fixed / gross) * 100 : null;
 
   return (
-    <Card className="min-w-0">
-      <CardHeader>
-        <CardTitle className="text-sm font-medium">Fixed vs Variable Pay</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-2">
-          <div className="flex items-center justify-between gap-4 text-sm">
-            <span className="text-muted-foreground truncate">Fixed (base + allowance + other earnings)</span>
+    <Panel compact headingId="annual-mix-h" title="Fixed vs variable pay">
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between gap-4 text-sm leading-5">
+            <span className="truncate text-cv-ink-muted">
+              Fixed (base + allowance + other earnings)
+            </span>
             {/* Was `{[formatPct(fixedShare)]}` — an array, which React rendered
                 without the surrounding text it needed (finding U15). */}
-            <span className="tabular-nums text-right whitespace-nowrap">{formatPct(fixedShare)}</span>
+            <span className="cv-num text-cv-ink">{formatPct(fixedShare)}</span>
           </div>
-          <div className="flex items-center justify-between gap-4 text-sm">
-            <span className="text-muted-foreground truncate">Variable (bonus + commission + overtime)</span>
-            <span className="tabular-nums text-right whitespace-nowrap">{formatPct(mix.variablePayShare)}</span>
+          <div className="flex items-center justify-between gap-4 text-sm leading-5">
+            <span className="truncate text-cv-ink-muted">
+              Variable (bonus + commission + overtime)
+            </span>
+            <span className="cv-num text-cv-ink">{formatPct(mix.variablePayShare)}</span>
           </div>
-          <div className="flex items-center justify-between gap-4 text-sm">
-            <span className="text-muted-foreground truncate">Overtime as % of base salary</span>
-            <span className="tabular-nums text-right whitespace-nowrap">{formatPct(mix.overtimePctOfBase)}</span>
+          <div className="flex items-center justify-between gap-4 text-sm leading-5">
+            <span className="truncate text-cv-ink-muted">Overtime as % of base salary</span>
+            <span className="cv-num text-cv-ink">{formatPct(mix.overtimePctOfBase)}</span>
           </div>
         </div>
-        <div className="flex h-2.5 w-full min-w-0 overflow-hidden rounded-full bg-muted">
+        {/* Two categories, so the first two series colours in order. */}
+        <div className="flex h-2.5 w-full min-w-0 overflow-hidden rounded-cv-full bg-cv-surface-sunken">
           {gross !== 0 && mix.fixed !== 0 && (
             <div
-              className="h-full bg-primary"
+              className="h-full bg-cv-chart-1"
               style={{ width: `${Math.max((mix.fixed / gross) * 100, 1)}%` }}
             />
           )}
           {gross !== 0 && mix.variable !== 0 && (
             <div
-              className="h-full bg-primary/40"
+              className="h-full bg-cv-chart-2"
               style={{ width: `${Math.max((mix.variable / gross) * 100, 1)}%` }}
             />
           )}
         </div>
-        <p className="text-xs text-muted-foreground">
-          Fixed {formatMoney(mix.fixed, summary.currency)} · Variable {formatMoney(mix.variable, summary.currency)} ·
-          Gross to date {formatMoney(gross, summary.currency)}
+        <p className="m-0 text-xs leading-4 text-cv-ink-subtle">
+          Fixed {formatMoney(mix.fixed, summary.currency)} · Variable{" "}
+          {formatMoney(mix.variable, summary.currency)} · Gross to date{" "}
+          {formatMoney(gross, summary.currency)}
           {/* Say why the two shares do not reach 100% rather than leaving a
-              silent gap (KPI 12). */}
+              silent gap (KPI 12). The earnings balance is a real line, not a
+              rounding remainder, so it is named. */}
           {summary.bridge.actual.earningsBalance !== 0 && (
             <>
               {" · "}
-              {formatMoney(summary.bridge.actual.earningsBalance, summary.currency)} of gross is not categorised, so
-              fixed and variable do not add to 100%.
+              {formatMoney(summary.bridge.actual.earningsBalance, summary.currency)} of gross is not
+              categorised, so fixed and variable do not add to 100%.
             </>
           )}
         </p>
-      </CardContent>
-    </Card>
+      </div>
+    </Panel>
   );
 }

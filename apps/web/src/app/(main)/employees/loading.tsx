@@ -1,9 +1,9 @@
-import { Loader2 } from "lucide-react";
+import { PageLoading } from "@/components/shared/loading-spinner";
 
+/**
+ * Loading is the scanning drift strip, not a spinner (canvas board "Patterns").
+ * The label is the one this file already carried, unchanged.
+ */
 export default function EmployeesLoading() {
-  return (
-    <div className="flex items-center justify-center py-24">
-      <Loader2 className="h-8 w-8 animate-spin text-primary" aria-label="Loading employees" />
-    </div>
-  );
+  return <PageLoading label="Loading employees" />;
 }

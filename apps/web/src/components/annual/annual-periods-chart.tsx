@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { AnnualSummary } from "@saas/payroll-core";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Panel, SegmentedControl } from "@/components/cv";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   ComposedChart,
@@ -15,7 +15,6 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { cn } from "@/lib/utils";
 import {
   formatAxisMoney,
   formatMoney,
@@ -23,6 +22,14 @@ import {
   shortPeriodLabel,
 } from "@/components/annual/annual-utils";
 import { ChartFrame } from "@/components/annual/chart-frame";
+import {
+  BAR_RADIUS_VERTICAL,
+  CHART,
+  axisProps,
+  categoryAxisProps,
+  gridProps,
+  tooltipProps,
+} from "@/lib/chart-palette";
 
 type Metric = "net" | "gross" | "totalEmploymentCost";
 
@@ -39,31 +46,134 @@ const KIND_LABELS = {
   missing: "Not uploaded",
 } as const;
 
+type Kind = keyof typeof KIND_LABELS;
+
+/** Hatch for a slot nobody uploaded. Stripes only: an absent figure has no ground. */
+const MISSING_HATCH = "annual-periods-missing-hatch";
+
 interface AnnualPeriodsChartProps {
   summary: AnnualSummary | null;
 }
 
-/** Solid for actual, 40% for forecast, outlined for estimated, hatched for missing. */
-function fillFor(kind: keyof typeof KIND_LABELS): { fill: string; stroke?: string; dash?: boolean } {
+/**
+ * How each of the four kinds is drawn (canvas board "Annual salaries").
+ *
+ * `actual` is ink, `estimated` is the grey "previous" tone, `forecast` is
+ * outlined in ink with **no fill** — the future is not a figure anyone has
+ * — and `missing` is hatched in the axis colour. The four are never the same
+ * mark: `kind` here is the annual engine's four-valued one (actual, estimated,
+ * forecast, missing), which is deliberately not the Employee File's four, and a
+ * reader has to be able to tell a projection from a payment at a glance.
+ */
+function fillFor(kind: Kind): { fill: string; stroke?: string; dash?: boolean } {
   switch (kind) {
     case "actual":
-      return { fill: "hsl(var(--primary))" };
-    case "forecast":
-      return { fill: "hsl(var(--primary) / 0.4)" };
+      return { fill: CHART.current };
     case "estimated":
-      return { fill: "hsl(var(--primary) / 0.12)", stroke: "hsl(var(--primary))" };
+      return { fill: CHART.previous };
+    case "forecast":
+      return { fill: "none", stroke: CHART.current };
     case "missing":
-      return { fill: "url(#hatch-missing)", stroke: "hsl(var(--muted-foreground) / 0.5)", dash: true };
+      return { fill: `url(#${MISSING_HATCH})`, stroke: CHART.axis, dash: true };
   }
 }
 
 /**
- * Actual versus forecast by period (step 35, findings U4, U8, U11).
+ * The hatched outline standing in for a slot nobody uploaded.
  *
- * Three fixes: every expected slot is drawn, so a month with no upload is a
- * hatched bar rather than simply absent from the chart; last year's figure is
- * drawn as a thin reference line; and the metric toggle offers total employment
- * cost rather than the on-costs-only series it used to call "Employer cost".
+ * A `missing` row carries gross 0 / net 0 from the engine, so on the per-period
+ * view its bar is zero pixels tall and the hatched fill has nothing to paint —
+ * the month that was supposed to be impossible to miss was invisible. This is
+ * drawn through Recharts' per-bar `background`, which spans the plot's full
+ * height: it marks the slot without standing for a value, which a bar of any
+ * height would. Every other kind returns null, so it never sits behind a real
+ * bar.
+ */
+function MissingOutline({
+  kinds = [],
+  x = 0,
+  y = 0,
+  width = 0,
+  height = 0,
+  index = 0,
+}: {
+  kinds?: readonly Kind[];
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  index?: number;
+}) {
+  if (kinds[index] !== "missing") return null;
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+  return (
+    <rect
+      x={x}
+      y={y}
+      width={width}
+      height={height}
+      fill={`url(#${MISSING_HATCH})`}
+      stroke={CHART.axis}
+      strokeWidth={1}
+      strokeDasharray="3 3"
+    />
+  );
+}
+
+/**
+ * A 10px legend mark, drawn as SVG.
+ *
+ * It was a `<span>` whose background was set to the bar's fill — which for the
+ * missing kind is `url(#…)`, not a CSS colour, so the one mark a reader most
+ * needs to recognise rendered as an empty square. An SVG swatch can carry the
+ * hatch and the outline, so the key matches the chart.
+ */
+function KindSwatch({ kind }: { kind: Kind }) {
+  const style = fillFor(kind);
+  return (
+    <svg width={10} height={10} viewBox="0 0 10 10" aria-hidden="true" className="flex-none">
+      {kind === "missing" ? (
+        <>
+          <path d="M0 7 L7 0 M3 10 L10 3" stroke={CHART.axis} strokeWidth={1.5} fill="none" />
+          <rect
+            x={0.5}
+            y={0.5}
+            width={9}
+            height={9}
+            fill="none"
+            stroke={CHART.axis}
+            strokeDasharray="2 1.5"
+          />
+        </>
+      ) : (
+        <rect
+          x={0.5}
+          y={0.5}
+          width={9}
+          height={9}
+          rx={1}
+          fill={style.fill === "none" ? "none" : style.fill}
+          stroke={style.stroke ?? "none"}
+          strokeWidth={style.stroke ? 1.5 : 0}
+        />
+      )}
+    </svg>
+  );
+}
+
+/**
+ * Actual versus forecast by period (step 35, findings U4, U8, U11), on Ink &
+ * Signal (canvas board "Annual salaries").
+ *
+ * Three fixes kept from the review: every expected slot is drawn, so a month
+ * with no upload is marked rather than simply absent from the chart; last year's
+ * figure is drawn as a thin reference line; and the metric toggle offers total
+ * employment cost rather than the on-costs-only series it used to call
+ * "Employer cost".
+ *
+ * Colours are explicit `fill` / `stroke` props from `lib/chart-palette.ts`,
+ * never a Tailwind `className`: Recharts does not apply classes to legend marks,
+ * so a classed chart renders them black and loses them in dark mode.
  */
 export function AnnualPeriodsChart({ summary }: AnnualPeriodsChartProps) {
   const [metric, setMetric] = useState<Metric>("net");
@@ -89,7 +199,7 @@ export function AnnualPeriodsChart({ summary }: AnnualPeriodsChartProps) {
         fullLabel: p.label,
         value: cumulative ? running : value,
         kind: p.kind,
-        lastYear: metric === "gross" ? lastYearByLabel.get(p.label) ?? null : null,
+        lastYear: metric === "gross" ? (lastYearByLabel.get(p.label) ?? null) : null,
       };
     });
   }, [summary, metric, cumulative]);
@@ -110,187 +220,179 @@ export function AnnualPeriodsChart({ summary }: AnnualPeriodsChartProps) {
     return summary.assumptions.join(" ").trim() || null;
   }, [summary]);
 
-  const kindsPresent = useMemo(
-    () => [...new Set(data.map((d) => d.kind))] as (keyof typeof KIND_LABELS)[],
-    [data],
-  );
+  const kindsPresent = useMemo(() => [...new Set(data.map((d) => d.kind))] as Kind[], [data]);
+  const kinds = useMemo(() => data.map((d) => d.kind as Kind), [data]);
 
   return (
-    <Card className="min-w-0">
-      <CardHeader className="space-y-3">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <CardTitle className="text-sm font-medium">Actual and forecast by period</CardTitle>
-            <CardDescription>
-              {cumulative ? "Running total across the year." : "One bar per period in the year."}
-            </CardDescription>
-          </div>
-          <div className="flex flex-wrap items-center gap-1">
-            {(Object.keys(METRIC_LABELS) as Metric[]).map((m) => (
-              <button
-                key={m}
-                type="button"
-                // aria-pressed, so a screen reader can tell which is active
-                // (finding U10).
-                aria-pressed={metric === m}
-                onClick={() => setMetric(m)}
-                className={cn(
-                  "rounded-md px-2 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  metric === m
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:bg-muted/70",
-                )}
-              >
-                {METRIC_LABELS[m]}
-              </button>
-            ))}
-            <button
-              type="button"
-              aria-pressed={cumulative}
-              onClick={() => setCumulative((c) => !c)}
-              className={cn(
-                "rounded-md px-2 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                cumulative
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground hover:bg-muted/70",
-              )}
-            >
-              Cumulative
-            </button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {!summary ? (
-          <Skeleton className="h-[300px] w-full" />
-        ) : data.length === 0 ? (
-          <div className="flex h-[300px] items-center justify-center text-sm text-muted-foreground">
-            No periods to chart
-          </div>
-        ) : (
-          <ChartFrame
-            label={`${METRIC_LABELS[metric]} by period for ${summary.year}${cumulative ? ", cumulative" : ""}.`}
-            columns={[METRIC_LABELS[metric], "Status"]}
-            rows={data.map((d) => ({
-              name: d.fullLabel,
-              values: [formatMoney(d.value, currency), KIND_LABELS[d.kind]],
+    <Panel
+      headingId="annual-periods-h"
+      title="Actual and forecast by period"
+      description={
+        cumulative ? "Running total across the year." : "One bar per period in the year."
+      }
+      actions={
+        <>
+          <SegmentedControl
+            size="sm"
+            label="Metric"
+            options={(Object.keys(METRIC_LABELS) as Metric[]).map((m) => ({
+              value: m,
+              label: METRIC_LABELS[m],
             }))}
-            className="h-[300px]"
-          >
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
-                <defs>
-                  {/* Hatching marks a slot with no upload, so it reads as absent
-                      data rather than a zero. */}
-                  <pattern id="hatch-missing" width="6" height="6" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
-                    <rect width="6" height="6" fill="hsl(var(--muted))" />
-                    <line x1="0" y1="0" x2="0" y2="6" stroke="hsl(var(--muted-foreground) / 0.45)" strokeWidth="2" />
-                  </pattern>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis
-                  dataKey="label"
-                  tick={{ fontSize: 11 }}
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={8}
-                  interval="preserveStartEnd"
+            value={metric}
+            onChange={(v) => setMetric(v as Metric)}
+          />
+          <SegmentedControl
+            size="sm"
+            label="How to total"
+            options={[
+              { value: "period", label: "By period" },
+              { value: "cumulative", label: "Cumulative" },
+            ]}
+            value={cumulative ? "cumulative" : "period"}
+            onChange={(v) => setCumulative(v === "cumulative")}
+          />
+        </>
+      }
+    >
+      {!summary ? (
+        <Skeleton className="h-[300px] w-full" />
+      ) : data.length === 0 ? (
+        <p className="m-0 flex h-[300px] items-center justify-center text-sm leading-5 text-cv-ink-subtle">
+          No periods to chart
+        </p>
+      ) : (
+        <ChartFrame
+          label={`${METRIC_LABELS[metric]} by period for ${summary.year}${cumulative ? ", cumulative" : ""}.`}
+          columns={[METRIC_LABELS[metric], "Status"]}
+          rows={data.map((d) => ({
+            name: d.fullLabel,
+            values: [formatMoney(d.value, currency), KIND_LABELS[d.kind]],
+          }))}
+          className="h-[300px]"
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={data} margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
+              <defs>
+                {/* Hatching marks a slot with no upload, so it reads as absent
+                    data rather than a zero. Stripes only, in the axis colour. */}
+                <pattern
+                  id={MISSING_HATCH}
+                  width={6}
+                  height={6}
+                  patternTransform="rotate(45)"
+                  patternUnits="userSpaceOnUse"
+                >
+                  <line x1={0} y1={0} x2={0} y2={6} stroke={CHART.axis} strokeWidth={2} />
+                </pattern>
+              </defs>
+              <CartesianGrid {...gridProps} />
+              <XAxis
+                dataKey="label"
+                {...categoryAxisProps}
+                tickMargin={8}
+                interval="preserveStartEnd"
+              />
+              <YAxis width={64} {...axisProps} tickMargin={8} tickFormatter={formatAxisMoney} />
+              <Tooltip
+                {...tooltipProps}
+                formatter={(value: number | string | Array<number | string>, name) => {
+                  const v = Array.isArray(value) ? Number(value[0]) : Number(value);
+                  if (name === "lastYear") return [formatMoney(v, currency), "Last year"];
+                  return [formatMoney(v, currency), METRIC_LABELS[metric]];
+                }}
+                labelFormatter={(_label, payload) => {
+                  const entry = payload?.[0]?.payload as
+                    | { fullLabel?: string; kind?: Kind }
+                    | undefined;
+                  if (!entry?.fullLabel) return String(_label ?? "");
+                  // "Not uploaded" rides in the tooltip label, so hovering a
+                  // slot with no bar says which kind of nothing it is.
+                  return `${entry.fullLabel} · ${KIND_LABELS[entry.kind ?? "actual"]}`;
+                }}
+              />
+              <Bar
+                dataKey="value"
+                radius={BAR_RADIUS_VERTICAL}
+                maxBarSize={48}
+                isAnimationActive={false}
+                background={<MissingOutline kinds={kinds} />}
+              >
+                {data.map((d, i) => {
+                  const style = fillFor(d.kind);
+                  return (
+                    <Cell
+                      key={i}
+                      fill={style.fill}
+                      stroke={style.stroke}
+                      strokeWidth={style.stroke ? 1.5 : 0}
+                      strokeDasharray={style.dash ? "3 2" : undefined}
+                    />
+                  );
+                })}
+              </Bar>
+              {metric === "gross" && (
+                <Line
+                  type="monotone"
+                  dataKey="lastYear"
+                  name="lastYear"
+                  stroke={CHART.previous}
+                  strokeWidth={1.5}
+                  strokeDasharray="4 3"
+                  dot={false}
+                  connectNulls
+                  isAnimationActive={false}
                 />
-                <YAxis
-                  width={64}
-                  tick={{ fontSize: 11 }}
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={8}
-                  tickFormatter={formatAxisMoney}
-                />
-                <Tooltip
-                  cursor={{ fill: "hsl(var(--muted) / 0.4)" }}
-                  contentStyle={{ fontSize: 13, borderRadius: 8 }}
-                  formatter={(value: number | string | Array<number | string>, name) => {
-                    const v = Array.isArray(value) ? Number(value[0]) : Number(value);
-                    if (name === "lastYear") return [formatMoney(v, currency), "Last year"];
-                    return [formatMoney(v, currency), METRIC_LABELS[metric]];
-                  }}
-                  labelFormatter={(_label, payload) => {
-                    const entry = payload?.[0]?.payload as
-                      | { fullLabel?: string; kind?: keyof typeof KIND_LABELS }
-                      | undefined;
-                    if (!entry?.fullLabel) return String(_label ?? "");
-                    return `${entry.fullLabel} · ${KIND_LABELS[entry.kind ?? "actual"]}`;
-                  }}
-                />
-                <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={48} isAnimationActive={false}>
-                  {data.map((d, i) => {
-                    const style = fillFor(d.kind);
-                    return (
-                      <Cell
-                        key={i}
-                        fill={style.fill}
-                        stroke={style.stroke}
-                        strokeWidth={style.stroke ? 1.5 : 0}
-                        strokeDasharray={style.dash ? "3 2" : undefined}
-                      />
-                    );
-                  })}
-                </Bar>
-                {metric === "gross" && (
-                  <Line
-                    type="monotone"
-                    dataKey="lastYear"
-                    name="lastYear"
-                    stroke="hsl(var(--muted-foreground))"
-                    strokeWidth={1.5}
-                    strokeDasharray="4 3"
-                    dot={false}
-                    connectNulls
-                    isAnimationActive={false}
-                  />
-                )}
-              </ComposedChart>
-            </ResponsiveContainer>
-          </ChartFrame>
-        )}
-
-        <div className="mt-4 flex flex-col gap-2 border-t pt-3 text-xs text-muted-foreground">
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-            {kindsPresent.map((kind) => {
-              const style = fillFor(kind);
-              return (
-                <span key={kind} className="inline-flex items-center gap-1.5">
-                  <span
-                    className="h-2.5 w-2.5 rounded-sm border"
-                    style={{
-                      background: style.fill,
-                      borderColor: style.stroke ?? "transparent",
-                    }}
-                    aria-hidden="true"
-                  />
-                  {KIND_LABELS[kind]}
-                </span>
-              );
-            })}
-            {metric === "gross" && data.some((d) => d.lastYear !== null) && (
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-0 w-3 border-t-2 border-dashed border-muted-foreground" aria-hidden="true" />
-                Last year
-              </span>
-            )}
-          </div>
-          {assumption && summary && (
-            <p>
-              {assumption} Full-year {METRIC_LABELS[metric].toLowerCase()}{" "}
-              {formatCompact(
-                metric === "totalEmploymentCost"
-                  ? summary.bridge.fullYear.totalEmploymentCost
-                  : summary.bridge.fullYear[metric],
-                currency,
               )}
-              .
-            </p>
+            </ComposedChart>
+          </ResponsiveContainer>
+        </ChartFrame>
+      )}
+
+      <div className="mt-4 flex flex-col gap-2 border-t border-cv-line pt-3 text-xs leading-4 text-cv-ink-muted">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          {kindsPresent.map((kind) => (
+            <span key={kind} className="inline-flex items-center gap-1.5">
+              <KindSwatch kind={kind} />
+              {KIND_LABELS[kind]}
+            </span>
+          ))}
+          {metric === "gross" && data.some((d) => d.lastYear !== null) && (
+            <span className="inline-flex items-center gap-1.5">
+              <svg
+                width={12}
+                height={10}
+                viewBox="0 0 12 10"
+                aria-hidden="true"
+                className="flex-none"
+              >
+                <line
+                  x1={0}
+                  y1={5}
+                  x2={12}
+                  y2={5}
+                  stroke={CHART.previous}
+                  strokeWidth={2}
+                  strokeDasharray="4 3"
+                />
+              </svg>
+              Last year
+            </span>
           )}
         </div>
-      </CardContent>
-    </Card>
+        {assumption && summary && (
+          <p className="m-0">
+            {assumption} Full-year {METRIC_LABELS[metric].toLowerCase()}{" "}
+            {formatCompact(
+              metric === "totalEmploymentCost"
+                ? summary.bridge.fullYear.totalEmploymentCost
+                : summary.bridge.fullYear[metric],
+              currency,
+            )}
+            .
+          </p>
+        )}
+      </div>
+    </Panel>
   );
 }

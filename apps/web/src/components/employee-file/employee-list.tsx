@@ -4,10 +4,9 @@ import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { keepPreviousData } from "@tanstack/react-query";
-import { AlertTriangle, ArrowDown, ArrowUp, Copy } from "lucide-react";
+import { ArrowDown, ArrowUp } from "lucide-react";
 import { trpc } from "@/lib/trpc";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Badge, Notice, PageHeader, Panel, PanelBar, PanelFoot } from "@/components/cv";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -22,8 +21,14 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { useEmployeeColumns } from "@/hooks/use-employee-columns";
 import { formatCount, formatMoney, formatRatio } from "@/components/annual/annual-utils";
 import { EmployeeColumnPicker } from "@/components/employee-file/employee-column-picker";
-import { EmployeeListFilters } from "@/components/employee-file/employee-list-filters";
-import { EmployeeListFooter } from "@/components/employee-file/employee-list-footer";
+import {
+  EmployeeListFilters,
+  EmployeeListTableFilters,
+} from "@/components/employee-file/employee-list-filters";
+import {
+  EmployeeListFooter,
+  EmployeeListNotes,
+} from "@/components/employee-file/employee-list-footer";
 import { COMPANY_WIDE_NOTICE } from "@/components/employee-file/employee-file-text";
 import { employeeFileHref } from "@/components/employee-file/employee-id-url";
 import {
@@ -47,11 +52,13 @@ import {
   parseSort,
   parseYear,
   scopeSearch,
+  type ListScope,
   type ListSort,
 } from "@/components/employee-file/employee-list-url";
 
 /**
- * The employee list (steps E2-E4).
+ * The employee list (steps E2-E4), on Ink & Signal (canvas board "Employee
+ * File: list").
  *
  * **The parent owns the URL.** Range, year, scope, sort and page live in the
  * query string so a view can be linked and reopened exactly as it was, and
@@ -67,7 +74,30 @@ import {
  * The server resolves its own defaults for year, cadence and currency — the
  * params stay absent until the user picks something, so the list does not fetch
  * twice on load the way the annual dashboard used to.
+ *
+ * The rebuild is presentation only: `PageHeader`, a toolbar for what chooses
+ * the set, the table in a `Panel flush` with its filters in the `PanelBar` and
+ * its pagination in the `PanelFoot`. Every query, handler, figure and formatter
+ * is the one that was here before.
  */
+
+/**
+ * The title names the set on screen, because the three scopes are three
+ * different sets and only one of them is "paid in" the range. "Employees paid
+ * in 2026" over a list of everyone on record would be the same class of
+ * mislabel as a page-sorted column presented as the order of the whole set.
+ */
+function listTitle(scope: ListScope, rangeLabel: string): string {
+  switch (scope) {
+    case "currently_employed":
+      return "Employees currently employed";
+    case "everyone_on_record":
+      return "Everyone on record";
+    default:
+      return `Employees paid in ${rangeLabel}`;
+  }
+}
+
 export function EmployeeList() {
   const router = useRouter();
   const pathname = usePathname();
@@ -134,10 +164,7 @@ export function EmployeeList() {
     () => (data?.dimensions ?? []).map((dimension) => dimension.key),
     [data?.dimensions],
   );
-  const dimensionCols = useMemo(
-    () => dimensionColumns(rows, dimensionKeys),
-    [rows, dimensionKeys],
-  );
+  const dimensionCols = useMemo(() => dimensionColumns(rows, dimensionKeys), [rows, dimensionKeys]);
 
   /**
    * Client-side sort, for the columns the server cannot order.
@@ -180,31 +207,54 @@ export function EmployeeList() {
 
   const columnDefs = EMPLOYEE_COLUMNS.filter((column) => visible.includes(column.key));
   const fileSearch = scopeSearch(new URLSearchParams(searchParams.toString()));
+  const currencyCode = data?.scope.currency ?? "USD";
+
+  /**
+   * What the foot says the table is ordered by. A client-side sort of one page
+   * out of many says so, in the same words the header uses.
+   */
+  const sortLabel = useMemo(() => {
+    if (clientSort) {
+      const label = clientSort.key.startsWith("dim:")
+        ? clientSort.key.slice("dim:".length)
+        : (EMPLOYEE_COLUMNS.find((column) => column.key === clientSort.key)?.label ?? null);
+      if (!label) return null;
+      return wholeSet ? label : `${label}, this page only`;
+    }
+    return EMPLOYEE_COLUMNS.find((column) => column.sort === sort)?.label ?? null;
+  }, [clientSort, sort, wholeSet]);
+
+  /**
+   * The count line above the table. The flagged count can only be taken from
+   * the rows on screen — `employeeFile.list` returns one count per scope, not a
+   * count of flagged people — so it says "on this page" unless the page is the
+   * whole set. Filtering to "Critical only" is the way to the true number.
+   */
+  const flaggedOnPage = sorted.filter((row) => row.criticalFlags > 0).length;
+  const countLine = data
+    ? `${formatCount(total)} ${total === 1 ? "person" : "people"} · ${formatCount(flaggedOnPage)}${
+        wholeSet ? "" : " on this page"
+      } with a critical flag`
+    : "Listing employees…";
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold">Employee File</h2>
-          {/* One sentence, because "manager" implies a scoping that does not
-              exist in this product. Cheaper than a support ticket. */}
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{COMPANY_WIDE_NOTICE}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <EmployeeColumnPicker
-            rows={rows}
-            visible={visible}
-            onToggle={toggle}
-            onReset={reset}
-          />
-        </div>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        eyebrow="Employee File"
+        title={listTitle(scope, rangeLabel)}
+        /* One sentence, because "manager" implies a scoping that does not
+           exist in this product. Cheaper than a support ticket. */
+        lede={COMPANY_WIDE_NOTICE}
+        actions={
+          <EmployeeColumnPicker rows={rows} visible={visible} onToggle={toggle} onReset={reset} />
+        }
+      />
 
       {data?.scope.defaultedToLatestData && data.scope.latestDataLabel && (
-        <p className="text-sm text-muted-foreground">
-          Showing {data.scope.label}, the latest year with data (to{" "}
-          {data.scope.latestDataLabel}) rather than the year containing today.
-        </p>
+        <Notice tone="info">
+          Showing {data.scope.label}, the latest year with data (to {data.scope.latestDataLabel})
+          rather than the year containing today.
+        </Notice>
       )}
 
       <EmployeeListFilters
@@ -217,14 +267,6 @@ export function EmployeeList() {
         onSlotChange={(next) => setParams({ slot: String(next), page: null })}
         query={text}
         onQueryChange={setText}
-        departments={data?.departments ?? []}
-        selectedDepartments={departments ?? []}
-        onDepartmentsChange={(next) =>
-          setParams({ departments: next.length > 0 ? next.join(",") : null, page: null })
-        }
-        dimensions={data?.dimensions ?? []}
-        hasFlag={hasFlag}
-        onHasFlagChange={(next) => setParams({ flag: next ?? null, page: null })}
         scopeOptions={data?.scope.scopeOptions ?? []}
         periodType={data?.scope.periodType ?? "monthly"}
         currency={data?.scope.currency ?? "USD"}
@@ -237,212 +279,239 @@ export function EmployeeList() {
         }
       />
 
-      <Card>
-        <CardContent className="p-0">
-          {listQuery.isPending ? (
-            <div className="space-y-2 p-6">
-              {Array.from({ length: 6 }).map((_, index) => (
-                <Skeleton key={index} className="h-10 w-full" />
-              ))}
-            </div>
-          ) : listQuery.isError ? (
-            <div className="p-6 text-sm text-muted-foreground">
+      <Panel flush>
+        <PanelBar className="justify-between">
+          <p className="m-0 text-[13px] leading-[18px] text-cv-ink-muted">{countLine}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <EmployeeListTableFilters
+              departments={data?.departments ?? []}
+              selectedDepartments={departments ?? []}
+              onDepartmentsChange={(next) =>
+                setParams({ departments: next.length > 0 ? next.join(",") : null, page: null })
+              }
+              dimensions={data?.dimensions ?? []}
+              hasFlag={hasFlag}
+              onHasFlagChange={(next) => setParams({ flag: next ?? null, page: null })}
+              /* One call, so the two filters are written from one snapshot of
+                 the query string rather than two that race. */
+              onClearFilters={() => setParams({ departments: null, flag: null, page: null })}
+            />
+          </div>
+        </PanelBar>
+
+        {listQuery.isPending ? (
+          <div className="flex flex-col gap-2 p-4" aria-busy="true">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <Skeleton key={index} className="h-10 w-full" />
+            ))}
+          </div>
+        ) : listQuery.isError ? (
+          <div className="p-4">
+            <Notice tone="danger">
               Could not list this range&apos;s employees. Reloading usually works.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    {columnDefs.map((column) => {
-                      const active = sort === column.sort && !clientSort;
-                      const clientActive = clientSort?.key === column.key;
-                      /**
-                       * The sort direction, for a screen reader.
-                       *
-                       * The arrows are `aria-hidden`, so without `aria-sort`
-                       * the only indication of which column the table is
-                       * ordered by, and which way, was a glyph announced to
-                       * nobody. Name sorts ascending; every other server sort
-                       * is "biggest first".
-                       */
-                      const ariaSort = clientActive
-                        ? clientSort.desc
-                          ? ("descending" as const)
-                          : ("ascending" as const)
-                        : active
-                          ? column.sort === "name"
-                            ? ("ascending" as const)
-                            : ("descending" as const)
-                          : ("none" as const);
-                      return (
-                        <TableHead
-                          key={column.key}
-                          aria-sort={ariaSort}
-                          className={cn(column.align === "right" && "text-right")}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => onHeaderClick(column.key, column.sort)}
-                            title={column.note}
-                            className="inline-flex items-center gap-1 font-medium hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          >
-                            {column.label}
-                            {active && <ArrowDown className="h-3 w-3" aria-hidden="true" />}
-                            {clientActive &&
-                              (clientSort.desc ? (
-                                <ArrowUp className="h-3 w-3" aria-hidden="true" />
-                              ) : (
-                                <ArrowDown className="h-3 w-3" aria-hidden="true" />
-                              ))}
-                          </button>
-                          {clientActive && !wholeSet && (
-                            <span className="ml-1 text-[10px] font-normal text-muted-foreground">
-                              this page
-                            </span>
-                          )}
-                        </TableHead>
-                      );
-                    })}
-                    {dimensionCols.map((dimension) => (
-                      <TableHead key={dimension.key}>{dimension.key}</TableHead>
-                    ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sorted.length === 0 && (
-                    <TableRow>
-                      <TableCell
-                        colSpan={columnDefs.length + dimensionCols.length}
-                        className="py-10 text-center text-sm text-muted-foreground"
-                      >
-                        Nobody matches this scope and these filters.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                  {sorted.map((row) => {
-                    const status = listStatus(row);
-                    const currencyCode = data?.scope.currency ?? "USD";
+            </Notice>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  {columnDefs.map((column) => {
+                    const active = sort === column.sort && !clientSort;
+                    const clientActive = clientSort?.key === column.key;
+                    /**
+                     * The sort direction, for a screen reader.
+                     *
+                     * The arrows are `aria-hidden`, so without `aria-sort`
+                     * the only indication of which column the table is
+                     * ordered by, and which way, was a glyph announced to
+                     * nobody. Name sorts ascending; every other server sort
+                     * is "biggest first".
+                     */
+                    const ariaSort = clientActive
+                      ? clientSort.desc
+                        ? ("descending" as const)
+                        : ("ascending" as const)
+                      : active
+                        ? column.sort === "name"
+                          ? ("ascending" as const)
+                          : ("descending" as const)
+                        : ("none" as const);
                     return (
-                      <TableRow key={row.externalId}>
-                        {columnDefs.map((column) => (
-                          <TableCell
-                            key={column.key}
-                            className={cn(
-                              column.align === "right" && "text-right tabular-nums",
-                            )}
-                          >
-                            {column.key === "employee" && (
-                              <Link
-                                href={employeeFileHref(row.externalId, fileSearch)}
-                                className="block hover:underline"
-                              >
-                                <span className="font-medium">
-                                  {row.name ?? row.externalId}
-                                </span>
-                                <span className="block text-xs text-muted-foreground">
-                                  {row.externalId}
-                                </span>
-                              </Link>
-                            )}
-                            {column.key === "status" && (
-                              <Badge
-                                variant={status.kind === "active" ? "secondary" : "outline"}
-                                className="font-normal"
-                              >
-                                {status.label}
-                              </Badge>
-                            )}
-                            {column.key === "flags" && (
-                              <span className="inline-flex items-center justify-end gap-2">
-                                {row.criticalFlags > 0 && (
-                                  <span
-                                    className="inline-flex items-center gap-1 text-destructive"
-                                    title={`${row.netExceedsGrossRows} rows with net above gross, ${row.negativeNetRows} with negative net`}
-                                  >
-                                    <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
-                                    {row.criticalFlags}
-                                  </span>
-                                )}
-                                {row.hasDuplicateRows && (
-                                  <span
-                                    className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-500"
-                                    title="More than one row for this employee in some period in range"
-                                  >
-                                    <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-                                  </span>
-                                )}
-                                {row.criticalFlags === 0 && !row.hasDuplicateRows && (
-                                  <span className="text-muted-foreground">—</span>
-                                )}
-                              </span>
-                            )}
-                            {column.key === "department" && row.department}
-                            {column.key === "lastPaidSlot" &&
-                              (row.lastPaidSlotLabel ?? (
-                                <span
-                                  className="text-muted-foreground"
-                                  title="Nothing paid to this employee in the selected range"
-                                >
-                                  Not paid in range
-                                </span>
-                              ))}
-                            {column.key === "latestGross" &&
-                              (row.paidInRange ? (
-                                formatMoney(row.latestGross, currencyCode)
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              ))}
-                            {column.key === "latestNet" &&
-                              (row.paidInRange ? (
-                                formatMoney(row.latestNet, currencyCode)
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              ))}
-                            {column.key === "paidPeriods" && (
-                              <span title="Paid slots of covered slots in range">
-                                {formatCount(row.paidPeriods)} / {formatCount(row.coveredSlots)}
-                              </span>
-                            )}
-                            {column.key === "rangeGross" &&
-                              (row.paidInRange ? (
-                                formatMoney(row.rangeGross, currencyCode)
-                              ) : (
-                                <span className="text-muted-foreground">—</span>
-                              ))}
-                            {column.key === "fte" &&
-                              (row.fte === null || row.fte === undefined ? (
-                                <span
-                                  className="text-muted-foreground"
-                                  title="No register in range carries an FTE for this employee"
-                                >
-                                  —
-                                </span>
-                              ) : (
-                                formatRatio(row.fte)
-                              ))}
-                          </TableCell>
-                        ))}
-                        {dimensionCols.map((dimension) => (
-                          <TableCell key={dimension.key}>
-                            {row.dimensions?.[dimension.key] ?? "—"}
-                          </TableCell>
-                        ))}
-                      </TableRow>
+                      <TableHead
+                        key={column.key}
+                        aria-sort={ariaSort}
+                        className={cn(column.align === "right" && "text-right")}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => onHeaderClick(column.key, column.sort)}
+                          title={column.note}
+                          className="inline-flex items-center gap-1 font-medium text-cv-ink-muted transition-colors duration-[120ms] hover:text-cv-ink focus-visible:shadow-cv-focus-ring focus-visible:outline-none"
+                        >
+                          {column.label}
+                          {active && <ArrowDown className="h-3 w-3" aria-hidden="true" />}
+                          {clientActive &&
+                            (clientSort.desc ? (
+                              <ArrowUp className="h-3 w-3" aria-hidden="true" />
+                            ) : (
+                              <ArrowDown className="h-3 w-3" aria-hidden="true" />
+                            ))}
+                        </button>
+                        {clientActive && !wholeSet && (
+                          <span className="ml-1 text-xs font-normal text-cv-ink-subtle">
+                            this page
+                          </span>
+                        )}
+                      </TableHead>
                     );
                   })}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                  {dimensionCols.map((dimension) => (
+                    <TableHead key={dimension.key}>{dimension.key}</TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sorted.length === 0 && (
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell
+                      colSpan={columnDefs.length + dimensionCols.length}
+                      className="py-10 text-center text-sm leading-5 text-cv-ink-subtle"
+                    >
+                      Nobody matches this scope and these filters.
+                    </TableCell>
+                  </TableRow>
+                )}
+                {sorted.map((row) => {
+                  const status = listStatus(row);
+                  return (
+                    <TableRow key={row.externalId}>
+                      {columnDefs.map((column) => (
+                        <TableCell
+                          key={column.key}
+                          className={cn(
+                            column.align === "right" && "text-right",
+                            // Figures in Geist Mono, tabular and right-aligned;
+                            // the identity and status columns are words.
+                            column.align === "right" && column.key !== "flags" && "cv-num",
+                          )}
+                        >
+                          {column.key === "employee" && (
+                            <Link
+                              href={employeeFileHref(row.externalId, fileSearch)}
+                              className="-mx-1 block rounded-cv-sm px-1 py-0.5 no-underline hover:underline focus-visible:shadow-cv-focus-ring focus-visible:outline-none"
+                            >
+                              <span className="block text-sm font-semibold leading-5 text-cv-ink">
+                                {row.name ?? row.externalId}
+                              </span>
+                              <span className="block font-cv-mono text-xs leading-4 text-cv-ink-subtle">
+                                {row.externalId}
+                              </span>
+                            </Link>
+                          )}
+                          {column.key === "status" && <Badge tone="neutral">{status.label}</Badge>}
+                          {column.key === "flags" && (
+                            <span className="inline-flex items-center justify-end gap-1.5">
+                              {row.criticalFlags > 0 && (
+                                <Badge
+                                  tone="danger"
+                                  icon="alert"
+                                  title={`${row.netExceedsGrossRows} rows with net above gross, ${row.negativeNetRows} with negative net`}
+                                >
+                                  {formatCount(row.criticalFlags)}
+                                </Badge>
+                              )}
+                              {row.hasDuplicateRows && (
+                                <Badge
+                                  tone="warning"
+                                  icon="alert"
+                                  title="More than one row for this employee in some period in range"
+                                >
+                                  Duplicate rows
+                                </Badge>
+                              )}
+                              {row.criticalFlags === 0 && !row.hasDuplicateRows && (
+                                <span className="cv-num text-cv-ink-subtle">0</span>
+                              )}
+                            </span>
+                          )}
+                          {column.key === "department" && row.department}
+                          {column.key === "lastPaidSlot" &&
+                            (row.lastPaidSlotLabel ?? (
+                              <span
+                                className="text-cv-ink-subtle"
+                                title="Nothing paid to this employee in the selected range"
+                              >
+                                Not paid in range
+                              </span>
+                            ))}
+                          {column.key === "latestGross" &&
+                            (row.paidInRange ? (
+                              formatMoney(row.latestGross, currencyCode)
+                            ) : (
+                              <span className="text-cv-ink-subtle">—</span>
+                            ))}
+                          {column.key === "latestNet" &&
+                            (row.paidInRange ? (
+                              formatMoney(row.latestNet, currencyCode)
+                            ) : (
+                              <span className="text-cv-ink-subtle">—</span>
+                            ))}
+                          {column.key === "paidPeriods" && (
+                            <span title="Paid slots of covered slots in range">
+                              {formatCount(row.paidPeriods)} / {formatCount(row.coveredSlots)}
+                            </span>
+                          )}
+                          {column.key === "rangeGross" &&
+                            (row.paidInRange ? (
+                              formatMoney(row.rangeGross, currencyCode)
+                            ) : (
+                              <span className="text-cv-ink-subtle">—</span>
+                            ))}
+                          {column.key === "fte" &&
+                            (row.fte === null || row.fte === undefined ? (
+                              <span
+                                className="text-cv-ink-subtle"
+                                title="No register in range carries an FTE for this employee"
+                              >
+                                —
+                              </span>
+                            ) : (
+                              formatRatio(row.fte)
+                            ))}
+                        </TableCell>
+                      ))}
+                      {dimensionCols.map((dimension) => (
+                        <TableCell key={dimension.key}>
+                          {row.dimensions?.[dimension.key] ?? "—"}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
 
-      <EmployeeListFooter
-        shown={rows.length}
-        total={total}
-        page={data?.page ?? page}
-        pageSize={data?.pageSize ?? 50}
+        {/* No foot until there is a set to describe: "Nobody matches this
+            scope and these filters" under a page of skeletons is a count of a
+            set that has not been counted yet. */}
+        {data && (
+          <PanelFoot>
+            <EmployeeListFooter
+              shown={rows.length}
+              total={total}
+              page={data.page}
+              pageSize={data.pageSize}
+              sortLabel={sortLabel}
+              onPageChange={(next) => setParams({ page: next <= 1 ? null : String(next) })}
+            />
+          </PanelFoot>
+        )}
+      </Panel>
+
+      <EmployeeListNotes
         scope={scope}
         rangeLabel={rangeLabel}
         excludedByScope={data?.excludedByScope ?? 0}
@@ -450,7 +519,6 @@ export function EmployeeList() {
         coveredSlots={data?.scope.coveredSlotIndexes.length ?? 0}
         supersededCount={data?.scope.supersededCount ?? 0}
         departmentFiltered={(departments?.length ?? 0) > 0}
-        onPageChange={(next) => setParams({ page: next <= 1 ? null : String(next) })}
       />
     </div>
   );

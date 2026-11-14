@@ -1,16 +1,6 @@
 /**
- * The Clarivo design-system components the landing page uses, ported to React
- * on the existing Tailwind setup.
- *
- * Only what the page needs: the hand-off's reference bundle also ships
- * TextField and Notice, which no marketing section uses, so they are left
- * unported rather than added speculatively.
+ * The marketing pages' design-system components now live in components/cv, shared with
+ * the app. This module re-exports them so every `from "./ui"` / `from "../ui"` import in
+ * components/marketing keeps working. New code imports from "@/components/cv".
  */
-export { Badge, type BadgeProps } from "./badge";
-export { Button, type ButtonProps } from "./button";
-export { DriftStrip, type DriftStripProps } from "./drift-strip";
-export { Icon, ICONS, type IconName, type IconProps } from "./icon";
-export { Logo, type LogoProps } from "./logo";
-export { SegmentedControl, type SegmentedControlProps, type SegmentedOption } from "./segmented-control";
-export { Stat, type StatProps } from "./stat";
-export { Variance, type VarianceProps } from "./variance";
+export * from "@/components/cv";

@@ -1,17 +1,36 @@
 export const APP_NAME = "Clarivo";
 export const APP_TAGLINE = "Payroll variance analysis, simplified";
+/** Shown at the foot of the side menu. */
+export const APP_RELEASE_LABEL = "Clarivo 1.0 · Beta";
+
 /**
  * `COMPANY_EMPLOYEE_RANGES` was here, and `(main)/settings/page.tsx` was its
  * only consumer. The dropdown it filled was not persisted anywhere — see that
  * file for why the field was dropped rather than wired — so the list went with
  * it instead of becoming a constant nothing reads.
+ *
+ * The redesign still carried the list, because it restyled that form while the
+ * form was still five `useState` literals. The form is wired now and does not
+ * offer the field, so the list stays gone.
  */
 
+/**
+ * The four cadences, in the product's words (design system, Voice and content):
+ * Monthly, Bi-monthly, Bi-weekly, Weekly. The explanation of the two "bi-" cadences
+ * moves to PERIOD_TYPE_HINTS so a select or segmented control can stay short.
+ */
 export const PERIOD_TYPE_LABELS: Record<string, string> = {
   monthly: "Monthly",
+  bi_monthly: "Bi-monthly",
+  bi_weekly: "Bi-weekly",
   weekly: "Weekly",
-  bi_monthly: "Bi-Monthly (Twice a Month)",
-  bi_weekly: "Bi-Weekly (Every 2 Weeks)",
+};
+
+export const PERIOD_TYPE_HINTS: Record<string, string> = {
+  monthly: "Once a month",
+  bi_monthly: "Twice a month",
+  bi_weekly: "Every two weeks",
+  weekly: "Every week",
 };
 
 import { PAY_DETAIL_ROLES } from "./roles";
@@ -44,6 +63,9 @@ export interface NavItem {
 /**
  * Sidebar navigation. Employee File is first, above Dashboard.
  *
+ * Labels follow the design system: sentence case, with the product's own names kept
+ * as names (Employee File, Dashboard, Detailed View).
+ *
  * `NAV_ITEMS` had no gating at all, so every item rendered for every signed-in
  * user. That was harmless while no screen was role-restricted; a viewer who
  * sees an Employee File link gets a FORBIDDEN error on click, so gating has to
@@ -63,10 +85,10 @@ export interface NavItem {
  */
 export const NAV_ITEMS: readonly NavItem[] = [
   { label: "Employee File", href: "/employees", icon: "Users", roles: PAY_DETAIL_ROLES },
-  { label: "Dashboard", href: "/dashboard", icon: "LayoutDashboard" },
-  { label: "Annual Salaries", href: "/annual-salaries", icon: "CalendarRange" },
-  { label: "Detailed View", href: "/detailed", icon: "Table" },
-  { label: "Payroll Periods", href: "/payroll-periods", icon: "Calendar" },
+  { label: "Dashboard", href: "/dashboard", icon: "BarChart3" },
+  { label: "Annual salaries", href: "/annual-salaries", icon: "CalendarRange" },
+  { label: "Detailed View", href: "/detailed", icon: "Columns3" },
+  { label: "Payroll periods", href: "/payroll-periods", icon: "Layers" },
   { label: "Integrations", href: "/integrations", icon: "Plug", plans: INTEGRATION_PLANS },
   { label: "Settings", href: "/settings", icon: "Settings" },
 ];
