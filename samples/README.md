@@ -8,6 +8,7 @@ different jobs.
 | `payroll_june_2026.csv`, `payroll_july_2026.csv` | Two hand-written monthly registers, ~20 people | The comparison pipeline: upload June, then July, then run a comparison |
 | `2025/` | Twelve generated monthly registers, ~150 people — see `2025/README.md` | The annual dashboard: a full year with growth, a restructuring, a merit review and bonuses |
 | `employee-file/` | Three small generated registers | The Employee File's two upload-path traps. Documented below |
+| `au/` | Six hand-written fortnightly registers, 8 people — see `au/README.md` | Australian column vocabulary and the Payday Super check. **Clarivo refuses all six today, and the files are correct** — see `docs/AU_PAYROLL_SPEC.md` |
 
 ## A warning about the 2026 pair
 

@@ -1,0 +1,8 @@
+Card ID,Employee Name,Department,Base Salary,Base Hourly,Overtime (1.5x),Holiday Pay,Holiday Leave Loading,Tool Allowance,Meal Allowance,Total Wages,PAYG Withholding,Salary Sacrifice,Union Fee,Child Support,Total Deductions,Net Pay,Superannuation Guarantee,Employer Additional,FTE,Start Date,Termination Date
+AU-0001,Harriet Okonkwo,Engineering,4615.38,0.00,0.00,0.00,0.00,0.00,0.00,4615.38,920.00,500.00,0.00,0.00,1420.00,3195.38,553.85,0.00,1,2021-02-15,
+AU-0002,Callum Reyes,Operations,0.00,2888.00,570.00,0.00,0.00,48.00,54.00,3560.00,700.00,0.00,0.00,0.00,700.00,2860.00,352.32,0.00,1,2019-07-01,
+AU-0003,Priya Vaidyanathan,Finance,0.00,2052.00,0.00,0.00,0.00,0.00,0.00,2052.00,300.00,0.00,0.00,0.00,300.00,1752.00,246.24,0.00,0.6,2023-03-06,
+AU-0004,Jonas Lindqvist,Sales,3076.92,0.00,0.00,0.00,0.00,0.00,0.00,3076.92,560.00,0.00,0.00,0.00,560.00,2516.92,369.23,0.00,1,2022-11-14,
+AU-0005,Mei-Ling Tan,Engineering,1730.77,0.00,0.00,1730.77,302.88,0.00,0.00,3764.42,880.00,0.00,0.00,0.00,880.00,2884.42,451.73,0.00,1,2020-09-21,
+AU-0007,Noor Abdallah,Finance,2884.62,0.00,0.00,0.00,0.00,0.00,0.00,2884.62,480.00,0.00,24.50,180.00,684.50,2200.12,346.15,50.00,1,2024-01-29,
+AU-0008,Tane Whitiora,Sales,1250.00,0.00,0.00,0.00,0.00,0.00,0.00,1250.00,180.00,0.00,0.00,0.00,180.00,1070.00,150.00,0.00,1,2026-10-26,
