@@ -1,7 +1,7 @@
 # Product Marketing Context
 
-**Document version:** v3
-**Last updated:** 2026-10-30
+**Document version:** v5
+**Last updated:** 2026-11-17
 
 Sources for this draft: `apps/web/src/components/marketing/content.ts` (the shipped copy),
 `docs/landing/content.md` (approved copy, SEO table, keyword map), `docs/landing/README.md`
@@ -19,15 +19,30 @@ It never changes payroll data.
 `SoftwareApplication`, `applicationCategory: BusinessApplication`,
 `applicationSubCategory: Payroll dashboard`.
 **Product type:** B2B SaaS, multi-tenant web app. Public beta.
-**Business model:** Free during the beta, no credit card. When billing starts: Starter €59/mo
-(up to 100 employees), Growth €99/mo (up to 500), Business €299/mo (up to 2,000); Enterprise and
-Bureau on request. Companies that join during the beta pay half for 24 months (€29 / €49 / €149).
-Yearly billing gets two months free. Prices exclude VAT. Every plan includes every feature;
+**Business model:** Free during the beta, no credit card. When billing starts there are **two**
+paid plans, not three: Starter (up to 500 employees) and Growth (up to 2,000), with Enterprise
+and Bureau on request. Companies that join during the beta pay half for 24 months. Yearly
+billing gets two months free (a year is ten times the month). Every plan includes every feature;
 the value metric is employees per uploaded payroll file.
 
-**Currency:** euro only, on every plan, with no local-currency price published. Correct for
-Malta; wrong for the United States, Australia and New Zealand, which are three of the four
-markets in the first campaign. Unresolved — see Learnings.
+| Plan | `/` euro | `/us` dollars | `/au` Australian dollars |
+|---|---|---|---|
+| Starter list / founder, monthly | €29 / €14 | $29 / $14 | A$49 / A$24 |
+| Growth list / founder, monthly | €49 / €24 | $49 / $24 | A$79 / A$39 |
+
+Read a price from `PRICING.plans` and `MARKETS` in
+`apps/web/src/components/marketing/content.ts`, never from this table. The three-plan ladder
+(€59/€99/€299 list, €29/€49/€149 founder) this document carried until v5 was **replaced on
+2026-11-13** and never existed on the site in that form afterwards.
+
+**Tax:** prices exclude VAT on `/` and `/us`, GST on `/au`. The sentence is per market
+(`MARKETS[currency].taxLine`); the shared small print names no tax. "Prices exclude VAT" on the
+US page is still what ships and is probably wrong for a US buyer — flagged, not changed, because
+what a US invoice will say is a commercial decision.
+
+**Currency:** three pages, three currencies, list prices per market rather than conversions —
+euro at `/`, US dollars at `/us`, Australian dollars at `/au`. Australian dollars render **A$**
+and never a bare `$`. New Zealand still has no page and no NZD price.
 
 ## Target Audience
 **Target companies:** small and mid-sized companies that still reconcile payroll in Excel
@@ -157,6 +172,11 @@ tool will change something in payroll.
 **Words to use:** payroll dashboard, salary KPIs, payroll anomaly, variance, pay component,
 column mapping, payroll period, cadence (Monthly, Bi-monthly, Bi-weekly, Weekly), Detailed View,
 employer cost, before payday.
+
+**In Australian copy:** fortnightly, superannuation (or super), Payday Super, qualifying
+earnings, payroll register, GST. Never "bi-weekly" to an Australian reader — but the app's own
+label *is* Bi-weekly, so Australian copy says fortnightly and then names the app's label once,
+rather than pretending the product uses the local word. Never "VAT" on `/au`.
 **Words to avoid:** emoji, exclamation marks, superlatives, "platform", "seamless", "powerful",
 "revolutionary". Never claim a security point whose launch switch is off.
 **Glossary:**
@@ -197,8 +217,22 @@ moved is impossible to miss, in signal rust.
 about data protection.
 
 ## Proof Points
-**Metrics:** None of Clarivo's own. The only numbers on the site are the EY industry figures
-(sourced above) and the sample company's figures, which are fictional and labelled "Sample data".
+**Metrics:** None of Clarivo's own. The only numbers on the site are third-party industry
+figures (sourced below) and the sample company's figures, which are fictional and labelled
+"Sample data".
+
+**Two sets of third-party figures, one per region, and they are not interchangeable:**
+
+| Page | Figures | Source | What they are |
+|---|---|---|---|
+| `/`, `/us` | 1 in 5 payrolls contains errors; $291 average cost per error; 15 corrections per period | EY survey of 508 payroll professionals at US companies with 250–10,000 employees, 2022 | An error rate, measured by survey, in the United States |
+| `/au` | A$453m recovered for underpaid workers in 2025–26; 181,000 workers back-paid; A$217m of it from large employers | Fair Work Ombudsman annual report 2025–26, published 29 October 2026 | Underpayments a regulator recovered, not an error rate |
+
+The Australian figures are **recoveries, not an error rate**, and the page's labels say exactly
+that. Do not convert one into the other, do not quote the EY numbers to an Australian buyer, and
+do not quote the FWO total as "what payroll errors cost Australian employers" — most payroll
+errors are never recovered by a regulator, and recoveries include deliberate underpayment, which
+is not an error at all.
 
 **Scope limit on the EY figures after the ICP change:** the survey covered US companies with
 **250 to 10,000 employees**. Under the old 200-to-2,000 ICP the sample sat squarely on top of
@@ -256,15 +290,19 @@ separate; payroll data never used to train AI models.
 
 | Date | Learning | Evidence | Applies to | Status |
 |------|----------|----------|------------|--------|
+| 2026-11-17 | A market page is a copy decision, not a currency setting. `/au` differs from `/us` in nine places beyond the symbol: list prices with their own numerals, GST for VAT, fortnightly for bi-weekly, Xero/MYOB/Employment Hero as export sources, Australian statistics, a superannuation section, a cross-border sentence under the EU hosting point, its own title and meta description, and one extra FAQ. The mechanism is `MARKETS` in `content.ts` — a market overrides only the lines that are wrong in it, EUR and USD share one object so they cannot drift. | Shipped on `feat/au-market-page`; `apps/web/test/market-copy.test.ts` pins each of them | copywriting, seo, seo-hreflang, pricing, programmatic-seo, content-strategy | active |
+| 2026-11-17 | The EY payroll-error statistic has an Australian replacement, and it is a different kind of number. Fair Work Ombudsman annual report 2025–26: A$453m recovered for more than 181,000 underpaid workers, A$217.3m of it from large employers. These are recoveries a regulator obtained, not a survey error rate, and the labels on the page say so. The alternative, had no Australian source been found, was deleting the statistics from `/au` rather than reusing or vaguening the US ones. | fairwork.gov.au media release for the 2025–26 annual report, 29 Oct 2026 | copywriting, ads, content-strategy, ai-seo | active |
+| 2026-11-17 | Payday Super has been in force since **1 July 2026**: super goes with each pay run, 12% of qualifying earnings, into the fund within seven business days of payday. Australian copy must treat it as something a payroll manager already does, never as "coming in July 2026". Clarivo does **not** check Payday Super compliance and cannot — nothing reads a payment date, a payroll file cannot show that money reached a fund, and `classify.ts` still has no vocabulary for superannuation. What is true today is the generic period-over-period comparison of a super column. | ATO Payday Super guidance; `packages/payroll-core/src/annual/classify.ts` has no super entry (re-checked 2026-11-17) | copywriting, ads, launch, product | active |
+| 2026-11-17 | The landing page's "A pay component dropped to zero" alert card describes a rule the product no longer runs. The zero-value rule was removed in step 5 of the payroll audit fix plan — it produced 3,166 flags across the 2025 samples, all of them that one rule — and the replacement set has no zero check. A component going 2,000 → 0 usually surfaces through the net-change rule instead. The card and the "What payroll anomalies" FAQ answer both still claim it, on all three market pages. Not changed: it is approved copy about product behaviour and the fix belongs in one decision across every page. | `packages/payroll-core/src/anomaly-detector.ts` header comment and rule list, read 2026-11-17 | copywriting, copy-editing, launch, product | watch |
 | 2026-10-30 | ICP widened to small and mid-sized companies. This closes a copy-vs-product gap rather than changing the product: Starter already read "Up to 100 employees" at €59/€29. The home page still says otherwise in three places — the "Built for business owners, managers and payroll admins" section, the Enterprise boundary ("Over 2,000 employees or several countries"), and the sentence the EY figures hang on. | Radwan 2026-10-30; `PRICING.plans` in `content.ts` | copywriting, copy-editing, pricing, cro, content-strategy, llms.txt | active |
 | 2026-10-30 | First campaign markets: United States, Australia, New Zealand, Malta. English-first in all four, so this is regional targeting, not translation. | Radwan 2026-10-30 | seo, seo-hreflang, site-architecture, ads, content-strategy, launch | active |
 | 2026-10-30 | One global English page, no per-market URLs. hreflang needs a distinct URL per annotation, and the only facts that could differ per market today are the currency (one value), the residency claim (one value) and statutory vocabulary the engine does not have — so four pages would be near-duplicates competing with each other on a domain whose sitemap holds five URLs, four of them legal placeholders. Shipped instead as a one-member `en` + `x-default` set on `/`, which is the only remaining lever for "this page is not country-specific" since GSC country targeting was removed in 2022. | `alternates.languages` in `app/(marketing)/page.tsx`; measured sitemap of 5 URLs with `/security`, `/privacy`, `/terms`, `/dpa` all rendering `LegalPagePlaceholder` | seo-hreflang, site-architecture, programmatic-seo, seo | active |
 | 2026-10-30 | The EY figures surveyed US companies with 250 to 10,000 employees, so they no longer span the ICP. Citable as industry research with the sample named; not usable as a claim about a 40-person company's own error rate. | `PROBLEM.source` in `content.ts` | copywriting, copy-editing, ai-seo, ads, content-strategy | active |
 | 2026-10-30 | `classify.ts` has no entry for superannuation, KiwiSaver, ESCT, 401(k), Medicare, PAYG or student loan; FICA, PAYE and garnishment are present. An unrecognised column classifies as uncategorised, so the money lands in the `other_earnings_balance` / `balance` lines, the employer on-cost rate is understated and the statutory line is wrong — and step 4's gate treats an unplaced column as a warning rather than a blocker, so the file imports and shows an unexplained gap instead of refusing. Product gap, not a marketing one; do not fix it from a marketing task. | grep of `packages/payroll-core/src/annual/classify.ts`, 2026-10-30 | product first; then content-strategy, programmatic-seo, competitors, ads before any AU/NZ/US content ships | active |
 | 2026-10-30 | That gap is **not** a live false claim, and the launch switches are the reason: every surface that would expose it — the "Taxes and social security" and "Total employer cost" tiles and the "Data check" alert — sits behind `annualSalariesLive`, which is off. So `annualSalariesLive` is now a market-coverage gate as well as a QA gate. Turning it on while AU or NZ companies are in the beta publishes a statutory breakdown the classifier cannot produce correctly. Add the vocabulary before the switch, not after. | `FEATURES.annual` and `ALERTS.dataCheck` in `content.ts`; `launch.ts`; the same switch filter in `llms.txt/route.ts` | launch, copywriting, seo, product | active |
-| 2026-10-30 | Pricing is euro only. Right for Malta, wrong for the other three markets. `/llms.txt` now states "listed in euro" in words, so an assistant cannot read the € figure and quote "$59" to an American buyer. The page itself still shows only €. | `PRICING.plans` in `content.ts`; the "Markets, languages and currency" section of `llms.txt/route.ts` | pricing, cro, ai-seo, copywriting | active |
+| 2026-10-30 | Pricing is euro only. Right for Malta, wrong for the other three markets. `/llms.txt` now states "listed in euro" in words, so an assistant cannot read the € figure and quote "$59" to an American buyer. The page itself still shows only €. | `PRICING.plans` in `content.ts`; the "Markets, languages and currency" section of `llms.txt/route.ts` | pricing, cro, ai-seo, copywriting | retired 2026-11-17 — `/us` then `/au` shipped with their own list prices; only New Zealand is still quoted in someone else's currency |
 | 2026-10-30 | `fra1` is a genuine trade-off, not a mistake to reverse. Frankfurt serves Malta well and is roughly 250–280 ms RTT from Sydney and Auckland, and "Hosted in the EU" is neutral-or-worse in the US where buyers often prefer US residency. Moving off `fra1` turns `hostedInTheEu` off in the same commit — the switch's own comment requires it, and the claim was false the last time the two drifted apart. No decision taken; nothing changed. | `vercel.json`; the `hostedInTheEu` comment in `launch.ts`; PR #9 | performance, core-web-vitals, copywriting, seo | watch |
-| 2026-10-31 | Per-market URLs: `/` in euro, `/us` in dollars, one shared `Landing` component. Separate URLs, never IP-switching at one URL — Googlebot crawls mostly from US addresses, so serving by location would mean only one version is ever indexed. `/au` and `/nz` wait for AUD and NZD; USD for an Australian is barely better than EUR. | Implemented; hreflang mesh in `components/marketing/landing.tsx` | seo, seo-hreflang, pricing, programmatic-seo | active |
+| 2026-10-31 | Per-market URLs: `/` in euro, `/us` in dollars, one shared `Landing` component. Separate URLs, never IP-switching at one URL — Googlebot crawls mostly from US addresses, so serving by location would mean only one version is ever indexed. `/au` and `/nz` wait for AUD and NZD; USD for an Australian is barely better than EUR. | Implemented; hreflang mesh in `components/marketing/landing.tsx` | seo, seo-hreflang, pricing, programmatic-seo | active — `/au` shipped 2026-11-17 with AUD prices and Australian copy; the rule still holds for `/nz` |
 | 2026-10-31 | A new public marketing route MUST be added to `isPublicRoute` in `middleware.ts`. The matcher skips paths containing a dot, which is why `/robots.txt` and `/llms.txt` need no entry — but `/us` has no dot, so it matched and Clerk redirected every visitor to sign-in. Typecheck passed; only fetching the page found it. | Measured on the dev server before the first commit | seo, site-architecture, any new page | active |
 | 2026-10-31 | Money on the landing page has two mechanisms, not one. Most figures are currency-placeholder strings substituted by `money()`, but the alerts card renders through the `Variance` component, which takes a number and an ISO code via `Intl.NumberFormat`. Grepping for the placeholder is blind to it: it printed a euro amount on the dollar page. Check both when adding a market. | Measured in the rendered HTML of `/us` | copywriting, pricing, seo | active |
 | 2026-10-31 | The EU hosting disclaimer renders on every market page, by Radwan's decision. It states where a customer's payroll data physically goes, which an Australian buyer needs for APP 8 cross-border obligations — a material fact, not a benefit line to show or hide by audience. | Radwan 2026-10-31; enforced structurally by the shared `Landing` component | copywriting, security copy, seo | active |
@@ -275,6 +313,7 @@ separate; payroll data never used to train AI models.
 
 ## Changelog
 
+- v5 (2026-11-17) — `/au` shipped: Australian list prices (A$49/A$79, founders A$24/A$39), GST in place of VAT, fortnightly vocabulary, Xero/MYOB/Employment Hero as export sources, Fair Work Ombudsman figures in place of EY's US survey, and a superannuation section stating what Clarivo does not do about Payday Super. Rewrote Business model, which still carried the three-plan €59/€99/€299 ladder that was replaced on 2026-11-13, and Proof Points, which now carries both regions' figures with the warning that recoveries and error rates are not the same number. Four Learnings rows added, one of them a live copy claim (the zero-value alert card) that the product stopped supporting.
 - v4 (2026-10-31) — Per-market URLs shipped: `/` euro, `/us` dollars, full hreflang mesh, EU disclaimer on both. USD list prices 59/99/299 set by Radwan. Four Learnings rows added, two of them bugs that typecheck could not catch.
 *Newest first. One line per revision: what changed and why.*
 - v3 (2026-10-30) — **Repositioning.** ICP widened from "200 to 2,000 employees" to small and mid-sized companies, and the first campaign markets (US, AU, NZ, Malta) recorded. Rewrote Target Audience, the anti-persona (retired the "under 200 employees" exclusion, which contradicted the Starter plan), Business model (euro-only currency), Competitive Landscape (the vendor set is unverified for the new markets), Proof Points (the EY sample no longer spans the ICP) and Goals. Added eight Learnings rows: the single-global-page decision, the `classify.ts` vocabulary gap and its `annualSalariesLive` consequence, the euro-only price and the `fra1` trade-off. Downstream skills now generate against the wider ICP and the four markets.

@@ -31,6 +31,53 @@ Supporting pages to publish after launch, each linking back to the home page:
 - "How to compare two payroll periods in Excel, and a faster way" (payroll Excel).
 - "Payroll variance report: what to check before you approve payroll" (payroll variance report).
 - "Payroll KPIs every business owner should track" (payroll KPIs).
+## Market pages
+The copy in this document is the page at `/`, in euro. Two other pages render the same sections
+from the same constants, and only the lines listed here differ. Everything not listed is shared,
+which is the point: three pages, one argument.
+
+| | `/` | `/us` | `/au` |
+| hreflang | `en`, `x-default` | `en-US` | `en-AU` |
+| Monthly list price | €29 / €49 | $29 / $49 | A$49 / A$79 |
+| Small print, first sentence | Prices exclude VAT. | Prices exclude VAT. | Prices exclude GST. |
+| Pay cycle, in copy | bi-weekly | bi-weekly | fortnightly |
+| Systems named in step 1 | any system | any system | Xero, MYOB, Employment Hero |
+| Statistics | EY, US companies | EY, US companies | Fair Work Ombudsman, Australia |
+| Extra section | — | — | superannuation under Payday Super |
+| Title and meta description | shared | shared | its own |
+
+Four rules hold for every market page, and the first three were each learned the hard way:
+
+- **It must be listed in `PUBLIC_ROUTE_PATTERNS`.** The middleware matcher catches every path
+  with no dot in it, so an unlisted page answers a 307 to `/sign-in` and cannot be indexed.
+- **No trailing slash**, in the canonical, the sitemap, the Open Graph URL or the hreflang. The
+  server 308s `/au/` to `/au`, and a canonical that redirects was reported as a redirect error.
+- **The hreflang mesh is one constant**, and every member names every other member and itself.
+  A one-way addition makes Google drop the whole set.
+- **"Hosted in the EU" renders on all three.** Payroll data is stored and processed in Frankfurt
+  whoever the customer is. `/au` adds a sentence of context about data leaving Australia instead
+  of removing the point; a claim that appears or disappears by audience is the pattern the launch
+  switches exist to prevent.
+
+**Australia is not `/us` with A$ on it.** Payday Super has been in force since 1 July 2026 —
+super goes out with each pay run, 12% of qualifying earnings, in the employee's fund within
+seven business days of payday — so an Australian payroll manager lives with it already and copy
+that calls it upcoming reads as stale. The page says what Clarivo does about it (a super column
+is compared period over period like any other pay line, and flagged when it appears or stops for
+an employee) and what it does not: **Clarivo does not check Payday Super compliance**, and no
+payroll file can show whether money reached a fund. Do not soften that sentence. `classify.ts`
+has no vocabulary for superannuation at all, nothing in the product reads a payment date, and
+the categorised statutory view sits behind `annualSalariesLive`, which is off.
+
+Xero, MYOB and Employment Hero are named as **systems a register is exported from**, always with
+the fact that Clarivo connects to none of them. No logos, no partnership, no certification and
+no roadmap claim: there is no working connector in the product and the Integrations screen is
+gated.
+
+New Zealand is the next market in the campaign and has no page. Give it NZD list prices and copy
+that is about New Zealand before adding `/nz`, its `en-NZ` annotation and its sitemap entry — a
+page that differs from `/us` in nothing is a near-duplicate competing with its own siblings.
+
 ## Header and hero
 The hero answers three questions in five seconds: what Clarivo is (a payroll dashboard), what it does for you (every salary KPI, mistakes caught before payday) and what to do next (get early access).
 | Element | Copy |
@@ -170,7 +217,12 @@ These are the flat, size-based prices we agreed for Clarivo as a self-serve micr
 | Enterprise | Over 2,000 employees or several countries | On request | Founder discount applies | — | Talk to us (opens an email to hello@clarivo-app.com) |
 
 The US dollar column on `/us` is **$29 / $49** a month list, with the same founder
-discount. These are list prices set per market, not conversions, so there is no FX rate to apply.
+discount. The Australian column on `/au` is **A$49 / A$79** a month list, with founder prices of
+**A$24 / A$39** and years at ten times the month (A$240 / A$390 founder, A$490 / A$790 list).
+These are list prices set per market, not conversions, so there is no FX rate to apply — and the
+Australian numerals are genuinely different numerals, which is why they are held in
+`MARKETS.AUD.plans` rather than in the shared `¤` ladder. Australian dollars render **`A$`** and
+never a bare `$`, so a price on `/au` cannot be read as the US one.
 
 The ladder was rewritten on 2026-11-13: three paid plans became two, the employee bands moved
 down a step (the 500-employee band from €99 to €29, the 2,000 band from €299 to €49), and
@@ -200,6 +252,11 @@ Every plan includes:
 | Plan size line | Clarivo counts the employees in each payroll file you upload. If a file goes over your plan's limit, we invite you to move up a plan; your comparison still runs. |
 | Small print | Prices exclude VAT. Monthly billing, cancel anytime; yearly billing gets two months free. The founder price applies to companies that sign up during the beta and lasts 24 months from the first invoice. Fair use applies to AI summaries. |
 
+The first sentence of the small print is **per market**: `/` and `/us` say "Prices exclude VAT",
+`/au` says "Prices exclude GST", and Australia levies no VAT at all. In the code that sentence
+lives in `MARKETS[currency].taxLine` and the rest of the paragraph in `PRICING.smallPrint`, which
+names no tax, so a new market cannot inherit the wrong one by saying nothing.
+
 Two decisions before publishing: if you set a closing date for founder prices (we discussed 31 January 2027), add it to the badge; and list the Annual Salaries Dashboard only once its fixes are live.
 ## FAQ
 Each question targets a phrase from the keyword map, so the FAQ doubles as long-tail SEO. Keep the answers this short.
@@ -214,6 +271,15 @@ Headline (H2): **Payroll dashboard questions, answered**
 | What happens to my payroll data? | Each company's data is kept separate and encrypted, and it is never used to train AI models. The AI only recognises your columns, writes a plain-language summary and ranks alerts; it never changes a number. |
 | Which pay frequencies and currencies does it handle? | Monthly, bi-monthly, bi-weekly and weekly payrolls, in any currency. Clarivo never adds amounts in different currencies together; each currency is reported on its own. |
 | How much does Clarivo cost? | Clarivo is free during the beta, with no credit card. When billing starts, plans run from €29 to €49 a month by company size, and beta founders pay half: €14 to €24 a month for 24 months. Over 2,000 employees is Enterprise, priced on request. |
+
+`/au` replaces three of those answers and adds a tenth question. The cost answer carries the
+Australian figures (A$49 to A$79, founders A$24 to A$39); the payroll-systems answer names Xero,
+MYOB and Employment Hero and says Clarivo connects to none of them; the pay-frequencies answer
+says fortnightly and tells the reader the app calls that cycle Bi-weekly. The tenth question,
+after the payroll-systems one, is "Does Clarivo check superannuation or Payday Super?" and its
+answer begins "No." Answers are keyed by `id` in `FAQ.items`, so a reworded question cannot
+silently drop a market's answer, and the visible section and the FAQPage markup are built from
+the same `marketFaq()` list.
 
 ## Final call to action and footer
 The page ends on the same single action as the hero, restated as the outcome the visitor wants.
