@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Badge, Button, Icon, SegmentedControl } from "../ui";
-import { PRICING, SITE, money, type Currency } from "../content";
+import { PRICING, SITE, market, money, planPrices, type Currency } from "../content";
 import { launch } from "@/config/launch";
 import { EarlyAccessButton } from "../early-access-button";
 
@@ -22,14 +22,23 @@ import { EarlyAccessButton } from "../early-access-button";
  * The Annual Salaries line in "Every plan includes" is gated: promising it
  * while the dashboard is still being fixed would be selling something that is
  * not ready.
+ *
+ * Two things vary by market and nothing else does. The figures come from
+ * `planPrices()`, because Australia's ladder is different numerals rather than
+ * the same ones under another symbol. The small print opens with the market's
+ * own tax sentence, because "Prices exclude VAT" on an Australian page names a
+ * tax Australia does not levy.
  */
 export function Pricing({ currency }: { currency: Currency }) {
   const [billing, setBilling] = useState<"monthly" | "yearly">("monthly");
+  const { taxLine, cadenceIncludes } = market(currency);
+
+  const stated = [...PRICING.includes, cadenceIncludes ?? PRICING.includesCadence];
 
   const includes = launch.annualSalariesLive
     ? // Restores content.md's order, where the annual line sits fourth.
-      [...PRICING.includes.slice(0, 3), PRICING.includesAnnual, ...PRICING.includes.slice(3)]
-    : PRICING.includes;
+      [...stated.slice(0, 3), PRICING.includesAnnual, ...stated.slice(3)]
+    : stated;
 
   return (
     <section id="pricing" className="scroll-mt-20 border-b border-cv-line bg-cv-surface">
@@ -79,14 +88,17 @@ export function Pricing({ currency }: { currency: Currency }) {
              *
              * Per-market currency: the numerals are stored once and the symbol
              * substituted here, so the euro and dollar ladders cannot drift.
+             * Australia has its own numerals, which `planPrices` resolves —
+             * `/` and `/us` fall through to the plan object itself.
              */
+            const figures = planPrices(plan, currency);
             const cycles = (["monthly", "yearly"] as const).map((cycle) => ({
               cycle,
               founder: money(
-                cycle === "yearly" ? plan.founderYearly : plan.founderMonthly,
+                cycle === "yearly" ? figures.founderYearly : figures.founderMonthly,
                 currency,
               ),
-              list: money(cycle === "yearly" ? plan.listYearly : plan.listMonthly, currency),
+              list: money(cycle === "yearly" ? figures.listYearly : figures.listMonthly, currency),
               per: cycle === "yearly" ? "per year" : "per month",
             }));
 
@@ -169,7 +181,7 @@ export function Pricing({ currency }: { currency: Currency }) {
           {PRICING.sizeLine}
         </p>
         <p className="mt-3 max-w-[75ch] text-xs leading-relaxed text-cv-ink-subtle">
-          {PRICING.smallPrint}
+          {taxLine} {PRICING.smallPrint}
         </p>
       </div>
     </section>
