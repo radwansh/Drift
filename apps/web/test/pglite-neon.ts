@@ -38,6 +38,23 @@ export interface TestDb {
   /** HTTP round trips since the last reset. */
   roundTrips: () => number;
   resetRoundTrips: () => void;
+  /**
+   * Runs `hook` with the SQL text of every statement, immediately before that
+   * statement executes; returns a function that removes it again.
+   *
+   * This is what lets a test interleave one caller's write into the middle of
+   * another's. PGlite is a single backend, so two transactions cannot truly
+   * overlap here — but a read-modify-write loses a concurrent write precisely
+   * *because* its two halves are separate statements, and a hook that writes
+   * between them reproduces that window exactly. A procedure that reads and
+   * writes in one statement has no such gap, which is the thing being
+   * asserted.
+   *
+   * Hooks are suppressed while a hook is running, so a hook may issue queries
+   * without recursing. Use `raw` for them: anything sent through `db` is
+   * counted as a round trip and would spoil a budget assertion around it.
+   */
+  beforeStatement: (hook: (sqlText: string) => void | Promise<void>) => () => void;
   close: () => Promise<void>;
 }
 
@@ -89,6 +106,19 @@ export async function createTestDb(): Promise<TestDb> {
 
   let roundTrips = 0;
 
+  const statementHooks = new Set<(sqlText: string) => void | Promise<void>>();
+  let inHook = false;
+
+  async function runStatementHooks(query: string) {
+    if (inHook || statementHooks.size === 0) return;
+    inHook = true;
+    try {
+      for (const hook of [...statementHooks]) await hook(query);
+    } finally {
+      inHook = false;
+    }
+  }
+
   /**
    * `arrayMode` must be honoured. Neon returns each row as an array of values
    * when it is set, and drizzle relies on that for `db.select()` and the
@@ -97,6 +127,7 @@ export async function createTestDb(): Promise<TestDb> {
    * garbage for those two APIs while `db.execute()` looked fine.
    */
   async function exec(query: string, params: unknown[], arrayMode: boolean) {
+    await runStatementHooks(query);
     const result = await pg.query(query, params as never[], {
       rowMode: arrayMode ? "array" : "object",
       parsers: identityParsers(),
@@ -158,6 +189,10 @@ export async function createTestDb(): Promise<TestDb> {
     roundTrips: () => roundTrips,
     resetRoundTrips: () => {
       roundTrips = 0;
+    },
+    beforeStatement: (hook) => {
+      statementHooks.add(hook);
+      return () => statementHooks.delete(hook);
     },
     close: async () => {
       await pg.close();
