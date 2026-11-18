@@ -72,6 +72,21 @@ describe("public routes", () => {
   });
 
   /**
+   * The Polar webhook, which needed no new entry: `/api/webhooks(.*)` already
+   * covers it. Pinned anyway, because the cost of it silently ceasing to be
+   * public is specific and delayed — Clerk answers a 307 to `/sign-in`, Polar
+   * counts a 3xx as a failed delivery and does not follow it, and after ten
+   * consecutive failures it disables the endpoint and stops sending. Payments
+   * would then stop setting `plan` with nothing in this app reporting it.
+   *
+   * It verifies its own signature, so being public is the point rather than an
+   * oversight.
+   */
+  it("lets the Polar webhook reach its own signature check", () => {
+    expect(matches("/api/webhooks/polar")).toBe(true);
+  });
+
+  /**
    * The upload route is not public, and this pins it: it writes payroll rows
    * and must stay behind sign-in.
    */

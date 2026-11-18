@@ -1,4 +1,4 @@
-import { Badge, Panel } from "@/components/cv";
+import { Badge, Button, Panel } from "@/components/cv";
 import { cn } from "@/lib/utils";
 
 /**
@@ -41,6 +41,13 @@ interface PlanCardProps {
   highlighted?: boolean;
   /** `plan.tag`, where the plan carries one. */
   tag?: string;
+  /**
+   * This plan's Polar checkout link, from `settings.getCheckout`, or null when
+   * the plan has no `POLAR_CHECKOUT_LINK_<PLAN>` configured or the caller may
+   * not buy. Null renders no button at all rather than a disabled one: a
+   * control that cannot ever work is not a state, it is clutter.
+   */
+  checkoutUrl?: string | null;
 }
 
 export function PlanCard({
@@ -54,6 +61,7 @@ export function PlanCard({
   current,
   highlighted,
   tag,
+  checkoutUrl,
 }: PlanCardProps) {
   return (
     <Panel
@@ -109,6 +117,28 @@ export function PlanCard({
       )}
       {footnote && (
         <p className="m-0 mt-2 text-[13px] leading-[18px] text-cv-ink-subtle">{footnote}</p>
+      )}
+      {checkoutUrl && !current && (
+        /**
+         * `secondary`, not `primary`: up to three of these sit side by side and
+         * none of them is "the one main action on the screen", which is what
+         * the design system reserves Ink for. Never `accent` — cobalt is the
+         * marketing site's sign-up call to action.
+         *
+         * The label names the destination and **states no price**. The figures
+         * above it come from `PRICING`; what Polar charges comes from the
+         * product behind the link, and in this repo today those are not the
+         * same number. Writing "Upgrade for EUR 14.00" here would pick one of
+         * three competing stories and put it on a button.
+         */
+        <div className="mt-4 flex flex-col gap-1.5">
+          <Button href={checkoutUrl} variant="secondary" size="sm" iconRight="arrow-right">
+            Continue to checkout
+          </Button>
+          <p className="m-0 text-[13px] leading-[18px] text-cv-ink-subtle">
+            Price, currency and tax are confirmed by Polar at checkout.
+          </p>
+        </div>
       )}
     </Panel>
   );

@@ -2,12 +2,21 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { users, companies } from "@saas/db";
-import { editorProcedure, protectedProcedure, router } from "../trpc";
+import { EDITOR_ROLES, editorProcedure, memberProcedure, protectedProcedure, router } from "../trpc";
 import {
   companySettingsObject,
   mergeCompanySettings,
   unsetCompanySettingsKeys,
 } from "../company-settings";
+import {
+  checkoutLinkForCompany,
+  createCustomerPortalUrl,
+  isPolarConfigured,
+  POLAR_SETTINGS_KEYS,
+  POLAR_SETTINGS_KEY_NAMES,
+  RENAMED_BILLING_KEYS,
+  SELLABLE_PLAN_IDS,
+} from "../polar";
 
 /**
  * The keys of `companies.settings` this endpoint may write.
@@ -17,8 +26,9 @@ import {
  *
  * | key | read by | written by |
  * |---|---|---|
- * | `plan` | `current-account.ts`, `getBillingInfo` | nothing — a direct SQL write |
- * | `stripeSubscriptionId` / `…Status` / `subscriptionPeriodEnd` | `getBillingInfo`, `createBillingPortal` | nothing yet |
+ * | `plan` | `current-account.ts`, `getBillingInfo` | **`api/webhooks/polar`**, on a paid order |
+ * | `polarCustomerId` | `createBillingPortal` | `api/webhooks/polar` |
+ * | `polarSubscriptionId` / `…Status` / `polarCurrentPeriodEnd` / `polarProductId` | `getBillingInfo` | `api/webhooks/polar` |
  * | `integrations` | `integrations.list`, `components/integrations/providers.ts` | `integrations.configure` / `.disconnect` |
  * | `fiscalStartMonth` | `annual.ts`, `employee-file/scope.ts` | `annual.setFiscalStartMonth` |
  * | `aiEnabled` | `annual.ts` | `annual.setAiEnabled` |
@@ -46,10 +56,22 @@ const WRITABLE_SETTINGS_KEYS = ["tolerances"] as const;
  * function into the message.
  */
 const SETTINGS_OWNED_ELSEWHERE = new Map<string, string>([
-  ["plan", "a company's plan is set only by a direct database write"],
-  ["stripeSubscriptionId", "billing state belongs to Stripe, not to this form"],
-  ["stripeSubscriptionStatus", "billing state belongs to Stripe, not to this form"],
-  ["subscriptionPeriodEnd", "billing state belongs to Stripe, not to this form"],
+  ["plan", "a company's plan is set by the Polar webhook on a paid order, not by this form"],
+  ...POLAR_SETTINGS_KEY_NAMES.map(
+    (key): [string, string] => [key, "billing state is written by the Polar webhook, not by this form"],
+  ),
+  /**
+   * The three Stripe-shaped names, refused with the name that replaced each.
+   *
+   * They hold no data in any company — every `companies.settings` was `{}` when
+   * the rename landed — so this is a signpost rather than a compatibility
+   * shim. Without it a caller that still knows the old name gets the generic
+   * "does not write" and has to go and find out why, which is the moment the
+   * rename stops being discoverable.
+   */
+  ...[...RENAMED_BILLING_KEYS].map(
+    ([was, now]): [string, string] => [was, `that key is now "${now}", written by the Polar webhook`],
+  ),
   ["integrations", "use integrations.configure or integrations.disconnect"],
   ["fiscalStartMonth", "use annual.setFiscalStartMonth, which bounds the month and clears the summary memo"],
   ["aiEnabled", "use annual.setAiEnabled"],
@@ -62,6 +84,12 @@ const SETTINGS_OWNED_ELSEWHERE = new Map<string, string>([
  * `settings.plan` and nothing audits it. The replace could not do that (it
  * could only destroy the key), so merging without this check would have opened
  * a hole rather than closed one.
+ *
+ * Now that `api/webhooks/polar` writes `plan`, the distinction this refusal
+ * draws is sharper rather than weaker: the webhook may set it because Polar
+ * has confirmed a payment, and a signed-in admin may not because asking for a
+ * capability is not paying for it. Two paths to one key, one of them gated on
+ * money and the other closed.
  */
 function assertWritableSettingsKey(key: string): void {
   if ((WRITABLE_SETTINGS_KEYS as readonly string[]).includes(key)) return;
@@ -177,46 +205,141 @@ export const settingsRouter = router({
       return updated;
     }),
 
-  getBillingInfo: protectedProcedure.query(async ({ ctx }) => {
-    const currentUser = await ctx.db.query.users.findFirst({
-      where: eq(users.clerkUserId, ctx.userId),
-    });
-    if (!currentUser) throw new TRPCError({ code: "NOT_FOUND" });
-
+  /**
+   * What the billing page renders.
+   *
+   * `memberProcedure` rather than `protectedProcedure`, per CLAUDE.md's
+   * preference for new code: it resolves the caller in middleware, so the user
+   * lookup this procedure used to make itself is gone and `ctx.companyId` is
+   * the same value one query cheaper. Still readable by a viewer — a company's
+   * own plan is not pay detail.
+   *
+   * `portalAvailable` is computed here rather than guessed at by the page: the
+   * page may only offer a "manage billing" control when there is a real portal
+   * behind it, which needs both an access token on this deployment and a Polar
+   * customer recorded against this company. Neither is true anywhere today.
+   */
+  getBillingInfo: memberProcedure.query(async ({ ctx }) => {
     const company = await ctx.db.query.companies.findFirst({
-      where: eq(companies.id, currentUser.companyId),
+      where: eq(companies.id, ctx.companyId),
     });
     if (!company) throw new TRPCError({ code: "NOT_FOUND" });
 
-    const settings = company.settings as Record<string, unknown>;
+    const settings = (company.settings ?? {}) as Record<string, unknown>;
+    const customerId = (settings[POLAR_SETTINGS_KEYS.customerId] as string) ?? null;
+
     return {
-      subscriptionId: (settings.stripeSubscriptionId as string) ?? null,
-      status: (settings.stripeSubscriptionStatus as string) ?? "inactive",
+      subscriptionId: (settings[POLAR_SETTINGS_KEYS.subscriptionId] as string) ?? null,
+      status: (settings[POLAR_SETTINGS_KEYS.subscriptionStatus] as string) ?? "inactive",
       plan: (settings.plan as string) ?? "free",
-      periodEnd: (settings.subscriptionPeriodEnd as string) ?? null,
+      periodEnd: (settings[POLAR_SETTINGS_KEYS.currentPeriodEnd] as string) ?? null,
+      /** Whether `createBillingPortal` can actually produce a URL. */
+      portalAvailable: isPolarConfigured() && customerId !== null,
     };
   }),
 
-  createBillingPortal: protectedProcedure
-    .input(z.object({ returnUrl: z.string().url().default("/settings") }))
+  /**
+   * A real Polar customer-portal session, or nothing at all.
+   *
+   * **What this replaced.** It returned
+   * `https://billing.stripe.com/session/<subscription id>`, assembled by string
+   * concatenation, or Stripe's home page when there was no subscription — which
+   * was every company, since nothing has ever written a subscription id. That
+   * URL has never resolved. It is the same invention as the four paid invoices
+   * that were deleted from the billing page, in a procedure instead of in JSX.
+   *
+   * **Why a session and not a link.** Polar's portal can be reached two ways: a
+   * customer asks for a one-time code at `polar.sh/<org>/portal`, or the app
+   * creates an authenticated session with `POST /v1/customer-sessions/` and
+   * gets back a `customer_portal_url` that opens straight into the right
+   * account. Only the second is honest from a screen that already knows who is
+   * signed in — and only the second can be produced at all without knowing the
+   * organisation slug, which this deployment is not told.
+   *
+   * **`url` is nullable, and a null is a normal answer**, not an error. No
+   * token, no customer, or Polar unreachable all return `{ url: null }` with a
+   * reason, and the page keeps the sentence it already had: billing is handled
+   * by a person, at an address that works. Throwing would put a red notice on a
+   * billing page to say a feature nobody has configured is not configured.
+   *
+   * **`editorProcedure`, where this used to be `protectedProcedure`.** The
+   * portal cancels subscriptions and changes the payment method, so it is a
+   * company-wide write by any reading of CLAUDE.md's table, and a viewer should
+   * not be able to open one.
+   */
+  createBillingPortal: editorProcedure
+    .input(z.object({ returnUrl: z.string().url().optional() }))
     .mutation(async ({ ctx, input }) => {
-      const currentUser = await ctx.db.query.users.findFirst({
-        where: eq(users.clerkUserId, ctx.userId),
-      });
-      if (!currentUser) throw new TRPCError({ code: "NOT_FOUND" });
-
       const company = await ctx.db.query.companies.findFirst({
-        where: eq(companies.id, currentUser.companyId),
+        where: eq(companies.id, ctx.companyId),
+        columns: { settings: true },
       });
       if (!company) throw new TRPCError({ code: "NOT_FOUND" });
 
-      const settings = company.settings as Record<string, unknown>;
-      const subscriptionId = settings.stripeSubscriptionId as string;
-
-      if (!subscriptionId) {
-        return { url: "https://billing.stripe.com" };
+      if (!isPolarConfigured()) {
+        return { url: null, reason: "not_configured" as const };
       }
 
-      return { url: `https://billing.stripe.com/session/${subscriptionId}` };
+      const settings = (company.settings ?? {}) as Record<string, unknown>;
+      const customerId = settings[POLAR_SETTINGS_KEYS.customerId];
+      if (typeof customerId !== "string" || customerId.length === 0) {
+        // Nothing has been bought, so Polar holds no customer for this company
+        // and there is no portal to open. The previous code answered Stripe's
+        // home page here, which is the case this nullable return exists for.
+        return { url: null, reason: "no_customer" as const };
+      }
+
+      const url = await createCustomerPortalUrl(customerId, input.returnUrl);
+      return url === null
+        ? { url: null, reason: "unavailable" as const }
+        : { url, reason: null };
     }),
+
+  /**
+   * The checkout link for each plan that has one.
+   *
+   * **One link per plan, and only the plans that are configured.** Polar's
+   * Checkout Links are per product: the Starter link is Starter, monthly, in
+   * EUR, and pointing Growth at it would sell the Starter product at the
+   * Starter price under a Growth heading. So each plan reads its own
+   * `POLAR_CHECKOUT_LINK_<PLAN>` variable and a plan without one returns null —
+   * which is every plan until somebody sets them, and is why this is safe to
+   * ship before the pricing question is settled.
+   *
+   * **This endpoint states no price.** It returns a URL and nothing else. What
+   * a plan costs is whatever Polar's checkout says when it opens, and the three
+   * figures in this repo's orbit — the €29 the live link charges, the €14
+   * founder price the marketing site promises, and "free during the beta" on
+   * the billing page — are not reconciled here and must not be assumed by
+   * anything downstream of it.
+   *
+   * `memberProcedure` with the role checked in the body, rather than
+   * `editorProcedure`: a viewer opening the billing page should see the plans
+   * and a line telling them who can buy, not a FORBIDDEN error where the page
+   * should be. `canCheckout` is that distinction, and the links are withheld
+   * from a viewer rather than merely hidden by the page.
+   */
+  getCheckout: memberProcedure.query(({ ctx }) => {
+    const canCheckout = EDITOR_ROLES.includes(
+      ctx.currentUser.role as (typeof EDITOR_ROLES)[number],
+    );
+
+    const plans = SELLABLE_PLAN_IDS.map((plan) => {
+      const link = checkoutLinkForCompany(plan, ctx.companyId);
+      return { plan, url: canCheckout ? link : null, available: link !== null };
+    });
+
+    return {
+      canCheckout,
+      /**
+       * Whether this *deployment* can sell anything, independent of who is
+       * asking. Derived from `available` rather than from `url`, which a
+       * viewer never receives: computing it from `url` would tell every viewer
+       * that billing is unconfigured, and the page would then explain the
+       * wrong reason they cannot buy.
+       */
+      configured: plans.some((entry) => entry.available),
+      plans,
+    };
+  }),
 });

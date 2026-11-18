@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, DriftStrip, Notice, PageHeader, Panel } from "@/components/cv";
+import { Badge, Button, DriftStrip, Notice, PageHeader, Panel } from "@/components/cv";
 import { PlanCard } from "@/components/settings/billing-card";
 import {
   LIST_CURRENCY,
@@ -37,22 +37,55 @@ import { trpc } from "@/lib/trpc";
  * 3. **The ladder is read from `PRICING`**, through
  *    `components/settings/pricing-ladder.ts`, never retyped.
  *
- * There is no payment-method panel and no "Manage subscription" button.
- * Neither this page nor the router knows a payment method, and
- * `settings.createBillingPortal` does not create a portal session — it returns
- * `https://billing.stripe.com/session/<subscription id>`, assembled by string
- * concatenation, or Stripe's home page when there is no subscription. A portal
- * session has to be created through Stripe's API, there is no Stripe
- * dependency in the repo to do that with, and no company has a subscription id
- * in the first place. A button here would point at something that does not
- * exist, which is the same invention as the four invoices.
+ * **Billing is Polar now, and the same rule governs every control.** A link
+ * appears on this page only when something real is behind it:
+ *
+ * - **"Manage billing"** renders only when `getBillingInfo` reports
+ *   `portalAvailable`, which needs both a Polar access token on this deployment
+ *   and a Polar customer recorded against this company. Clicking it creates a
+ *   real customer-portal session through Polar's API and follows the URL Polar
+ *   answers. It replaces no button — there was none, because
+ *   `createBillingPortal` used to return
+ *   `https://billing.stripe.com/session/<subscription id>`, concatenated from a
+ *   subscription id no company has ever had, and that URL has never resolved.
+ * - **"Continue to checkout"** renders on a plan card only when that plan has a
+ *   `POLAR_CHECKOUT_LINK_<PLAN>` configured and the caller may buy. One link
+ *   per plan: Polar's Checkout Links are per product, so there is no single
+ *   link that covers the ladder.
+ *
+ * Neither is configured anywhere today, so this page still renders exactly as
+ * it did — which is the point of checking rather than assuming.
+ *
+ * **The figures above a checkout button are not a promise about what Polar will
+ * charge.** `PRICING` says €29 list and €14 founder, this page says the product
+ * is free during the beta, and the Starter checkout that exists charges €29.
+ * Those are three different stories and resolving them is a pricing decision,
+ * not a code change, so nothing here is written as though one of them were
+ * settled: the button states no figure and says the price is confirmed at
+ * checkout.
  */
 export default function BillingPage() {
   const billing = trpc.settings.getBillingInfo.useQuery();
+  const checkout = trpc.settings.getCheckout.useQuery();
   const ladder = pricingLadder();
+
+  /**
+   * Opening the portal is a mutation because it creates a session at Polar.
+   * The redirect happens here rather than server-side: the URL is short-lived
+   * and single-use, so it is followed immediately and never stored or rendered.
+   */
+  const portal = trpc.settings.createBillingPortal.useMutation({
+    onSuccess: (result) => {
+      if (result.url) window.location.href = result.url;
+    },
+  });
 
   const plan = parsePlan(billing.data?.plan);
   const unrecognised = billing.data !== undefined && plan === null;
+
+  /** A plan's checkout link, or null — the page never builds one itself. */
+  const checkoutUrlFor = (rungId: typeof ladder[number]["id"]): string | null =>
+    checkout.data?.plans.find((entry) => entry.plan === rungId)?.url ?? null;
 
   return (
     <div className="space-y-6">
@@ -133,6 +166,36 @@ export default function BillingPage() {
               </a>{" "}
               to change plan, ask about an invoice, or close the account.
             </p>
+
+            {billing.data.portalAvailable && (
+              /* Only when Polar holds a customer for this company AND this
+                 deployment has a token to ask with. Both are false everywhere
+                 today, so nothing renders — which is the honest result, not a
+                 missing feature. */
+              <div className="flex flex-col gap-1.5">
+                <div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => portal.mutate({})}
+                    loading={portal.isPending}
+                  >
+                    Manage billing
+                  </Button>
+                </div>
+                {portal.data?.url === null && (
+                  <p className="m-0 text-[13px] leading-[18px] text-cv-ink-subtle">
+                    Polar could not open a billing session just now. Write to {SITE.email} and it
+                    will be handled directly.
+                  </p>
+                )}
+                {portal.error && (
+                  <p className="m-0 text-[13px] leading-[18px] text-cv-ink-subtle">
+                    {portal.error.message}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </Panel>
       )}
@@ -158,6 +221,14 @@ export default function BillingPage() {
             Plans
           </h3>
           <p className="m-0 mt-1 text-sm text-cv-ink-muted">By employee count, per company.</p>
+          {/* Said only when there is something a viewer is being kept from.
+              With no checkout configured, nobody can buy from this screen and
+              the role is not the reason, so the line would mislead. */}
+          {checkout.data?.configured === true && checkout.data.canCheckout === false && (
+            <p className="m-0 mt-1 text-[13px] leading-[18px] text-cv-ink-subtle">
+              An admin or manager can change the plan for this company.
+            </p>
+          )}
         </div>
 
         <div className="flex flex-col gap-6">
@@ -175,6 +246,7 @@ export default function BillingPage() {
                 current={plan !== null && rung.id === plan}
                 highlighted={rung.highlighted}
                 tag={rung.tag}
+                checkoutUrl={checkoutUrlFor(rung.id)}
               />
             ))}
           </div>
