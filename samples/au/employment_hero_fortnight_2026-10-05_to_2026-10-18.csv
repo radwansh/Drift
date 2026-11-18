@@ -1,0 +1,8 @@
+Location,Employee Id,Employee Name,Hours,Gross Earnings,Pre Tax Deductions,Tax Exempt Earnings,Taxable Earnings,PAYG,STSL,Super Guarantee (SG),Employer Contribution,Post Tax Deductions,Net Earnings,Gross Plus Super
+Sydney,AU-0001,Harriet Okonkwo,76.00,4615.38,500.00,0.00,4115.38,920.00,0.00,553.85,0.00,0.00,3195.38,5169.23
+Melbourne,AU-0002,Callum Reyes,82.00,3310.50,0.00,32.50,3278.00,620.00,0.00,352.32,0.00,0.00,2690.50,3662.82
+Sydney,AU-0003,Priya Vaidyanathan,45.60,2052.00,0.00,0.00,2052.00,300.00,0.00,246.24,0.00,0.00,1752.00,2298.24
+Brisbane,AU-0004,Jonas Lindqvist,76.00,4576.92,0.00,0.00,4576.92,1010.00,0.00,549.23,0.00,0.00,3566.92,5126.15
+Sydney,AU-0005,Mei-Ling Tan,76.00,3461.54,0.00,0.00,3461.54,700.00,120.00,415.38,0.00,0.00,2641.54,3876.92
+Melbourne,AU-0006,Dougal Ferrier,56.00,4120.00,0.00,0.00,4120.00,1050.00,0.00,268.80,0.00,0.00,3070.00,4388.80
+Sydney,AU-0007,Noor Abdallah,76.00,2884.62,0.00,0.00,2884.62,480.00,0.00,346.15,50.00,204.50,2200.12,3280.77

@@ -19,8 +19,18 @@ import type {
  * collect.
  */
 
-/** The classifier rule that marks a one-off earning (retro, severance, payout). */
-const ONE_OFF_RULES = new Set(["one-off-earning", "paid-leave"]);
+/**
+ * The classifier rules that mark a one-off earning (retro, severance, payout).
+ *
+ * `termination-pay` joined them when the Australian vocabulary split the
+ * leaving money out of `one-off-earning`: a severance, a notice payment, a
+ * leave payout, an unused-leave payout, a redundancy and an ETP all answer
+ * `termination-pay` now, and every one of them is the shape of a final
+ * settlement. Keying on the rule rather than the category is what makes that a
+ * one-line change — `other_earning` alone would also catch a retro, which is
+ * not a settlement.
+ */
+const ONE_OFF_RULES = new Set(["one-off-earning", "paid-leave", "termination-pay"]);
 
 /**
  * A name reduced to something comparable: lower case, no diacritics, no

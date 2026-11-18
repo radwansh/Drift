@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { eq, and, desc, like, sql } from "drizzle-orm";
-import { annualAuditLog, componentCategories, payrollPeriods, uploadSessions, users } from "@saas/db";
+import { annualAuditLog, companies, componentCategories, payrollPeriods, uploadSessions, users } from "@saas/db";
 import { ColumnRole } from "@saas/types";
 import {
   classifyComponent,
@@ -191,8 +191,25 @@ export const payrollPeriodsRouter = router({
       currencyCode: z.string().length(3).default("USD"),
       controlTotalGross: z.number().finite().nullish(),
       controlTotalNet: z.number().finite().nullish(),
+      /**
+       * The period being uploaded, for the Payday Super check: it needs the
+       * dates to know the financial year, whether the period is after Payday
+       * Super commenced on 1 July 2026, and whether somebody was hired inside
+       * it. Optional, because the check is a report and the panel it feeds
+       * must not start failing for a caller that does not send them.
+       */
+      periodStart: z.string().date().nullish(),
+      periodEnd: z.string().date().nullish(),
     }))
     .mutation(async ({ ctx, input }) => {
+      // The **company's** currency, not the period's: section 1.2 of
+      // `docs/AU_PAYROLL_SPEC.md`. `input.currencyCode` is what the admin
+      // chose for this upload, and the two can disagree.
+      const [companyRow] = await ctx.db
+        .select({ currencyCode: companies.currencyCode })
+        .from(companies)
+        .where(eq(companies.id, ctx.companyId));
+
       const validation = validateRows(input.rows, input.mappings, {
         currencyCode: input.currencyCode,
         controlTotals: {
@@ -200,6 +217,13 @@ export const payrollPeriodsRouter = router({
           net: input.controlTotalNet,
         },
         answeredCategories: await answeredCategories(ctx.db, ctx.companyId, input.mappings),
+        paydaySuper:
+          input.periodStart && input.periodEnd
+            ? {
+                company: { currencyCode: companyRow?.currencyCode ?? null },
+                period: { start: input.periodStart, end: input.periodEnd },
+              }
+            : undefined,
       });
 
       return {
@@ -215,6 +239,7 @@ export const payrollPeriodsRouter = router({
         controlTotals: validation.controlTotals,
         controlTotalsMissing: validation.controlTotalsMissing,
         openQuestions: validation.openQuestions,
+        paydaySuper: validation.paydaySuper,
       };
     }),
 

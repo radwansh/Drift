@@ -23,7 +23,7 @@ import {
   type DepartmentTotalsInput,
   fiscalYearInterval,
   fiscalYearOf,
-  normaliseFiscalStartMonth,
+  resolveFiscalStartMonth,
 } from "@saas/payroll-core";
 import { generateAnnualInsights, DEFAULT_MODEL, isAiAvailable, type AnnualInsightPayload } from "@saas/ai";
 import { memberProcedure, editorProcedure, payDetailProcedure, router, type MemberContext } from "../trpc";
@@ -436,7 +436,11 @@ async function buildSummaryContext(ctx: MemberContext, input: SummaryInput): Pro
   const companyRow = companyRows[0];
   const companyCurrency = companyRow?.currencyCode;
   const companySettings = (companyRow?.settings ?? {}) as { fiscalStartMonth?: number };
-  const fiscalStartMonth = normaliseFiscalStartMonth(companySettings.fiscalStartMonth);
+  // July for an Australian company, January for everyone else — and whatever
+  // the company has stored wins over both. `resolveFiscalStartMonth` is the
+  // only change: every boundary still comes from `annual/fiscal.ts`, so there
+  // is no second year model to keep in step.
+  const fiscalStartMonth = resolveFiscalStartMonth(companySettings.fiscalStartMonth, companyRow);
 
   // Keep only the periods that fall in this fiscal year, then order cadences and
   // currencies by how often they appear, so index 0 is the most frequent.
@@ -764,11 +768,16 @@ export const annualRouter = router({
             AND period_end < ${`${year + 2}-01-01`}::date
         `),
         ctx.db.select().from(componentCategories).where(eq(componentCategories.companyId, companyId)),
-        ctx.db.select({ settings: companies.settings }).from(companies).where(eq(companies.id, companyId)),
+        // `currencyCode` rides along in the same batch, for the fiscal default
+        // below: it costs no round trip and the alternative is a second query.
+        ctx.db
+          .select({ settings: companies.settings, currencyCode: companies.currencyCode })
+          .from(companies)
+          .where(eq(companies.id, companyId)),
       ]);
 
       const settings = (companyRows[0]?.settings ?? {}) as { fiscalStartMonth?: number };
-      const fiscalStartMonth = normaliseFiscalStartMonth(settings.fiscalStartMonth);
+      const fiscalStartMonth = resolveFiscalStartMonth(settings.fiscalStartMonth, companyRows[0]);
 
       const setups = parseRows(SetupRowSchema, setupRes.rows, "setup").filter(
         (r) => fiscalYearOf(r.periodEnd, fiscalStartMonth) === year,

@@ -313,7 +313,40 @@ interface RoleRule {
   /** All of these must appear in the normalised header, in any order. */
   words: readonly string[];
   role: SuggestedRole;
+  /**
+   * Any one of these vetoes the rule. For a word that names both a record and
+   * an amount — `termination` — this is what keeps the money columns out.
+   */
+  unless?: readonly string[];
+  /** Skipped when the company is Australian. See `AU_ONLY_COLLISIONS`. */
+  notForAustralia?: boolean;
 }
+
+/**
+ * Words that mean the column holds an amount, not a record.
+ *
+ * `{ words: ["termination"] }` claimed `Unused Annual Leave on Termination`,
+ * `Annual Leave Loading on Termination` and `Employment Termination Payment` —
+ * all money — and `suggestColumnRole` runs **before** `classifyComponent`, with
+ * a snapshot role winning, so those columns never reached the classifier at
+ * all. `readDateColumn` reads a bare number between 20,000 and 80,000 as an
+ * Excel serial, so an ETP of `40000` was written as the termination date
+ * `2009-07-06` and `52500.50` as `2043-09-26`. That is not cosmetic: the
+ * termination date drives the leaver checks and the headcount roll-forward
+ * (spec 9.3).
+ *
+ * A date word still wins, through the narrower `["termination", "date"]` rule
+ * declared above the vetoed one, so `Termination Date` is unaffected — and so
+ * is a bare `Termination` column, which carries no money word and is a date in
+ * every register that prints it.
+ */
+const MONEY_WORDS: readonly string[] = [
+  "pay", "payment", "payments", "paid", "amount", "amounts", "value",
+  "leave", "loading", "lump", "sum", "etp", "unused", "redundancy", "severance",
+  "gratuity", "allowance", "benefit", "benefits", "entitlement", "entitlements",
+  "balance", "accrual", "accrued", "super", "superannuation", "tax", "gross", "net",
+  "total", "indemnite", "indemnity", "solde",
+];
 
 /**
  * Header rules, English and French, in the order they are tried.
@@ -327,7 +360,12 @@ interface RoleRule {
  * than no suggestion, because the mapping step is where they stop reading.
  */
 const ROLE_RULES: readonly RoleRule[] = [
-  { words: ["termination"], role: { kind: "snapshotField", field: "termination_date" } },
+  { words: ["termination", "date"], role: { kind: "snapshotField", field: "termination_date" } },
+  {
+    words: ["termination"],
+    unless: MONEY_WORDS,
+    role: { kind: "snapshotField", field: "termination_date" },
+  },
   { words: ["leaving", "date"], role: { kind: "snapshotField", field: "termination_date" } },
   { words: ["leave", "date"], role: { kind: "snapshotField", field: "termination_date" } },
   { words: ["exit", "date"], role: { kind: "snapshotField", field: "termination_date" } },
@@ -347,7 +385,21 @@ const ROLE_RULES: readonly RoleRule[] = [
 
   { words: ["fte"], role: { kind: "snapshotField", field: "fte" } },
   { words: ["full", "time", "equivalent"], role: { kind: "snapshotField", field: "fte" } },
-  { words: ["etp"], role: { kind: "snapshotField", field: "fte" } },
+  /**
+   * `ETP` is *équivalent temps plein* on a French register and an Employment
+   * Termination Payment on an Australian one — a direct collision between two
+   * country vocabularies on a three-letter token, and no word on the header
+   * settles it. So this is the one place section 1's currency proxy genuinely
+   * earns its keep: the rule is skipped for an Australian company and the
+   * column falls through to the classifier, which reads it as termination pay.
+   *
+   * Unknown jurisdiction keeps the French reading, which is what it has always
+   * done. `readFteColumn` refuses an Australian ETP's values anyway
+   * (`fte_looks_like_percent`, `fte_out_of_range`), so the cost of being wrong
+   * this way is a lost column rather than a wrong figure — the opposite of the
+   * `termination` collision above.
+   */
+  { words: ["etp"], notForAustralia: true, role: { kind: "snapshotField", field: "fte" } },
   { words: ["taux", "activite"], role: { kind: "snapshotField", field: "fte" } },
   { words: ["taux", "occupation"], role: { kind: "snapshotField", field: "fte" } },
 
@@ -382,18 +434,36 @@ function normaliseHeader(header: string): string {
 }
 
 /**
+ * What the caller knows about the company, for the one rule that needs it.
+ *
+ * `australian` comes from `isAustralianCompany()` in `src/au/jurisdiction.ts`
+ * and nowhere else — the proxy lives in one named predicate so that adding a
+ * `country` column to `companies` later is a backfill rather than a rewrite.
+ * Omitted means "unknown", and unknown keeps the pre-Australian behaviour.
+ */
+export interface ColumnRoleContext {
+  australian?: boolean;
+}
+
+/**
  * Suggests what a register column records, from its header alone.
  *
  * Only a suggestion: the admin confirms it in the mapping step, which is why a
  * near-miss is left as pay rather than guessed at. Returns `null` for anything
  * no rule claims.
  */
-export function suggestColumnRole(header: string): SuggestedRole | null {
+export function suggestColumnRole(
+  header: string,
+  context: ColumnRoleContext = {},
+): SuggestedRole | null {
   const normalised = normaliseHeader(header);
   if (normalised.length === 0) return null;
   const words = new Set(normalised.split(" "));
   for (const rule of ROLE_RULES) {
-    if (rule.words.every((word) => words.has(word))) return rule.role;
+    if (rule.notForAustralia && context.australian === true) continue;
+    if (!rule.words.every((word) => words.has(word))) continue;
+    if (rule.unless?.some((word) => words.has(word))) continue;
+    return rule.role;
   }
   return null;
 }

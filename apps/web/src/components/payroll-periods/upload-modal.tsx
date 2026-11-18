@@ -27,6 +27,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 import type { PeriodType } from "@saas/types";
 import {
   ambiguityFor,
+  isAustralianCompany,
   suggestColumnRole,
   type Category,
   type SnapshotField,
@@ -310,6 +311,18 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
   const answeredQuery = trpc.payrollPeriods.answeredComponents.useQuery(undefined, {
     enabled: open,
   });
+  /**
+   * The company, for one column-role decision and nothing else.
+   *
+   * `ETP` is *équivalent temps plein* on a French register and an Employment
+   * Termination Payment on an Australian one, and no word on the header settles
+   * it — so `suggestColumnRole` takes the jurisdiction, through the one named
+   * predicate that holds the currency proxy. Read-only, and while the query is
+   * in flight the answer is the pre-Australian one, which is what an unknown
+   * jurisdiction means.
+   */
+  const companyQuery = trpc.settings.getCompany.useQuery(undefined, { enabled: open });
+  const australian = isAustralianCompany(companyQuery.data ?? null);
   const [importError, setImportError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<{
     employeeCount: number;
@@ -353,7 +366,7 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
   const [newComponentName, setNewComponentName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const simulateAiSuggestions = useCallback((headers: string[]) => {
+  const simulateAiSuggestions = useCallback((headers: string[], isAustralian: boolean) => {
     const identifierHeaders: Record<string, Partial<ColumnMappingState>> = {
       "Employee ID": { isEmployeeId: true },
       "Employee Name": { isEmployeeName: true },
@@ -375,7 +388,7 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
       );
       // Step 9: an identifier header wins, then a record role, then pay. The
       // admin confirms whatever this picks in the mapping step.
-      const role = isIdent ? null : suggestColumnRole(trimmed);
+      const role = isIdent ? null : suggestColumnRole(trimmed, { australian: isAustralian });
       const snapshotField = role?.kind === "snapshotField" ? role.field : null;
       const dimensionName = role?.kind === "dimension" ? role.name : null;
       return {
@@ -430,7 +443,7 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
         if (data.length > 0) {
           const headers = data[0];
           setFileData(data);
-          setMappings(simulateAiSuggestions(headers));
+          setMappings(simulateAiSuggestions(headers, australian));
           setValidationResult(null);
           setControlGross("");
           setControlNet("");
@@ -444,7 +457,7 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
         reader.readAsArrayBuffer(file);
       }
     },
-    [simulateAiSuggestions],
+    [simulateAiSuggestions, australian],
   );
 
   const handleDrop = useCallback(
@@ -490,12 +503,17 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
       setValidating(true);
       setImportError(null);
       try {
+        const range = periodRange();
         const result = await checkData.mutateAsync({
           rows: fileData ? rowsFromData(fileData) : [],
           mappings,
           currencyCode: "USD",
           controlTotalGross: parseControlTotal(controlGross),
           controlTotalNet: parseControlTotal(controlNet),
+          // The same dates the import will use, so the check reports on the
+          // period the admin is about to land rather than on an unknown one.
+          periodStart: range.from || null,
+          periodEnd: range.to || null,
         });
         setValidationResult(result);
         setStep(4);
@@ -511,20 +529,31 @@ export function UploadModal({ open, onOpenChange }: UploadModalProps) {
   };
 
   /**
+   * The period the admin chose, as two ISO dates.
+   *
+   * Hoisted out of `runImport` because the data check needs the same two dates:
+   * the Payday Super check reads the financial year off them, and a check run
+   * on a different period from the one being imported would report on a period
+   * nobody is landing.
+   */
+  const periodRange = () => {
+    const monthly = periodType === "monthly" && selectedYear && selectedMonth;
+    return {
+      from: monthly ? `${selectedYear}-${selectedMonth}-01` : dateFrom,
+      to: monthly
+        ? (new Date(Date.UTC(parseInt(selectedYear), parseInt(selectedMonth), 0))
+            .toISOString()
+            .split("T")[0] ?? "")
+        : dateTo,
+    };
+  };
+
+  /**
    * The real import. Separate from `handleNextStep` because "Try again" on a
    * failure runs it while `step` is already 5.
    */
   const runImport = async () => {
-    const effectiveFrom =
-      periodType === "monthly" && selectedYear && selectedMonth
-        ? `${selectedYear}-${selectedMonth}-01`
-        : dateFrom;
-    const effectiveTo =
-      periodType === "monthly" && selectedYear && selectedMonth
-        ? (new Date(Date.UTC(parseInt(selectedYear), parseInt(selectedMonth), 0))
-            .toISOString()
-            .split("T")[0] ?? "")
-        : dateTo;
+    const { from: effectiveFrom, to: effectiveTo } = periodRange();
     setImportError(null);
     setProcessing(true);
     setStep(5);
