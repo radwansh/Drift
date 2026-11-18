@@ -80,6 +80,13 @@ function normalize(key: string): string {
     .trim()
     .toLowerCase()
     .replace(/[_‑‒–—-]/g, " ")
+    // The apostrophe goes the same way as the other punctuation: `Director's
+    // Fees` and `Worker's Compensation` are the same headers as `Directors
+    // Fees` and `Workers Compensation`, and leaving it in made `director s`
+    // a token the vocabulary could never match. `normaliseHeader` in
+    // `ingest.ts` has always stripped it, which is why role rules handled
+    // `Date d'entrée` and this did not.
+    .replace(/['’`]/g, " ")
     .replace(/[()[\]{}.,;:/\\]/g, " ")
     .replace(/\s+/g, " ")
     .normalize("NFD")
@@ -738,7 +745,7 @@ export function classifyComponentWithReason(key: string): ClassificationReason {
   //        **not** the guarantee, so `samples/au/`'s 50.00 enterprise-agreement
   //        contribution does not inflate the 12% check's actual figure.
   if (has("super")) {
-    if (/\bcharge\b/.test(text)) {
+    if (/\b(charge|charges|penalty|penalties)\b/.test(text)) {
       return { category: "other_employer_cost", rule: "au-super-charge", matched };
     }
     if (has("sacrifice") || has("packaging")) {
