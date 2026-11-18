@@ -8,7 +8,7 @@ import { integrationsRouter } from "@/server/routers/integrations";
  * Every writer of `companies.settings` writes it in **one statement**.
  *
  * `settings` is one free-form jsonb column shared by five features — `plan`,
- * the three Stripe keys, `integrations`, `fiscalStartMonth`, `aiEnabled` and
+ * the Polar billing keys, `integrations`, `fiscalStartMonth`, `aiEnabled` and
  * `tolerances`. A read-modify-write of such a column does not lose a
  * concurrent write to its *own* key, which is why nothing ever noticed: the
  * second writer wins, and that is what anyone would expect. What it loses is a
@@ -44,9 +44,9 @@ let atom: Seeded;
 
 const BILLING = {
   plan: "enterprise",
-  stripeSubscriptionId: "sub_atom",
-  stripeSubscriptionStatus: "active",
-  subscriptionPeriodEnd: "2027-03-31",
+  polarSubscriptionId: "sub_atom",
+  polarSubscriptionStatus: "active",
+  polarCurrentPeriodEnd: "2027-03-31",
 } as const;
 
 async function seedCompany(slug: string, settings: object): Promise<Seeded> {
@@ -250,15 +250,15 @@ describe("a concurrent write to another key survives", () => {
       () => annual(atom, "admin").setAiEnabled({ enabled: true }),
       () =>
         writeDirectly(atom.companyId, {
-          stripeSubscriptionId: "sub_new",
-          stripeSubscriptionStatus: "past_due",
+          polarSubscriptionId: "sub_new",
+          polarSubscriptionStatus: "past_due",
         }),
     );
 
     const after = await settingsOf(atom.companyId);
     expect(after.aiEnabled).toBe(true);
-    expect(after.stripeSubscriptionId).toBe("sub_new");
-    expect(after.stripeSubscriptionStatus).toBe("past_due");
+    expect(after.polarSubscriptionId).toBe("sub_new");
+    expect(after.polarSubscriptionStatus).toBe("past_due");
   });
 
   /** The two-admins case, both of them going through the router. */

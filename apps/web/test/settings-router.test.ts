@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
 import { sql } from "drizzle-orm";
 import { createTestDb, type TestDb } from "./pglite-neon";
 import { settingsRouter } from "@/server/routers/settings";
@@ -141,19 +141,21 @@ describe("settings.getBillingInfo", () => {
       status: "inactive",
       plan: "free",
       periodEnd: null,
+      // No Polar token and no customer, which is every environment today.
+      portalAvailable: false,
     });
   });
 
   it("reads a plan that has actually been written to companies.settings", async () => {
-    // The only way onto another rung today: a direct write. Nothing in the app
-    // sets `plan`, which is why the billing page has no upgrade button.
+    // `api/webhooks/polar` is what writes these in the product; a direct write
+    // is how the state is reached here without standing up a webhook delivery.
     await ctx.db.execute(sql`
       UPDATE companies
       SET settings = ${JSON.stringify({
         plan: "enterprise",
-        stripeSubscriptionStatus: "active",
-        stripeSubscriptionId: "sub_test_123",
-        subscriptionPeriodEnd: "2027-01-31",
+        polarSubscriptionStatus: "active",
+        polarSubscriptionId: "sub_test_123",
+        polarCurrentPeriodEnd: "2027-01-31",
       })}::jsonb
       WHERE id = ${globex.companyId}
     `);
@@ -163,6 +165,35 @@ describe("settings.getBillingInfo", () => {
     expect(info.status).toBe("active");
     expect(info.subscriptionId).toBe("sub_test_123");
     expect(info.periodEnd).toBe("2027-01-31");
+  });
+
+  /**
+   * The portal control appears only when there is a portal behind it. Without
+   * `POLAR_ACCESS_TOKEN` there is nothing to ask, so a stored customer id on
+   * its own is not enough — and the page must not offer a button that leads
+   * nowhere, which is the whole failure the Stripe URL was.
+   */
+  it("does not offer a portal without both a token and a customer", async () => {
+    await ctx.db.execute(sql`
+      UPDATE companies
+      SET settings = settings || '{"polarCustomerId":"cus_globex"}'::jsonb
+      WHERE id = ${globex.companyId}
+    `);
+    expect((await caller(globex, "admin").getBillingInfo()).portalAvailable).toBe(false);
+
+    vi.stubEnv("POLAR_ACCESS_TOKEN", "polar_oat_test");
+    try {
+      expect((await caller(globex, "admin").getBillingInfo()).portalAvailable).toBe(true);
+      // Acme has the token but no customer, so still nothing to open.
+      expect((await caller(acme, "admin").getBillingInfo()).portalAvailable).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+
+    await ctx.db.execute(sql`
+      UPDATE companies SET settings = settings - 'polarCustomerId'::text
+      WHERE id = ${globex.companyId}
+    `);
   });
 
   it("does not leak another company's billing state", async () => {
@@ -176,8 +207,8 @@ describe("settings.getBillingInfo", () => {
  * `updateCompany`'s `settings` input used to replace the whole jsonb column.
  *
  * These run after the `getBillingInfo` block on purpose: it leaves globex with
- * a real `plan`, the three Stripe keys and nothing else, which is exactly the
- * state a replace destroyed and a merge has to preserve.
+ * a real `plan`, the three Polar billing keys and nothing else, which is
+ * exactly the state a replace destroyed and a merge has to preserve.
  */
 describe("settings.updateCompany merges settings rather than replacing them", () => {
   async function settingsOf(companyId: string): Promise<Record<string, unknown>> {
@@ -185,7 +216,7 @@ describe("settings.updateCompany merges settings rather than replacing them", ()
     return (res.rows[0] as { settings: Record<string, unknown> }).settings;
   }
 
-  it("keeps the plan and the Stripe keys when writing an unrelated one", async () => {
+  it("keeps the plan and the Polar billing keys when writing an unrelated one", async () => {
     const before = await settingsOf(globex.companyId);
     expect(before.plan).toBe("enterprise");
 
@@ -196,9 +227,9 @@ describe("settings.updateCompany merges settings rather than replacing them", ()
     // The returned row and the stored row agree, and both still hold billing.
     for (const after of [updated.settings as Record<string, unknown>, await settingsOf(globex.companyId)]) {
       expect(after.plan).toBe("enterprise");
-      expect(after.stripeSubscriptionId).toBe("sub_test_123");
-      expect(after.stripeSubscriptionStatus).toBe("active");
-      expect(after.subscriptionPeriodEnd).toBe("2027-01-31");
+      expect(after.polarSubscriptionId).toBe("sub_test_123");
+      expect(after.polarSubscriptionStatus).toBe("active");
+      expect(after.polarCurrentPeriodEnd).toBe("2027-01-31");
       expect(after.tolerances).toEqual({ netChangePct: 15 });
     }
   });
@@ -224,7 +255,7 @@ describe("settings.updateCompany merges settings rather than replacing them", ()
     const after = await settingsOf(globex.companyId);
     expect(after).not.toHaveProperty("tolerances");
     expect(after.plan).toBe("enterprise");
-    expect(after.stripeSubscriptionId).toBe("sub_test_123");
+    expect(after.polarSubscriptionId).toBe("sub_test_123");
   });
 
   it("deletes a key that is not there without failing", async () => {
@@ -287,14 +318,34 @@ describe("settings.updateCompany merges settings rather than replacing them", ()
  */
 describe("settings.updateCompany refuses the keys it does not own", () => {
   const REFUSED: readonly [string, RegExp][] = [
-    ["plan", /direct database write/i],
-    ["stripeSubscriptionId", /belongs to Stripe/i],
-    ["stripeSubscriptionStatus", /belongs to Stripe/i],
-    ["subscriptionPeriodEnd", /belongs to Stripe/i],
+    ["plan", /Polar webhook/i],
+    ["polarCustomerId", /Polar webhook/i],
+    ["polarSubscriptionId", /Polar webhook/i],
+    ["polarSubscriptionStatus", /Polar webhook/i],
+    ["polarCurrentPeriodEnd", /Polar webhook/i],
+    ["polarProductId", /Polar webhook/i],
     ["integrations", /integrations\.configure/i],
     ["fiscalStartMonth", /annual\.setFiscalStartMonth/i],
     ["aiEnabled", /annual\.setAiEnabled/i],
   ];
+
+  /**
+   * The names these three used to have. They hold no data in any company — the
+   * column was `{}` everywhere when the rename landed — so refusing them by
+   * name is a signpost rather than a compatibility shim, and it is what makes
+   * the rename discoverable from the error instead of from the diff.
+   */
+  const RENAMED: readonly [string, string][] = [
+    ["stripeSubscriptionId", "polarSubscriptionId"],
+    ["stripeSubscriptionStatus", "polarSubscriptionStatus"],
+    ["subscriptionPeriodEnd", "polarCurrentPeriodEnd"],
+  ];
+
+  it.each(RENAMED)("refuses the old name %s and names its replacement", async (was, now) => {
+    await expect(
+      caller(acme, "admin").updateCompany({ settings: { [was]: "x" } }),
+    ).rejects.toThrow(new RegExp(`now "${now}"`));
+  });
 
   it.each(REFUSED)("refuses to write %s, and says what does own it", async (key, message) => {
     await expect(
@@ -323,7 +374,7 @@ describe("settings.updateCompany refuses the keys it does not own", () => {
         name: "Should Not Land",
         settings: { tolerances: { minAbsolute: 99 }, plan: "enterprise" },
       }),
-    ).rejects.toThrow(/direct database write/i);
+    ).rejects.toThrow(/Polar webhook/i);
 
     const after = await caller(acme, "admin").getCompany();
     expect(after.name).toBe(before.name);
@@ -332,5 +383,121 @@ describe("settings.updateCompany refuses the keys it does not own", () => {
 
   it("leaves acme on the free plan after all of that", async () => {
     expect((await caller(acme, "admin").getBillingInfo()).plan).toBe("free");
+  });
+});
+
+/**
+ * `settings.createBillingPortal`, which used to invent a URL.
+ *
+ * It returned `https://billing.stripe.com/session/<subscription id>`, built by
+ * string concatenation, or Stripe's home page when there was no subscription —
+ * which was every company, since nothing has ever written a subscription id.
+ * Neither URL has ever resolved. These pin that it now answers null instead,
+ * and that null is a normal answer rather than an error.
+ */
+describe("settings.createBillingPortal", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("returns no URL at all when Polar is not configured", async () => {
+    const result = await caller(acme, "admin").createBillingPortal({});
+    expect(result).toEqual({ url: null, reason: "not_configured" });
+  });
+
+  it("returns no URL when the company has no Polar customer", async () => {
+    vi.stubEnv("POLAR_ACCESS_TOKEN", "polar_oat_test");
+    const result = await caller(acme, "admin").createBillingPortal({});
+    expect(result).toEqual({ url: null, reason: "no_customer" });
+  });
+
+  /**
+   * The regression that matters. Whatever happens, this procedure must never
+   * answer a URL it assembled itself — the only URL it may return is one Polar
+   * handed back.
+   */
+  it("never invents a billing URL", async () => {
+    for (const stub of [null, "polar_oat_test"]) {
+      if (stub) vi.stubEnv("POLAR_ACCESS_TOKEN", stub);
+      const result = await caller(acme, "admin").createBillingPortal({});
+      expect(result.url).toBeNull();
+      expect(JSON.stringify(result)).not.toMatch(/stripe/i);
+      vi.unstubAllEnvs();
+    }
+  });
+
+  /** The portal cancels subscriptions and changes the payment method. */
+  it("refuses a viewer, because it is a company-wide write", async () => {
+    await expect(caller(acme, "viewer").createBillingPortal({})).rejects.toThrow(
+      /admin or manager role/i,
+    );
+  });
+});
+
+/**
+ * `settings.getCheckout` — one Polar Checkout Link per plan.
+ *
+ * Polar's links are per product: the Starter link is Starter, monthly, in EUR.
+ * There is no single link that covers the ladder, so a plan without its own
+ * variable has no checkout, and that is the state of every plan by default.
+ */
+describe("settings.getCheckout", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("offers nothing when no checkout link is configured", async () => {
+    const result = await caller(acme, "admin").getCheckout();
+    expect(result.configured).toBe(false);
+    expect(result.plans.every((entry) => entry.url === null)).toBe(true);
+  });
+
+  it("offers only the plans that have their own link", async () => {
+    vi.stubEnv("POLAR_CHECKOUT_LINK_STARTER", "https://buy.polar.sh/polar_cl_starter");
+    const result = await caller(acme, "admin").getCheckout();
+
+    expect(result.configured).toBe(true);
+    const starter = result.plans.find((entry) => entry.plan === "starter");
+    const growth = result.plans.find((entry) => entry.plan === "growth");
+    expect(starter?.url).toContain("buy.polar.sh/polar_cl_starter");
+    // Growth is NOT quietly pointed at the Starter product.
+    expect(growth?.url).toBeNull();
+  });
+
+  /** How the webhook maps a payment back to a row in this database. */
+  it("attaches the company id as reference_id", async () => {
+    vi.stubEnv("POLAR_CHECKOUT_LINK_STARTER", "https://buy.polar.sh/polar_cl_starter");
+    const result = await caller(acme, "admin").getCheckout();
+    const url = new URL(result.plans.find((entry) => entry.plan === "starter")!.url!);
+    expect(url.searchParams.get("reference_id")).toBe(acme.companyId);
+  });
+
+  /**
+   * A viewer sees the ladder but is handed no link, and `configured` still
+   * reports what the deployment can sell — otherwise the page would tell a
+   * viewer that billing is unconfigured and explain the wrong reason.
+   */
+  it("withholds the links from a viewer while still reporting the deployment", async () => {
+    vi.stubEnv("POLAR_CHECKOUT_LINK_STARTER", "https://buy.polar.sh/polar_cl_starter");
+    const result = await caller(acme, "viewer").getCheckout();
+
+    expect(result.canCheckout).toBe(false);
+    expect(result.configured).toBe(true);
+    expect(result.plans.every((entry) => entry.url === null)).toBe(true);
+  });
+
+  /**
+   * A mistyped variable must not become a link on a billing page. Anything that
+   * is not https on a polar.sh host is dropped rather than rendered.
+   */
+  it.each([
+    "http://buy.polar.sh/polar_cl_x",
+    "https://evil.example.com/polar_cl_x",
+    "not-a-url",
+  ])("ignores %s rather than linking to it", async (value) => {
+    vi.stubEnv("POLAR_CHECKOUT_LINK_STARTER", value);
+    const result = await caller(acme, "admin").getCheckout();
+    expect(result.plans.find((entry) => entry.plan === "starter")?.url).toBeNull();
+    expect(result.configured).toBe(false);
   });
 });

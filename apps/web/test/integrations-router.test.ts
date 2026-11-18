@@ -267,7 +267,7 @@ describe("a write stays inside its own tenant", () => {
   it("keeps the plan and the billing keys that share the column", async () => {
     await ctx.db.execute(sql`
       UPDATE companies
-      SET settings = settings || '{"stripeSubscriptionId":"sub_entco"}'::jsonb
+      SET settings = settings || '{"polarSubscriptionId":"sub_entco"}'::jsonb
       WHERE id = ${enterprise.companyId}
     `);
     await caller(enterprise, "admin").configure({ provider: "workday", config: {} });
@@ -275,7 +275,7 @@ describe("a write stays inside its own tenant", () => {
     const res = await ctx.db.execute(sql`SELECT settings FROM companies WHERE id = ${enterprise.companyId}`);
     const settings = (res.rows[0] as { settings: Record<string, unknown> }).settings;
     expect(settings.plan).toBe("enterprise");
-    expect(settings.stripeSubscriptionId).toBe("sub_entco");
+    expect(settings.polarSubscriptionId).toBe("sub_entco");
     expect(await storedProviders(enterprise.companyId)).toEqual(["sage", "workday"]);
   });
 });
