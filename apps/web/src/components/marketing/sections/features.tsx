@@ -1,5 +1,5 @@
 import { Badge, Stat } from "../ui";
-import { FEATURES, SAMPLE, sampleAmount, type Currency } from "../content";
+import { FEATURES, SAMPLE, money, type Currency } from "../content";
 import { launch } from "@/config/launch";
 
 /**
@@ -42,7 +42,7 @@ export function Features({ currency }: { currency: Currency }) {
               <Stat
                 className="w-full"
                 label={tile.label}
-                value={<span className="font-cv-mono">{sampleAmount(tile.value, currency)}</span>}
+                value={<span className="font-cv-mono">{money(tile.value, currency)}</span>}
                 caption={"caption" in tile ? tile.caption : undefined}
               />
             </li>

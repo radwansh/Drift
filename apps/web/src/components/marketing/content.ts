@@ -47,52 +47,24 @@ import type { IconName } from "./ui";
  * therefore no FX rate policy and no small print about which currency is
  * actually charged.
  *
- * **A price and a sample figure take different symbols in Australia**, which is
- * the one place the two readings of "the currency sign" come apart.
+ * `AUD` renders `A$`, on prices and on sample figures alike. **A$ is the
+ * Australian dollar sign**, not a disambiguator bolted on for foreigners, so it
+ * belongs on every Australian amount the page states — and `/us` already uses
+ * `$`, which makes an Australian figure a reader takes for a US one a 50%
+ * error in the number that decides the sale.
  *
- * A *price* says `A$49`. It is read beside `/us`'s `$49`, often by someone
- * comparing the two pages, and a reader who takes an Australian price for a US
- * one has a 50% error in the number that decides the sale.
- *
- * A *sample figure* — the demo dashboard's `+$18,420` and `−$860` — says plain
- * `$`. Those stand in for the reader's **own** payroll, and nobody in Australia
- * writes `A$` for a domestic amount; `A$` is a disambiguator for international
- * contexts. Stamping it on twenty illustrative figures read as a foreign
- * product describing Australian money from the outside. The currency is stated
- * once, in the pricing small print, which is where it is load-bearing.
- *
- * So `money()` is for prices and `sampleAmount()` for sample amounts. They
- * differ for `AUD` alone; for `EUR` and `USD` both substitute the same symbol,
- * so a call site that picks the wrong one is only visibly wrong on `/au`. The
- * two maps are deliberately separate rather than one map with a flag, because
- * the choice is about what the number *is*, not about how to format it.
- *
- * Not named `figure()`: `sections/hero.tsx` wraps its sample in a `<figure>`
- * element, and a function of that name sitting beside that tag is a trap for
- * the next reader even though JSX resolves lowercase tags as strings.
+ * This was briefly split in two, `money()` for prices and `sampleAmount()` for
+ * the demo dashboard's figures, on the reasoning that Australians write a bare
+ * `$` for domestic amounts. That is wrong about the sign itself and the split
+ * is reverted: one map, one function, `A$` throughout.
  */
 export type Currency = "EUR" | "USD" | "AUD";
 
-/** For prices. Australia disambiguates against `/us`. */
-const PRICE_SYMBOL: Record<Currency, string> = { EUR: "€", USD: "$", AUD: "A$" };
+const CURRENCY_SYMBOL: Record<Currency, string> = { EUR: "€", USD: "$", AUD: "A$" };
 
-/** For sample amounts standing in for the reader's own payroll. */
-const FIGURE_SYMBOL: Record<Currency, string> = { EUR: "€", USD: "$", AUD: "$" };
-
-/** Substitutes the market's price symbol into a stored price. */
+/** Substitutes the market's symbol into a stored figure. */
 export function money(text: string, currency: Currency): string {
-  return text.split("¤").join(PRICE_SYMBOL[currency]);
-}
-
-/**
- * Substitutes the market's figure symbol into a stored sample amount.
- *
- * Used by the hero's headline variance and the KPI tiles. Everything else —
- * the price cards, the pricing FAQ answer, the JSON-LD offers and `llms.txt` —
- * is a price and goes through `money()`.
- */
-export function sampleAmount(text: string, currency: Currency): string {
-  return text.split("¤").join(FIGURE_SYMBOL[currency]);
+  return text.split("¤").join(CURRENCY_SYMBOL[currency]);
 }
 
 export const SITE = {
@@ -734,20 +706,16 @@ export const MARKETS: Record<Currency, MarketCopy> = {
      * recovery is an underpayment someone found, usually long after payday.
      * The labels say exactly that and claim nothing further.
      *
-     * Written as a literal rather than the `¤` placeholder, and with a plain
-     * `$`. Plain, because `A$` is now reserved for prices: these are figures,
-     * and the rule is that a figure standing in a sentence an Australian reads
-     * takes the symbol an Australian writes. Literal, because the figure is
-     * published in Australian dollars by its source — it is not this page's
-     * currency choice, so it must not follow the market the way a price does.
-     * These live inside `MARKETS.AUD` and therefore render on `/au` alone,
-     * which is what makes a plain `$` unambiguous here.
+     * Written with a literal `A$` rather than the `¤` placeholder, which is
+     * the one place in this file that is deliberate: the currency is a fact
+     * about the figure, not about the page. A$453m substituted into a dollar
+     * page would read as US$453m and be a different, wrong number.
      */
     problem: {
       stats: [
-        { value: "$453m", label: "recovered for underpaid workers in 2025–26" },
+        { value: "A$453m", label: "recovered for underpaid workers in 2025–26" },
         { value: "181,000", label: "workers were back-paid in that one year" },
-        { value: "$217m", label: "of it from large employers alone" },
+        { value: "A$217m", label: "of it from large employers alone" },
       ],
       source: "Source: Fair Work Ombudsman, annual report 2025–26, published 29 October 2026.",
       sourceHref:

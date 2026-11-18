@@ -1,5 +1,5 @@
 import { Badge, Button, DriftStrip, Stat } from "../ui";
-import { HERO, SAMPLE, sampleAmount, type Currency } from "../content";
+import { HERO, SAMPLE, money, type Currency } from "../content";
 import { EarlyAccessButton } from "../early-access-button";
 
 /**
@@ -58,7 +58,7 @@ export function Hero({ currency }: { currency: Currency }) {
             <div className="grid gap-3 sm:grid-cols-2">
               <Stat
                 label="Total variance"
-                value={sampleAmount(SAMPLE.totalVariance, currency)}
+                value={money(SAMPLE.totalVariance, currency)}
                 caption={`${SAMPLE.totalVariancePct} vs August`}
               />
               <Stat label="Employees affected" value={SAMPLE.employeesAffected} caption={`of ${SAMPLE.headcount}`} />
