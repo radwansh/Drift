@@ -142,7 +142,12 @@ export function qeTreatmentFor(
   // earning — but it is still qualifying earnings, and whether it has to be
   // added back depends on which side of the bridge the register puts it. See
   // `splitSacrifice` below; this only marks it.
-  if (rule === SACRIFICE_SUPER_RULE && !override) {
+  //
+  // An override that keeps it an employee deduction — the category the
+  // classifier already gives it — leaves the marker alone. One that moves it
+  // off the deduction side removes it, because the admin has then said this
+  // column is not the employee's sacrificed pay.
+  if (rule === SACRIFICE_SUPER_RULE && DEDUCTIONS.has(category)) {
     return at("in", "Salary sacrificed to superannuation is qualifying earnings under s 10A(1)(h).");
   }
 
@@ -325,7 +330,12 @@ function splitSacrifice(
   lines: readonly QeLine[],
   round: (v: number) => number,
 ): SacrificeSplit {
-  const sacrificeLines = lines.filter((l) => l.rule === SACRIFICE_SUPER_RULE);
+  // The treatment, not the rule alone: an override that moved the column off
+  // the deduction side has already taken it out of the base, and adding it back
+  // here would put it in again by a different route.
+  const sacrificeLines = lines.filter(
+    (l) => l.rule === SACRIFICE_SUPER_RULE && l.treatment === "in",
+  );
   const total = round(sacrificeLines.reduce((sum, l) => sum + Math.abs(l.amount), 0));
   const keys = sacrificeLines.filter((l) => round(Math.abs(l.amount)) !== 0).map((l) => l.key);
 

@@ -123,6 +123,59 @@ describe("gate 2 — the register", () => {
     });
     expect(report.status).toBe("no_super_column");
   });
+
+  /**
+   * A saved category wins over the classifier everywhere else in the engine, so
+   * it wins here: an admin who says the super column is something else has
+   * taken it out of the check, rather than being overridden silently.
+   */
+  it("honours a saved category that moves the column off the employer line", () => {
+    const report = run({
+      answeredCategories: { "Superannuation Guarantee": "other_employer_cost" },
+    });
+    expect(report.status).toBe("no_super_column");
+  });
+
+  it("keeps it in the check when the saved category agrees with the rule", () => {
+    const report = run({
+      answeredCategories: { "Superannuation Guarantee": "social_security_employer" },
+    });
+    expect(report.status).toBe("ran");
+    expect(report.employees[0]?.actual).toBe(480);
+  });
+
+  /**
+   * The same rule on the deduction side: an override that keeps the sacrifice
+   * an employee deduction leaves s 10A(1)(h) alone, and one that moves it off
+   * the deduction side takes it out of the base.
+   */
+  it("keeps the sacrifice marker through a harmless override", () => {
+    const rows = [
+      row({
+        gross: 3500,
+        net: 2700,
+        components: {
+          "Ordinary Hours": 3000,
+          "Salary Sacrifice (Superannuation)": 500,
+          "PAYG Withholding": 800,
+          "Superannuation Guarantee": 420,
+        },
+      }),
+    ];
+    const kept = run({
+      rows,
+      answeredCategories: { "Salary Sacrifice (Superannuation)": "other_deduction" },
+    });
+    expect(kept.employees[0]?.qualifyingEarnings).toBe(3500);
+    expect(kept.employees[0]?.breakdown.sacrifice.addBack).toBe(500);
+
+    const moved = run({
+      rows,
+      answeredCategories: { "Salary Sacrifice (Superannuation)": "other_employer_cost" },
+    });
+    expect(moved.employees[0]?.breakdown.sacrifice.branch).toBe("none");
+    expect(moved.employees[0]?.qualifyingEarnings).toBe(3000);
+  });
 });
 
 describe("commencement and the rate table", () => {

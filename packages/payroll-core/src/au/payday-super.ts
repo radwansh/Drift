@@ -230,10 +230,18 @@ export function runPaydaySuperCheck(input: PaydaySuperInput): PaydaySuperReport 
   const componentKeys = new Set<string>();
   for (const row of rows) for (const key of Object.keys(row.components)) componentKeys.add(key);
 
-  /** Gate 2: the register's own AU employer-super columns. */
-  const superKeys = [...componentKeys].filter(
-    (key) => qeTreatmentFor(key, answered).rule === EMPLOYER_SUPER_RULE,
-  );
+  /**
+   * Gate 2: the register's own AU employer-super columns — "classified
+   * `social_security_employer` by an AU-super rule", which is both halves of
+   * section 1.1's wording. A saved category that moves the column off the
+   * employer line takes it out of the check too: the admin has then said it is
+   * not the guarantee, and counting it as the actual figure anyway would
+   * override them silently.
+   */
+  const superKeys = [...componentKeys].filter((key) => {
+    const treatment = qeTreatmentFor(key, answered);
+    return treatment.rule === EMPLOYER_SUPER_RULE && treatment.category === "social_security_employer";
+  });
   const australian = isAustralianCompany(company);
   const warnings: PaydaySuperWarning[] = [];
 
