@@ -21,6 +21,10 @@ import { PUBLIC_ROUTE_PATTERNS } from "@/lib/public-routes";
  * The same trap caught `/us` when it was added, which is why that line carries
  * its own comment. These tests are here so the next route to need public access
  * fails loudly rather than silently redirecting readers to a sign-in form.
+ *
+ * `/au` is the next one, and is pinned below for the same reason: a market
+ * page nobody can reach from a search result is an unindexable page with a
+ * campaign pointed at it.
  */
 const matches = (path: string): boolean =>
   createRouteMatcher([...PUBLIC_ROUTE_PATTERNS])(
@@ -35,6 +39,7 @@ describe("public routes", () => {
   it.each([
     "/",
     "/us",
+    "/au",
     "/blog",
     "/blog/payroll-variance-report-what-to-check",
     "/security",

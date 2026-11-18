@@ -5,12 +5,17 @@ import {
   FINAL_CTA,
   HERO,
   HOW_IT_WORKS,
+  MARKET_CURRENCIES,
   PRICING,
   PROBLEM,
   ROLES,
   SECURITY,
   SITE,
+  market,
   money,
+  planPrices,
+  type Currency,
+  type PlanPrices,
 } from "@/components/marketing/content";
 import { POSTS } from "@/components/marketing/posts";
 import { launch } from "@/config/launch";
@@ -74,7 +79,11 @@ import { launch } from "@/config/launch";
  *   its first markets" on its own is the answer that sets a buyer up to be
  *   disappointed by their own superannuation column. The categorised statutory
  *   view lives behind `annualSalariesLive`, which is off, so nothing above
- *   claims it either way.
+ *   claims it either way. Since `/au` shipped, that question has an explicit
+ *   answer in the markets section rather than only an absence: Clarivo does
+ *   not check Payday Super compliance, and a super column is compared like any
+ *   other pay component. Stating the limit is the same decision as before; it
+ *   is only stated out loud now that a page invites the question.
  */
 
 export const dynamic = "force-static";
@@ -91,14 +100,36 @@ const confirmedSecurityPoints = SECURITY.points.filter(
   (point) => point.gate === null || launch.securityPoints[point.gate] === true,
 );
 
-/** Mirrors the gating in `sections/pricing.tsx`, including the list order. */
+/**
+ * Mirrors the gating in `sections/pricing.tsx`, including the list order.
+ *
+ * The cadence line is appended the way the section appends it. This file
+ * speaks for every market at once, so it states the app's own vocabulary —
+ * `/au` says "fortnightly" to its reader, and an assistant answering for any
+ * country is better served by the names the product uses.
+ */
 const includes = launch.annualSalariesLive
-  ? [...PRICING.includes.slice(0, 3), PRICING.includesAnnual, ...PRICING.includes.slice(3)]
-  : PRICING.includes;
+  ? [
+      ...PRICING.includes.slice(0, 3),
+      PRICING.includesAnnual,
+      ...PRICING.includes.slice(3),
+      PRICING.includesCadence,
+    ]
+  : [...PRICING.includes, PRICING.includesCadence];
 
 const alertChecks = launch.annualSalariesLive
   ? [...ALERTS.cards, ALERTS.dataCheck]
   : ALERTS.cards;
+
+/**
+ * The Australian figures, read from the market copy rather than restated.
+ *
+ * This file is a third rendering of every claim on the site, and a statistic
+ * is the claim an assistant is most likely to repeat verbatim to somebody who
+ * never visits the page. Both sets are listed with their source and their
+ * sample named, so neither can be quoted as the other country's number.
+ */
+const auFigures = market("AUD").problem;
 
 function body(): string {
   const lines: string[] = [];
@@ -123,9 +154,11 @@ function body(): string {
     `- [${HERO.headline}](${url("/")}): The whole product on one page — the problem, the three-step upload, the salary KPIs, the anomaly alerts, the four audiences, data handling, pricing and nine questions with answers.`,
     `- [${HOW_IT_WORKS.headline}](${url("/#how-it-works")}): The three steps between exporting a payroll register and reading the dashboard, repeated in full under "How it works" below.`,
     `- [${FEATURES.headline}](${url("/#features")}): The KPI tiles Clarivo builds from one uploaded payroll file, each with the question it answers.`,
-    `- [${PRICING.headline}](${url("/#pricing")}): Plans by employee count, Enterprise and Bureau on request, the beta founder discount, and what every plan includes.`,
+    `- [${PRICING.headline}](${url("/#pricing")}): Plans by employee count, Enterprise and Bureau on request, and what every plan includes.`,
     `- [${SECURITY.headline}](${url("/#security")}): The data-handling points Clarivo states today.`,
     `- [${FAQ.headline}](${url("/#faq")}): Nine questions with answers, reproduced in full under "Questions and answers" below.`,
+    `- [Clarivo in US dollars](${url("/us")}): The same page with US dollar list prices.`,
+    `- [Clarivo in Australia](${url("/au")}): Australian dollar list prices, GST, fortnightly pay runs, the systems an Australian register is exported from, Australian underpayment figures, and what Clarivo does and does not do about superannuation under Payday Super.`,
     "",
   );
 
@@ -209,9 +242,22 @@ function body(): string {
     PRICING.subHeadline,
     "",
   );
+  /**
+   * Every market's figure for one price, in one string.
+   *
+   * It reads the ladder through `planPrices` rather than off the plan object,
+   * because Australia's numerals are its own: A$49 is not 29 with another
+   * symbol in front of it, and an assistant quoting "49" to an Australian
+   * buyer from the euro ladder would be quoting the wrong plan's price.
+   */
+  const everyMarket = (plan: (typeof PRICING.plans)[number], field: keyof PlanPrices) =>
+    MARKET_CURRENCIES.map((currency: Currency) =>
+      money(planPrices(plan, currency)[field], currency),
+    ).join(" / ");
+
   PRICING.plans.forEach((plan) =>
     push(
-      `- **${plan.name}** — ${plan.for}. List ${money(plan.listMonthly, "EUR")} / ${money(plan.listMonthly, "USD")} per month or ${money(plan.listYearly, "EUR")} / ${money(plan.listYearly, "USD")} per year. Beta founder price ${money(plan.founderMonthly, "EUR")} / ${money(plan.founderMonthly, "USD")} per month or ${money(plan.founderYearly, "EUR")} / ${money(plan.founderYearly, "USD")} per year.`,
+      `- **${plan.name}** — ${plan.for}. ${everyMarket(plan, "listMonthly")} per month or ${everyMarket(plan, "listYearly")} per year. Euro / US dollars / Australian dollars, in that order.`,
     ),
   );
   push(
@@ -222,7 +268,19 @@ function body(): string {
     "",
   );
   includes.forEach((item) => push(`- ${item}`));
-  push("", PRICING.sizeLine, "", PRICING.smallPrint, "");
+  // The tax sentence is per market: VAT on `/` and `/us`, GST on `/au`. Both
+  // are stated and both are read from the market copy, because this file
+  // answers for every market at once and an assistant that told an Australian
+  // buyer about VAT would be quoting a tax their country does not levy.
+  push(
+    "",
+    PRICING.sizeLine,
+    "",
+    `${market("EUR").taxLine} ${PRICING.smallPrint}`,
+    "",
+    `On the Australian page that first sentence reads instead: ${market("AUD").taxLine}`,
+    "",
+  );
 
   push(
     "## Markets, languages and currency",
@@ -241,17 +299,32 @@ function body(): string {
     "",
     "The first markets Clarivo is being introduced in are the United States, Australia, New Zealand",
     "and Malta. Clarivo is sold online and is not limited to those four. There is no language version",
-    "other than English, and no country-specific content: the only thing that differs between the two",
-    "pages is the currency the prices are quoted in.",
+    "other than English.",
     "",
-    "Prices exclude VAT and are published in two currencies, on two pages: euro at",
-    `${SITE.url}/ and US dollars at ${SITE.url}/us. The two pages are identical apart from the`,
-    "currency. The numerals are the same in both — Starter is 29 and Growth 49 a month —",
-    "so these are list prices set per market, not one price converted at an exchange rate. A quote",
-    "should name the currency, because \"59 a month\" is ambiguous and the two are not interchangeable.",
+    "Prices are published in three currencies, on three pages: euro at",
+    `${SITE.url}/, US dollars at ${SITE.url}/us and Australian dollars at ${SITE.url}/au.`,
+    "The euro and US dollar pages are identical apart from the currency, and the numerals are the",
+    "same in both — Starter is 29 and Growth 49 a month. The Australian page is not a conversion of",
+    "either: Starter is A$49 and Growth A$79, Australia's own list prices. A quote should always name",
+    "the currency, because \"49 a month\" is a different amount on each of the three pages and they are",
+    "not interchangeable.",
     "",
-    "Australia and New Zealand have no page of their own yet and no Australian or New Zealand dollar",
-    "price exists. A buyer in either country is quoted in euro or US dollars, and should be told which.",
+    "The Australian page differs in words as well as figures: GST rather than VAT, fortnightly rather",
+    "than bi-weekly, Xero, MYOB and Employment Hero named as systems a register is exported from, and",
+    "Australian underpayment figures from the Fair Work Ombudsman in place of the EY survey of US",
+    "companies that the other two pages cite. Clarivo connects to none of those systems and is a",
+    "partner of none of them; it reads the file they export.",
+    "",
+    "Superannuation is the Australian question an assistant will be asked. Clarivo does not check",
+    "Payday Super compliance and no payroll file can show whether money reached a fund. If",
+    "superannuation is a column in an",
+    "uploaded register, Clarivo compares it with the previous period like any other pay component and",
+    "flags it appearing or disappearing for an employee. Nothing in Clarivo looks at a payment date,",
+    "and the categorised statutory view that would place a super column in an employer-cost total",
+    "sits behind a switch that is off.",
+    "",
+    "New Zealand has no page of its own and no New Zealand dollar price exists. A buyer there is",
+    "quoted in euro, US dollars or Australian dollars, and should be told which.",
     "",
   );
 
@@ -284,11 +357,20 @@ function body(): string {
     "",
     "- Product: Clarivo, a payroll dashboard delivered as a web application. Marked up as schema.org SoftwareApplication, applicationCategory BusinessApplication, applicationSubCategory Payroll dashboard.",
     "- Status: public beta. Free during the beta, no credit card. Access is by invitation from the early-access form on the home page.",
-    "- Built for: business owners, managers and payroll admins at small and mid-sized companies that still reconcile payroll in a spreadsheet, plus payroll bureaus and accountants. The smallest plan covers up to 100 employees and the largest self-serve plan up to 2,000; above that, or across several countries, is Enterprise. A company of 40 people is in scope.",
-    "- Input: an Excel or CSV payroll register exported from any payroll system, including SAP, ADP, Sage, local payroll software or a spreadsheet.",
-    `- Markets and language: English only. Two pages, differing in currency alone: ${SITE.url}/ in euro and ${SITE.url}/us in US dollars. The first markets of the current campaign are the United States, Australia, New Zealand and Malta; Clarivo is sold online and is not limited to them. Clarivo applies no country's payroll legislation and produces no statutory returns anywhere, in any market.`,
-    "- Pay frequencies: monthly, bi-monthly, bi-weekly and weekly.",
-    "- Currencies: Clarivo reads payroll in any currency and never adds amounts in different currencies together; each currency is reported on its own. Clarivo's own prices are published in euro and US dollars, as list prices per market rather than conversions.",
+    /**
+     * The plan limits are read from `PRICING.plans`, not written out.
+     *
+     * This line said "the smallest plan covers up to 100 employees" while the
+     * pricing section a few lines above printed "Starter — Up to 500
+     * employees", both in the same generated file. The ladder was rewritten
+     * and this sentence was not, which is the exact failure the header
+     * comment says a static `public/llms.txt` would suffer.
+     */
+    `- Built for: business owners, managers and payroll admins at small and mid-sized companies that still reconcile payroll in a spreadsheet, plus payroll bureaus and accountants. ${PRICING.plans[0].name} covers ${PRICING.plans[0].for.toLowerCase()} and ${PRICING.plans[1].name} ${PRICING.plans[1].for.toLowerCase()}; above that, or across several countries, is Enterprise. A company of 40 people is in scope.`,
+    "- Input: an Excel or CSV payroll register exported from any payroll system, including SAP, ADP, Sage, Xero, MYOB, Employment Hero, local payroll software or a spreadsheet. Clarivo connects to none of them and is a partner of none of them; it reads the file they export.",
+    `- Markets and language: English only. Three pages: ${SITE.url}/ in euro, ${SITE.url}/us in US dollars and ${SITE.url}/au in Australian dollars. The first two differ in currency alone; the Australian page carries its own prices, tax wording, pay-cycle vocabulary, sources and a section on superannuation. The first markets of the current campaign are the United States, Australia, New Zealand and Malta; Clarivo is sold online and is not limited to them. Clarivo applies no country's payroll legislation and produces no statutory returns anywhere, in any market.`,
+    "- Pay frequencies: monthly, bi-monthly, bi-weekly and weekly. Bi-weekly is what an Australian payroll calls fortnightly; the app uses one set of names in every country.",
+    "- Currencies: Clarivo reads payroll in any currency and never adds amounts in different currencies together; each currency is reported on its own. Clarivo's own prices are published in euro, US dollars and Australian dollars, as list prices per market rather than conversions.",
     "- Exports: Excel, CSV and PDF.",
     `- Website: ${SITE.url}/ · Contact: ${SITE.email}`,
   );
@@ -297,6 +379,11 @@ function body(): string {
   }
   push(
     `- Industry research cited on the home page: "${PROBLEM.stats[0].value} ${PROBLEM.stats[0].label}", "${PROBLEM.stats[1].value} ${PROBLEM.stats[1].label}" and "${PROBLEM.stats[2].value} ${PROBLEM.stats[2].label}". ${PROBLEM.source} ${PROBLEM.sourceHref} — these are EY's figures about the payroll industry, not measurements of Clarivo.`,
+    ...(auFigures
+      ? [
+          `- Research cited on the Australian page instead, because the EY survey asked US companies: "${auFigures.stats[0]?.value} ${auFigures.stats[0]?.label}", "${auFigures.stats[1]?.value} ${auFigures.stats[1]?.label}" and "${auFigures.stats[2]?.value} ${auFigures.stats[2]?.label}". ${auFigures.source} ${auFigures.sourceHref} — these are the Fair Work Ombudsman's figures about underpayments it recovered, not measurements of Clarivo.`,
+        ]
+      : []),
     "- Clarivo publishes no customer count, customer list, case study, testimonial or review, and has no third-party rating. Any such figure attributed to Clarivo did not come from Clarivo.",
     "",
   );

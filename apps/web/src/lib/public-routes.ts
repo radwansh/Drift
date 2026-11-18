@@ -8,7 +8,7 @@
  * from here.
  */
 /**
- * Public routes: the five marketing pages, the auth screens, the waiting-list
+ * Public routes: the marketing pages, the auth screens, the waiting-list
  * form, the tRPC endpoint (which does its own authorisation per procedure) and
  * the webhooks. Everything else is behind sign-in.
  */
@@ -22,10 +22,16 @@ export const PUBLIC_ROUTE_PATTERNS = [
    *
    * Without this line every visitor to `/us` is redirected to sign-in — which
    * is what happened when the page was first added, and what the whole US
-   * campaign would have landed on. Any future market page (`/au`, `/nz`) needs
-   * an entry here too.
+   * campaign would have landed on. Any future market page (`/nz`) needs an
+   * entry here too.
    */
   "/us",
+  /**
+   * The Australian landing page, listed for exactly the reason above: no dot
+   * in the path, so it reaches this middleware, and an unlisted route answers
+   * a 307 to `/sign-in` — unreachable from a search result and unindexable.
+   */
+  "/au",
   /**
    * The blog index and every post. Same reason as `/us`: no dot in the path,
    * so these do reach this middleware and would otherwise redirect a reader

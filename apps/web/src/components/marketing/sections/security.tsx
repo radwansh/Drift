@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Icon } from "../ui";
-import { SECURITY } from "../content";
+import { SECURITY, market, type Currency } from "../content";
 import { launch } from "@/config/launch";
 
 /**
@@ -14,11 +14,21 @@ import { launch } from "@/config/launch";
  *
  * So the filter is deliberately a hard `=== true` on the named switch rather
  * than anything cleverer: a point appears only when its own flag is on.
+ *
+ * A market may add one line under the points, and `/au` does: Frankfurt means
+ * payroll data leaves Australia, and that is more relevant to an Australian
+ * buyer than to anyone else rather than less. The line is gated on the "Hosted
+ * in the EU" point being rendered at all — a footnote that elaborates on a
+ * claim must disappear with the claim if that switch is ever turned off,
+ * otherwise the gate leaks through the note.
  */
-export function Security() {
+export function Security({ currency }: { currency: Currency }) {
   const points = SECURITY.points.filter(
     (p) => p.gate === null || launch.securityPoints[p.gate] === true,
   );
+
+  const note = market(currency).securityNote;
+  const statesHosting = points.some((p) => p.gate === "hostedInTheEu");
 
   return (
     <section id="security" className="scroll-mt-20 border-b border-cv-line bg-cv-bg">
@@ -46,6 +56,10 @@ export function Security() {
             </li>
           ))}
         </ul>
+
+        {note && statesHosting && (
+          <p className="mt-8 max-w-[70ch] text-base leading-relaxed text-cv-ink-muted">{note}</p>
+        )}
 
         <p className="mt-10">
           <Link

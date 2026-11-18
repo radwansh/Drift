@@ -18,10 +18,11 @@ import type { IconName } from "./ui";
  *
  * The first campaign targets the United States, Australia, New Zealand and
  * Malta. Of those only Malta is in the euro area, so the landing page exists at
- * two URLs — `/` in euro and `/us` in dollars — each crawlable, each carrying
- * the full hreflang mesh. They are separate URLs on purpose: serving different
- * content at one URL by visitor IP would mean Googlebot, which crawls mostly
- * from US addresses, only ever indexes one version.
+ * three URLs — `/` in euro, `/us` in dollars and `/au` in Australian dollars —
+ * each crawlable, each carrying the full hreflang mesh. They are separate URLs
+ * on purpose: serving different content at one URL by visitor IP would mean
+ * Googlebot, which crawls mostly from US addresses, only ever indexes one
+ * version.
  *
  * `¤` is U+00A4, the generic currency sign. Every price and every sample figure
  * stores the numerals once and `money()` substitutes the symbol, because the
@@ -30,17 +31,36 @@ import type { IconName } from "./ui";
  * already happened once in this repo between `content.ts` and
  * `docs/landing/content.md`. One set of numerals cannot drift from itself.
  *
+ * The Australian ladder is the exception, and the reason the per-market layer
+ * at the bottom of this file exists: A$49 and A$79 are different *numerals*,
+ * not the same numerals under another symbol, so they are held once in
+ * `MARKETS.AUD.plans` and nowhere else. `/` and `/us` read the ladder stored on
+ * `PRICING.plans` itself, through the same object, so those two cannot drift
+ * apart whatever happens to Australia.
+ *
  * It also preserves formatting exactly: signs, thousands separators and the `M`
  * suffix on the sample figures are part of the stored string, so nothing is
  * re-formatted per market and `−¤860` stays `−$860`.
  *
  * Prices are **list prices per market, not conversions.** $29 is not €29 at
- * some rate; it is the dollar price. There is therefore no FX rate policy and
- * no small print about which currency is actually charged.
+ * some rate; it is the dollar price, and A$49 is the Australian one. There is
+ * therefore no FX rate policy and no small print about which currency is
+ * actually charged.
+ *
+ * `AUD` renders `A$`, on prices and on sample figures alike. **A$ is the
+ * Australian dollar sign**, not a disambiguator bolted on for foreigners, so it
+ * belongs on every Australian amount the page states — and `/us` already uses
+ * `$`, which makes an Australian figure a reader takes for a US one a 50%
+ * error in the number that decides the sale.
+ *
+ * This was briefly split in two, `money()` for prices and `sampleAmount()` for
+ * the demo dashboard's figures, on the reasoning that Australians write a bare
+ * `$` for domestic amounts. That is wrong about the sign itself and the split
+ * is reverted: one map, one function, `A$` throughout.
  */
-export type Currency = "EUR" | "USD";
+export type Currency = "EUR" | "USD" | "AUD";
 
-const CURRENCY_SYMBOL: Record<Currency, string> = { EUR: "€", USD: "$" };
+const CURRENCY_SYMBOL: Record<Currency, string> = { EUR: "€", USD: "$", AUD: "A$" };
 
 /** Substitutes the market's symbol into a stored figure. */
 export function money(text: string, currency: Currency): string {
@@ -355,21 +375,33 @@ export const SECURITY = {
   ],
 } as const;
 
+/**
+ * **The beta founder discount is gone from every market.**
+ *
+ * Each plan carried two ladders — a list price and a founder price at half of
+ * it — and the page struck the list price through beside the founder one. One
+ * ladder is stored now, and it is the list price, because that is what the
+ * Polar checkout actually charges. The two had drifted: the page promised €14
+ * while the live checkout billed €29, so a visitor who followed the pricing
+ * section to the checkout paid double what the section quoted. Removing the
+ * second ladder removes the thing that could disagree.
+ *
+ * `founderMonthly` and `founderYearly` are therefore not fields any more, nor
+ * is `founderBadge`, and the yearly figure is ten times the monthly one (two
+ * months free) off the list price rather than the founder price.
+ */
 export const PRICING = {
   eyebrow: "Pricing",
-  headline: "Simple payroll dashboard pricing, 50% off for beta founders",
+  headline: "Simple payroll dashboard pricing",
   subHeadline:
-    "Clarivo is free while it's in beta. When billing starts, every company that joined during the beta pays the founder price for 24 months. Every plan includes every feature.",
+    "Clarivo is free while it's in beta. Every plan includes every feature, and the price goes by how many employees you pay.",
   toggle: { monthly: "Monthly", yearly: "Yearly (2 months free)" },
-  founderBadge: "Beta founder: −50% for 24 months",
   cta: "Get early access",
   plans: [
     {
       name: "Starter",
       for: "Up to 500 employees",
       listMonthly: "¤29",
-      founderMonthly: "¤14",
-      founderYearly: "¤140",
       listYearly: "¤290",
       highlighted: false,
     },
@@ -377,8 +409,6 @@ export const PRICING = {
       name: "Growth",
       for: "Up to 2,000 employees",
       listMonthly: "¤49",
-      founderMonthly: "¤24",
-      founderYearly: "¤240",
       listYearly: "¤490",
       highlighted: true,
       tag: "Best for growing teams",
@@ -388,7 +418,7 @@ export const PRICING = {
     name: "Enterprise",
     for: "Over 2,000 employees or several countries",
     price: "On request",
-    note: "Founder discount applies",
+    note: "Priced on your headcount and countries",
     cta: "Talk to us",
   },
   /**
@@ -413,56 +443,91 @@ export const PRICING = {
     "Comparison of any two payroll periods, with the Detailed View for every employee",
     "Excel, CSV and PDF exports",
     "Unlimited users",
-    "Monthly, bi-monthly, bi-weekly and weekly payrolls",
   ],
+  /**
+   * The sixth line of the list, held on its own because it is the one item
+   * whose wording is local: Australians say fortnightly where this says
+   * bi-weekly. A market replaces it through `MARKETS[currency].cadenceIncludes`
+   * and the other five lines stay shared. Rendered last, as content.md has it.
+   */
+  includesCadence: "Monthly, bi-monthly, bi-weekly and weekly payrolls",
   /** Listed only once the Annual Salaries fixes are live (annualSalariesLive). */
   includesAnnual:
     "The Annual Salaries Dashboard: paid to date, full-year forecast, employer cost and budget",
   sizeLine:
     "Clarivo counts the employees in each payroll file you upload. If a file goes over your plan's limit, we invite you to move up a plan; your comparison still runs.",
+  /**
+   * The small print, minus its first sentence.
+   *
+   * That sentence named a tax — "Prices exclude VAT." — and VAT is not a thing
+   * that exists in Australia, which charges GST. It now comes from
+   * `MARKETS[currency].taxLine` and is rendered in front of this string by
+   * `sections/pricing.tsx`.
+   *
+   * One sentence moved rather than the whole object: a second copy of
+   * `PRICING` for Australia would put the plan limits and the Bureau rule in
+   * two places, and the next edit would land in one of them. Everything below
+   * is true in every market and is stated once.
+   */
   smallPrint:
-    "Prices exclude VAT. Monthly billing, cancel anytime; yearly billing gets two months free. The founder price applies to companies that sign up during the beta and lasts 24 months from the first invoice. The Bureau plan is billed per client company, from five clients upwards; a client company over 200 employees takes the plan that matches its size. Fair use applies to AI summaries.",
+    "Monthly billing, cancel anytime; yearly billing gets two months free. The Bureau plan is billed per client company, from five clients upwards; a client company over 200 employees takes the plan that matches its size. Fair use applies to AI summaries.",
 } as const;
 
-/** Rendered visibly and as FAQPage structured data, from this one array. */
+/**
+ * Rendered visibly and as FAQPage structured data, from this one array.
+ *
+ * `id` exists so a market can replace one answer without matching on the
+ * question text: `MARKETS.AUD.faq.replace` keys off it, and a reworded
+ * question would otherwise silently drop the Australian answer and publish the
+ * shared one. Ids are stable names, not positions, so reordering is safe.
+ */
 export const FAQ = {
   headline: "Payroll dashboard questions, answered",
   items: [
     {
+      id: "what-is-a-payroll-dashboard",
       q: "What is a payroll dashboard?",
       a: "A payroll dashboard shows your payroll's key numbers on one screen: total salary cost, headcount, employer cost and what changed since the last period. Clarivo builds yours from the payroll file you already export, so you never build one in Excel again.",
     },
     {
+      id: "versus-excel",
       q: "How is Clarivo different from tracking payroll in Excel?",
       a: "In Excel, someone rebuilds the comparison every period, and the checks depend on who builds it. Clarivo compares every employee and every pay component automatically, keeps your payroll history in one place and flags what looks wrong, in one click.",
     },
     {
+      id: "payroll-systems",
       q: "Which payroll systems does Clarivo work with?",
       a: "Any system that exports to Excel or CSV: SAP, ADP, Sage, local payroll software or your own spreadsheets. Direct connections to SAP, ADP and Sage are on our roadmap.",
     },
     {
+      id: "anomalies",
       q: "What payroll anomalies does Clarivo detect?",
       a: "Net pay that changed by 20% or more with no change in any pay component, pay components that drop to zero, new or missing components, joiners and leavers, and data issues such as a missing pay period. Each alert says who, what and why.",
     },
     {
+      id: "it-help",
       q: "Do I need IT help to set it up?",
       a: "No. Upload a file and Clarivo maps your columns the first time; confirm once and it remembers. There is nothing to install and nothing to connect.",
     },
     {
+      id: "replaces-payroll-software",
       q: "Does Clarivo replace my payroll software?",
       a: "No. Your payroll system still calculates and pays salaries. Clarivo checks what it produced and shows you what changed before you approve. It never changes your data.",
     },
     {
+      id: "payroll-data",
       q: "What happens to my payroll data?",
       a: "Each company's data is kept separate and encrypted, and it is never used to train AI models. The AI only recognises your columns, writes a plain-language summary and ranks alerts; it never changes a number.",
     },
     {
+      id: "pay-frequencies",
       q: "Which pay frequencies and currencies does it handle?",
       a: "Monthly, bi-monthly, bi-weekly and weekly payrolls, in any currency. Clarivo never adds amounts in different currencies together; each currency is reported on its own.",
     },
     {
+      id: "cost",
       q: "How much does Clarivo cost?",
-      a: "Clarivo is free during the beta, with no credit card. When billing starts, plans run from ¤29 to ¤49 a month by company size, and beta founders pay half: ¤14 to ¤24 a month for 24 months. Over 2,000 employees is Enterprise, priced on request.",
+      a: "Clarivo is free during the beta, with no credit card. When billing starts, plans run from ¤29 to ¤49 a month by company size. Over 2,000 employees is Enterprise, priced on request.",
     },
   ],
 } as const;
@@ -473,8 +538,13 @@ export const FINAL_CTA = {
     "Upload two payroll periods and see every salary KPI, and every alert, in minutes.",
   primary: "Get early access",
   secondary: "Sign in",
-  trust: "Free during the beta · No credit card · Founder price for 24 months",
-  /** Behind the founderLine switch, which is on. */
+  trust: "Free during the beta · No credit card · Cancel anytime",
+  /**
+   * Behind the founderLine switch, which is on.
+   *
+   * "Founder" here is Radwan, not a founder *price* — this line survived the
+   * removal of the beta discount because it is about who built the product.
+   */
   founderLine:
     "Built by Radwan Sheb, an SAP payroll lead who has delivered payroll projects across Europe and the Gulf, including a 12-country rollout.",
 } as const;
@@ -502,3 +572,300 @@ export const FOOTER = {
    */
   company: "© 2026 Clarivo",
 } as const;
+
+/* -------------------------------------------------------------------------- *
+ * Per-market copy
+ * -------------------------------------------------------------------------- */
+
+/**
+ * The lines a currency symbol cannot fix.
+ *
+ * `/us` is `/` with `$` in front of the same numerals, and that was the right
+ * answer for the United States. It is not the answer for Australia: the
+ * numerals differ, the tax is GST, a fortnight is not a "bi-weekly", the pay
+ * systems a register comes out of are different ones, and the payroll-error
+ * statistic on `/` surveyed US companies and says nothing about an Australian
+ * payroll. A page that only swapped the symbol would be a near-duplicate of
+ * `/us` carrying an American fact under an Australian flag.
+ *
+ * So a market may override the handful of lines that are *wrong* in it, and
+ * nothing else. Everything a market does not name is read from the one shared
+ * constant above, which is what keeps `/`, `/us` and `/au` arguing the same
+ * case in the same voice. `EUR` and `USD` are literally the same object below,
+ * so those two cannot drift apart at all.
+ *
+ * `null` means "use the shared line". It is not the same as an empty string,
+ * which would publish a blank.
+ */
+type PlanName = (typeof PRICING.plans)[number]["name"];
+type FaqId = (typeof FAQ.items)[number]["id"];
+
+/**
+ * One plan's two figures, in the `¤` placeholder form `money()` reads.
+ *
+ * Two, not four: the founder pair went with the beta discount. Dropping them
+ * from the interface rather than leaving them optional is deliberate — an
+ * optional `founderMonthly` would let a market reintroduce a second ladder
+ * without anything objecting, which is how the page and the checkout came to
+ * disagree in the first place.
+ */
+export interface PlanPrices {
+  listMonthly: string;
+  listYearly: string;
+}
+
+/** A market-only section, rendered after the alerts band. */
+export interface MarketNote {
+  eyebrow: string;
+  headline: string;
+  body: string;
+  /** What Clarivo does not do, stated before anyone infers it. */
+  limit: string;
+  points: readonly { title: string; line: string }[];
+  source: string;
+  sourceHref: string;
+}
+
+export interface MarketCopy {
+  /** Page title and meta description. Null keeps `SITE`'s. */
+  meta: { title: string; description: string } | null;
+  /** Opens the pricing small print. Australia charges GST, not VAT. */
+  taxLine: string;
+  /** Step 1 of "How it works". Null keeps the stored step. */
+  uploadStep: string | null;
+  /** The pay-frequency line in "Every plan includes". Null keeps the stored one. */
+  cadenceIncludes: string | null;
+  /** The problem section's figures and their source. Null keeps the stored ones. */
+  problem: {
+    stats: readonly { value: string; label: string }[];
+    source: string;
+    sourceHref: string;
+  } | null;
+  /** The price ladder by plan name. Null reads the ladder on `PRICING.plans`. */
+  plans: Record<PlanName, PlanPrices> | null;
+  /** Answers replaced by id, and market-only questions inserted after one. */
+  faq: {
+    replace: Partial<Record<FaqId, string>>;
+    extra: readonly { after: FaqId; id: string; q: string; a: string }[];
+  };
+  note: MarketNote | null;
+  /**
+   * A line under the security points. It is rendered only when the "Hosted in
+   * the EU" point itself is — see `sections/security.tsx`. A note that
+   * elaborates on a claim must not outlive the claim's launch switch.
+   */
+  securityNote: string | null;
+}
+
+/**
+ * Euro and dollars. One object, shared by both, so `/` and `/us` cannot drift.
+ *
+ * "Prices exclude VAT" is also what `/us` says today, and the United States
+ * charges sales tax rather than VAT. That is a separate copy decision from
+ * this one and is left as it was found; changing it is a one-line change here
+ * once Radwan decides what a US invoice will actually say.
+ */
+const SHARED_MARKET: MarketCopy = {
+  meta: null,
+  taxLine: "Prices exclude VAT.",
+  uploadStep: null,
+  cadenceIncludes: null,
+  problem: null,
+  plans: null,
+  faq: { replace: {}, extra: [] },
+  note: null,
+  securityNote: null,
+};
+
+export const MARKETS: Record<Currency, MarketCopy> = {
+  EUR: SHARED_MARKET,
+  USD: SHARED_MARKET,
+  AUD: {
+    meta: {
+      /** 57 characters. */
+      title: "Payroll Dashboard with Anomaly Alerts | Clarivo Australia",
+      /** 149 characters. */
+      description:
+        "Payroll dashboard for Australian payroll teams. Upload your file, see every salary KPI and catch anomalies before payday. Free in beta, prices in A$.",
+    },
+    taxLine: "Prices exclude GST.",
+    uploadStep:
+      "Export the payroll register from Xero, MYOB, Employment Hero or whatever you run payroll in, as Excel or CSV, and drop it in. Monthly, fortnightly, twice a month or weekly.",
+    cadenceIncludes: "Monthly, fortnightly, twice-a-month and weekly payrolls",
+    /**
+     * Australian figures, from an Australian regulator.
+     *
+     * The EY survey on `/` and `/us` polled payroll professionals at **US**
+     * companies, so its three numbers describe American payrolls and nothing
+     * else. Reusing them here under an Australian heading would be the same
+     * claim with the country filed off, so they are replaced rather than
+     * reworded, and the alternative to finding an Australian source was
+     * dropping the statistics from this page entirely.
+     *
+     * These are what the Fair Work Ombudsman recovered, not an error rate: a
+     * recovery is an underpayment someone found, usually long after payday.
+     * The labels say exactly that and claim nothing further.
+     *
+     * Written with a literal `A$` rather than the `¤` placeholder, which is
+     * the one place in this file that is deliberate: the currency is a fact
+     * about the figure, not about the page. A$453m substituted into a dollar
+     * page would read as US$453m and be a different, wrong number.
+     */
+    problem: {
+      stats: [
+        { value: "A$453m", label: "recovered for underpaid workers in 2025–26" },
+        { value: "181,000", label: "workers were back-paid in that one year" },
+        { value: "A$217m", label: "of it from large employers alone" },
+      ],
+      source: "Source: Fair Work Ombudsman, annual report 2025–26, published 29 October 2026.",
+      sourceHref:
+        "https://www.fairwork.gov.au/newsroom/media-releases/2026-media-releases/october-2026/20261029-annual-report-2025-26-media-release",
+    },
+    /**
+     * The Australian ladder: A$49 and A$79 list, ten times the monthly figure
+     * for a year — the same shape as the euro and dollar ladders, in
+     * Australia's own numerals. List prices per market, not conversions.
+     *
+     * **These two numerals are awaiting sign-off.** They were my choice, and
+     * the Polar account carries no AUD product to take them from — checked
+     * twice, on two fresh checkout sessions: one €29 Starter, no currency
+     * selector. Until an AUD product exists in Polar, an Australian who
+     * reaches checkout is billed in euro, whatever this page says. Changing
+     * the ladder is editing the four strings below and nothing else.
+     */
+    plans: {
+      Starter: {
+        listMonthly: "¤49",
+        listYearly: "¤490",
+      },
+      Growth: {
+        listMonthly: "¤79",
+        listYearly: "¤790",
+      },
+    },
+    faq: {
+      replace: {
+        "payroll-systems":
+          "Any system that exports to Excel or CSV: Xero, MYOB, Employment Hero, SAP, ADP or your own spreadsheets. Clarivo reads the file you export and connects to none of them, so nothing has to change in the system that pays your people.",
+        "pay-frequencies":
+          "Monthly, fortnightly, twice-a-month and weekly payrolls, in any currency. Inside the app the fortnightly cycle is called Bi-weekly. Clarivo never adds amounts in different currencies together; each currency is reported on its own.",
+        cost: "Clarivo is free during the beta, with no credit card. When billing starts, plans run from ¤49 to ¤79 a month by company size, excluding GST. Over 2,000 employees is Enterprise, priced on request.",
+      },
+      extra: [
+        {
+          after: "payroll-systems",
+          id: "superannuation",
+          q: "Does Clarivo check superannuation or Payday Super?",
+          a: "No. Clarivo does not check Payday Super compliance, and no payroll file can show whether money reached a fund. It reads the register before you approve it. If superannuation is a column in your file, Clarivo compares it with the last period for every employee, shows what moved, and flags a line that appeared for someone new or stopped for someone still on the payroll. The 12% rate, the seven-business-day window and everything you lodge stay with your payroll system and your fund or clearing house.",
+        },
+      ],
+    },
+    /**
+     * Superannuation, stated as what it is for the reader and what it is not
+     * for the product.
+     *
+     * Payday Super has been in force since 1 July 2026, so this is a thing an
+     * Australian payroll manager already does every fortnight rather than a
+     * change coming up. The limit paragraph is not a disclaimer bolted on the
+     * end: `annual/classify.ts` has no vocabulary for superannuation at all,
+     * nothing in the product looks at a payment date, and a payroll register
+     * cannot show whether money reached a fund. What is claimed here is the
+     * period-over-period comparison, which is generic over whatever columns a
+     * file carries and therefore true of a super column today.
+     */
+    note: {
+      eyebrow: "Australian payroll",
+      headline: "Super moves with every pay run now",
+      body: "Since 1 July 2026, superannuation goes out with the pay run rather than once a quarter, at 12% of qualifying earnings, and it has to reach the employee's fund within seven business days of payday. A super line that was wrong used to have until the end of the quarter to surface. Now it has a week.",
+      limit:
+        "Clarivo does not check Payday Super compliance, and no payroll file can show whether money reached a fund. What it reads is the register you are about to approve. If superannuation is a column in it, Clarivo compares that column with the last period for every employee, shows what moved, and flags the line that appeared for someone new or stopped for someone still on the payroll.",
+      points: [
+        {
+          title: "Fortnightly, weekly, twice a month or monthly",
+          line: "Whatever your pay cycle is, the comparison is the same. The fortnightly cycle is called Bi-weekly inside the app.",
+        },
+        {
+          title: "The file you already export",
+          line: "Xero, MYOB, Employment Hero, or anything else that writes Excel or CSV. Clarivo reads the export and connects to none of them, so nothing changes in the system that pays your people.",
+        },
+        {
+          title: "What stays with your payroll system",
+          line: "Clarivo applies no Australian payroll law. It does not calculate super, PAYG withholding or leave, and it lodges nothing with the ATO. Your payroll system does all of that, and Clarivo checks what it produced.",
+        },
+      ],
+      source: "Payday Super rules: Australian Taxation Office.",
+      sourceHref:
+        "https://www.ato.gov.au/businesses-and-organisations/super-for-employers/about-payday-super",
+    },
+    securityNote:
+      "Clarivo runs in Frankfurt, Germany, so payroll data uploaded from Australia leaves the country. Australian Privacy Principle 8 covers sending personal information overseas, which makes this a fact you want before you upload rather than after. The security page names the region and the database.",
+  },
+};
+
+/**
+ * The markets with a page, in publication order: `/`, `/us`, `/au`.
+ *
+ * Exported so anything that has to speak about every market at once —
+ * `/llms.txt` quotes all three price ladders — walks one list rather than
+ * writing the currencies out again and missing the next one.
+ */
+export const MARKET_CURRENCIES: readonly Currency[] = ["EUR", "USD", "AUD"];
+
+/** The copy for one market. */
+export function market(currency: Currency): MarketCopy {
+  return MARKETS[currency];
+}
+
+/**
+ * One plan's figures in one market.
+ *
+ * The plan object itself is the fallback, so `/` and `/us` read the stored
+ * ladder directly and a market that lists no prices cannot silently lose them.
+ */
+export function planPrices(plan: (typeof PRICING.plans)[number], currency: Currency): PlanPrices {
+  return MARKETS[currency].plans?.[plan.name] ?? plan;
+}
+
+/**
+ * The FAQ as one market renders it: shared questions in their stored order,
+ * market answers where a market has one, market-only questions in place.
+ *
+ * Both the visible section and the FAQPage structured data call this, for the
+ * reason stated at the top of this file — the two are one list rendered twice
+ * and must never disagree. A market question that existed in the markup but
+ * not on the page would be exactly that disagreement.
+ */
+export function marketFaq(
+  currency: Currency,
+): readonly { id: string; q: string; a: string }[] {
+  const { replace, extra } = MARKETS[currency].faq;
+  const items: { id: string; q: string; a: string }[] = [];
+
+  for (const item of FAQ.items) {
+    items.push({ id: item.id, q: item.q, a: replace[item.id] ?? item.a });
+    for (const addition of extra) {
+      if (addition.after === item.id) {
+        items.push({ id: addition.id, q: addition.q, a: addition.a });
+      }
+    }
+  }
+
+  return items;
+}
+
+/**
+ * The highest monthly list price in a market, for the `AggregateOffer` in the
+ * structured data.
+ *
+ * Derived rather than written down: the JSON-LD carried a hardcoded `299`
+ * from the three-plan ladder, which no plan has cost since that ladder was
+ * rewritten, and on `/au` it would have published an Australian price that
+ * does not exist. Reading `PRICING.plans` means the markup follows the
+ * pricing table by construction.
+ */
+export function highestMonthlyListPrice(currency: Currency): string {
+  const figures = PRICING.plans.map((plan) =>
+    Number(planPrices(plan, currency).listMonthly.replace("¤", "").replace(/,/g, "")),
+  );
+  return String(Math.max(...figures));
+}

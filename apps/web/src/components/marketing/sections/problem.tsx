@@ -1,14 +1,22 @@
-import { PROBLEM } from "../content";
+import { PROBLEM, market, type Currency } from "../content";
 
 /**
  * Section 3: the problem, in the searcher's own words.
  *
- * The three figures are Geist Mono, as every figure on the page is. The EY
- * source line stays on the page and keeps its link: content.md is explicit
- * that the statistics describe US companies, so the attribution is part of the
- * claim rather than a footnote we can drop.
+ * The three figures are Geist Mono, as every figure on the page is. The source
+ * line stays on the page and keeps its link: content.md is explicit that the
+ * EY statistics describe US companies, so the attribution is part of the claim
+ * rather than a footnote we can drop.
+ *
+ * Which is also why the figures are per market. On `/au` they are the Fair
+ * Work Ombudsman's, because the EY survey asked US payroll professionals about
+ * US payrolls and an Australian reader would be shown an American fact with
+ * the country quietly removed. The body, the role pains and the transition are
+ * the same argument everywhere and are shared.
  */
-export function Problem() {
+export function Problem({ currency }: { currency: Currency }) {
+  const { stats, source, sourceHref } = market(currency).problem ?? PROBLEM;
+
   return (
     <section className="border-b border-cv-line bg-cv-bg">
       <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:py-20">
@@ -19,7 +27,7 @@ export function Problem() {
         <p className="mt-6 max-w-[70ch] text-lg leading-relaxed text-cv-ink-muted">{PROBLEM.body}</p>
 
         <dl className="mt-12 grid gap-6 sm:grid-cols-3">
-          {PROBLEM.stats.map((s) => (
+          {stats.map((s) => (
             <div key={s.value} className="flex flex-col gap-2 border-t border-cv-line pt-5">
               <dt className="order-2 text-sm leading-snug text-cv-ink-muted">{s.label}</dt>
               <dd className="order-1 font-cv-mono text-4xl font-medium leading-none tracking-[-0.02em] text-cv-ink">
@@ -31,12 +39,12 @@ export function Problem() {
 
         <p className="mt-5 text-xs leading-relaxed text-cv-ink-subtle">
           <a
-            href={PROBLEM.sourceHref}
+            href={sourceHref}
             target="_blank"
             rel="noreferrer"
             className="rounded underline underline-offset-2 hover:text-cv-ink focus-visible:outline-none focus-visible:shadow-cv-focus-ring"
           >
-            {PROBLEM.source}
+            {source}
           </a>
         </p>
 

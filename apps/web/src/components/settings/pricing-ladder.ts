@@ -66,7 +66,6 @@ export interface PlanRung {
   /** `plan.for`: the employee band the plan is sold by. */
   audience: string;
   listPrice: string | null;
-  founderPrice: string | null;
   interval: string | null;
   /** Shown in place of a figure, for a plan priced on request. */
   onRequest: string | null;
@@ -92,10 +91,12 @@ export function pricingLadder(currency: Currency = LIST_CURRENCY): PlanRung[] {
     name: plan.name,
     audience: plan.for,
     listPrice: planPrice(plan.listMonthly, currency),
-    founderPrice: planPrice(plan.founderMonthly, currency),
     interval: "per month",
     onRequest: null,
-    footnote: PRICING.founderBadge,
+    // No footnote: this carried `PRICING.founderBadge` — "Beta founder: −50%
+    // for 24 months" — and the beta discount is gone from every market, so
+    // there is nothing qualifying the figure above it any more.
+    footnote: null,
     highlighted: plan.highlighted,
     tag: "tag" in plan ? plan.tag : undefined,
   }));
@@ -107,7 +108,6 @@ export function pricingLadder(currency: Currency = LIST_CURRENCY): PlanRung[] {
       name: PRICING.enterprise.name,
       audience: PRICING.enterprise.for,
       listPrice: null,
-      founderPrice: null,
       interval: null,
       onRequest: PRICING.enterprise.price,
       footnote: PRICING.enterprise.note,

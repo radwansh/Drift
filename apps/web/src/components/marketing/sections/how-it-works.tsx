@@ -1,5 +1,5 @@
 import { Icon } from "../ui";
-import { HOW_IT_WORKS } from "../content";
+import { HOW_IT_WORKS, market, type Currency } from "../content";
 
 /**
  * Section 4: how it works, three numbered steps. Anchor #how-it-works.
@@ -8,8 +8,20 @@ import { HOW_IT_WORKS } from "../content";
  * three features side by side. The connecting line is a decorative pseudo-rule
  * drawn only at the desktop width where the steps sit in a row; stacked on
  * mobile it would point nowhere, so it is hidden there.
+ *
+ * Step 1 is the one line on the page that names a pay cadence and the system
+ * a register comes out of, so it is the one line a market may replace: an
+ * Australian register is exported fortnightly, from Xero or MYOB, and "bi-
+ * weekly" is not a word anyone there uses. The app's own cadence names are
+ * untouched by this — `PERIOD_TYPE_LABELS` is one vocabulary for every
+ * customer, and renaming it for one market would rename it for all of them.
  */
-export function HowItWorks() {
+export function HowItWorks({ currency }: { currency: Currency }) {
+  const uploadStep = market(currency).uploadStep;
+  const steps = HOW_IT_WORKS.steps.map((step, i) =>
+    i === 0 && uploadStep ? { ...step, line: uploadStep } : step,
+  );
+
   return (
     <section id="how-it-works" className="scroll-mt-20 border-b border-cv-line bg-cv-surface">
       <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:py-20">
@@ -27,7 +39,7 @@ export function HowItWorks() {
             className="absolute left-0 right-0 top-5 hidden h-px bg-cv-line sm:block"
           />
 
-          {HOW_IT_WORKS.steps.map((step, i) => (
+          {steps.map((step, i) => (
             <li key={step.title} className="relative flex flex-col gap-3">
               <div className="flex items-center gap-3">
                 <span className="relative z-10 flex h-10 w-10 flex-none items-center justify-center rounded-cv-full border border-cv-line bg-cv-surface font-cv-mono text-sm font-medium text-cv-ink">

@@ -12,7 +12,7 @@ export default function TermsPage() {
   return (
     <LegalPagePlaceholder
       title="Terms"
-      intro="The terms of service for Clarivo, including the beta period, the founder pricing commitment and the limits of the service."
+      intro="The terms of service for Clarivo, including the beta period, how billing works and the limits of the service."
     />
   );
 }

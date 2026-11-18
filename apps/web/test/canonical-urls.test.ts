@@ -43,13 +43,44 @@ describe("declared URLs match what the server serves", () => {
 
   /**
    * The dollar page specifically, since it is the one that broke and the one
-   * most likely to be copied when `/au` and `/nz` are added.
+   * that was copied when `/au` was added.
    */
   it("names the dollar page as /us in both the sitemap and the hreflang mesh", () => {
     const urls = sitemap().map((entry) => entry.url);
     expect(urls).toContain(`${SITE.url}/us`);
     expect(urls).not.toContain(`${SITE.url}/us/`);
     expect(HREFLANG["en-US"]).toBe(`${SITE.url}/us`);
+  });
+
+  /**
+   * The Australian page, pinned the same way. It was built from `/us`, which
+   * is exactly how a `/au/` with a trailing slash would have arrived — the
+   * redirect error that produced this file in the first place.
+   */
+  it("names the Australian page as /au in both the sitemap and the hreflang mesh", () => {
+    const urls = sitemap().map((entry) => entry.url);
+    expect(urls).toContain(`${SITE.url}/au`);
+    expect(urls).not.toContain(`${SITE.url}/au/`);
+    expect(HREFLANG["en-AU"]).toBe(`${SITE.url}/au`);
+  });
+
+  /**
+   * Every market page is annotated, and every annotation is a market page.
+   *
+   * Google drops a hreflang set whose members do not all name each other, so
+   * the failure mode worth catching is a page added to the sitemap and
+   * forgotten here — `/nz` is the next candidate. `x-default` and `en` both
+   * point at `/` on purpose and are excluded from the count rather than from
+   * the mesh.
+   */
+  it("annotates each market page exactly once", () => {
+    const market = Object.entries(HREFLANG)
+      .filter(([lang]) => lang !== "x-default" && lang !== "en")
+      .map(([, url]) => url);
+
+    expect(market).toEqual([`${SITE.url}/us`, `${SITE.url}/au`]);
+    expect(new Set(market).size).toBe(market.length);
+    expect(HREFLANG["x-default"]).toBe(HREFLANG["en"]);
   });
 
   /**

@@ -1,5 +1,5 @@
 import { Icon } from "../ui";
-import { FAQ, money, type Currency } from "../content";
+import { FAQ, marketFaq, money, type Currency } from "../content";
 
 /**
  * Section 10: the FAQ. Anchor #faq.
@@ -12,9 +12,13 @@ import { FAQ, money, type Currency } from "../content";
  *
  * The questions come from the same FAQ array that builds the FAQPage
  * structured data in the page's metadata, which is the point of keeping the
- * copy in one module.
+ * copy in one module. `marketFaq` is what both call, so a market's own
+ * question — Australia asks about superannuation — is in the markup and on the
+ * page or in neither.
  */
 export function Faq({ currency }: { currency: Currency }) {
+  const items = marketFaq(currency);
+
   return (
     <section id="faq" className="scroll-mt-20 border-b border-cv-line bg-cv-bg">
       <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:py-20">
@@ -23,9 +27,9 @@ export function Faq({ currency }: { currency: Currency }) {
         </h2>
 
         <div className="mt-10 grid gap-x-10 lg:grid-cols-2">
-          {FAQ.items.map((item) => (
+          {items.map((item) => (
             <details
-              key={item.q}
+              key={item.id}
               className="group border-b border-cv-line [&_summary::-webkit-details-marker]:hidden"
             >
               <summary className="flex cursor-pointer list-none items-start justify-between gap-4 py-5 text-left text-base font-semibold text-cv-ink focus-visible:outline-none focus-visible:shadow-cv-focus-ring">

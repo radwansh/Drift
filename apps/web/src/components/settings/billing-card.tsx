@@ -27,13 +27,11 @@ interface PlanCardProps {
   audience: string;
   /** Formatted list price, or null for a plan that is priced on request. */
   listPrice: string | null;
-  /** Formatted beta-founder price, where the plan has one. */
-  founderPrice: string | null;
-  /** The interval the two figures are per, e.g. "per month". */
+  /** The interval the figure is per, e.g. "per month". */
   interval: string | null;
   /** What to show instead of a figure: `PRICING.enterprise.price`. */
   onRequest: string | null;
-  /** The small line under the price: the founder badge, or Enterprise's note. */
+  /** The small line under the price: Enterprise's note, where it has one. */
   footnote: string | null;
   /** The plan the company is actually on, per `getBillingInfo`. */
   current?: boolean;
@@ -54,7 +52,6 @@ export function PlanCard({
   name,
   audience,
   listPrice,
-  founderPrice,
   interval,
   onRequest,
   footnote,
@@ -76,45 +73,29 @@ export function PlanCard({
         )
       }
     >
-      {founderPrice ? (
-        /**
-         * List price struck through beside the founder price, as the
-         * marketing page has it. The `<s>` element rather than a
-         * line-through class so the "was" price is announced as struck, and
-         * each figure carries a visually hidden label because two prices
-         * read out in sequence are meaningless.
-         */
-        <p className="m-0 flex flex-wrap items-baseline gap-2">
-          {listPrice && (
-            <s className="cv-num text-sm text-cv-ink-disabled">
-              <span className="sr-only">List price </span>
-              {listPrice}
-            </s>
+      {/*
+        One figure. There used to be two — the list price struck through
+        beside a beta-founder price at half of it, each with a visually
+        hidden label so a screen reader could tell them apart. The founder
+        discount is gone from every market, so the branch, the `<s>` and both
+        labels went with it: a lone price needs no label saying which it is.
+      */}
+      <p className="m-0 flex flex-wrap items-baseline gap-2">
+        <span
+          className={cn(
+            "text-2xl font-medium tracking-[-0.02em] text-cv-ink",
+            // "On request" is a sentence, not a figure: mono and tabular
+            // alignment are for digits, and applying them to words spaces
+            // the letters like a price.
+            listPrice && "cv-num",
           )}
-          <span className="cv-num text-2xl font-medium tracking-[-0.02em] text-cv-ink">
-            <span className="sr-only">Founder price </span>
-            {founderPrice}
-          </span>
-          {interval && <span className="text-sm text-cv-ink-subtle">{interval}</span>}
-        </p>
-      ) : (
-        <p className="m-0 flex flex-wrap items-baseline gap-2">
-          <span
-            className={cn(
-              "text-2xl font-medium tracking-[-0.02em] text-cv-ink",
-              // "On request" is a sentence, not a figure: mono and tabular
-              // alignment are for digits, and applying them to words spaces
-              // the letters like a price.
-              listPrice && "cv-num",
-            )}
-          >
-            {listPrice ?? onRequest}
-          </span>
-          {listPrice && interval && (
-            <span className="text-sm text-cv-ink-subtle">{interval}</span>
-          )}
-        </p>
-      )}
+        >
+          {listPrice ?? onRequest}
+        </span>
+        {listPrice && interval && (
+          <span className="text-sm text-cv-ink-subtle">{interval}</span>
+        )}
+      </p>
       {footnote && (
         <p className="m-0 mt-2 text-[13px] leading-[18px] text-cv-ink-subtle">{footnote}</p>
       )}

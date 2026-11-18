@@ -111,9 +111,10 @@ export function Article({
             See how Clarivo works
           </Button>
         </div>
-        {/* No figure here on purpose: the founder discount and every price
-            live in `content.ts` behind the `¤` placeholder, and a percentage
-            restated in this file is one more copy to keep in step. */}
+        {/* No figure here on purpose: every price lives in `content.ts` behind
+            the `¤` placeholder, and a figure restated in this file is one more
+            copy to keep in step. This is why removing the founder discount
+            needed no edit here. */}
         <p className="mt-4 text-sm leading-relaxed text-cv-ink-subtle">
           Free during the beta, and no credit card.
         </p>
