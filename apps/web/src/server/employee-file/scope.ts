@@ -8,7 +8,7 @@ import {
   fiscalYearLabel,
   fiscalYearOf,
   generateExpectedPeriods,
-  normaliseFiscalStartMonth,
+  resolveFiscalStartMonth,
   type Category,
   type EmployeePeriodInput,
   type ExpectedSlot,
@@ -245,7 +245,13 @@ export async function resolveEmployeeFileScope(
     fiscalStartMonth?: number;
     tolerances?: unknown;
   };
-  const fiscalStartMonth = normaliseFiscalStartMonth(companySettings.fiscalStartMonth);
+  // An Australian company's financial year starts in July, which
+  // `resolveFiscalStartMonth` supplies as a **default only**: a month stored in
+  // `settings.fiscalStartMonth` is a choice somebody made through
+  // `annual.setFiscalStartMonth` and always wins. Same function at every call
+  // site that knows which company it is reading, feeding the same
+  // `fiscalYearOf` / `fiscalYearInterval` as before.
+  const fiscalStartMonth = resolveFiscalStartMonth(companySettings.fiscalStartMonth, companyRow);
   const tolerances = parseTolerances(companySettings.tolerances);
 
   const allPeriods = parseRows(PeriodRowSchema, periodRes.rows, "employee file period");

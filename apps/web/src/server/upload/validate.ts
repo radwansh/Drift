@@ -1,5 +1,6 @@
 import {
   reconcileRegister,
+  runPaydaySuperCheck,
   checkControlTotals,
   describeBreach,
   openQuestionsFor,
@@ -7,7 +8,9 @@ import {
   isSnapshotField,
   CATEGORY_LABELS,
   type Category,
+  type JurisdictionCompany,
   type OpenQuestion,
+  type PaydaySuperReport,
   type ReconcileRow,
   type ReconciliationReport,
   type ControlTotals,
@@ -59,6 +62,17 @@ interface ValidationResult {
    * question has to be answered *before* the data carries the ambiguity.
    */
   openQuestions: OpenQuestion[];
+  /**
+   * The Payday Super check (`docs/AU_PAYROLL_SPEC.md` section 7), or `null`
+   * when the caller did not supply the company and the period it needs.
+   *
+   * **Never an error.** A finding here says what the register shows, not that
+   * anybody breached anything (spec 8), so it cannot block an upload — the
+   * figures are the employer's own and refusing their file over the ATO's 12%
+   * would be refusing it over a conclusion Clarivo is not entitled to draw.
+   * The headline and any wrong-jurisdiction notice go in `warnings`.
+   */
+  paydaySuper: PaydaySuperReport | null;
 }
 
 export interface ValidateOptions {
@@ -76,6 +90,25 @@ export interface ValidateOptions {
    * two before calling.
    */
   answeredCategories?: Readonly<Record<string, Category>>;
+  /**
+   * The **company's** currency, and the period being uploaded, for the Payday
+   * Super check.
+   *
+   * Separate from `currencyCode` above on purpose, and section 1.2 is why:
+   * `currencyCode` here is the period's, which `payroll_periods.currency_code`
+   * stores and which can disagree with the company's — `annual/warnings.ts`
+   * already reports mixed currency across periods. The jurisdiction proxy is
+   * the **company's**, because a per-period read would turn the check on and
+   * off between periods of one year.
+   *
+   * Absent means the check does not run and `paydaySuper` is `null`. It is not
+   * defaulted here: guessing a jurisdiction is the one thing section 1 says not
+   * to do quietly.
+   */
+  paydaySuper?: {
+    company: JurisdictionCompany;
+    period: { start: string; end: string };
+  };
 }
 
 export function validateRows(
@@ -214,18 +247,21 @@ export function validateRows(
    * `samples/2025` carries such a column deliberately.
    */
   const decimals = minorUnits(detectedCurrency ?? options.currencyCode);
-  const reconciliation =
+  const registerRows =
     grossMapping && netMapping
-      ? reconcileRegister({
-          rows: reconcileRows(rows, mappings, grossMapping, netMapping),
-          decimals,
-          rowNumbers: employeeIdRows,
-          // Step 11b: an answered column sits on the side the admin said, here
-          // as on the dashboard. Without this the gate would keep reading a
-          // just-answered column as unplaced.
-          answeredCategories: options.answeredCategories,
-        })
+      ? reconcileRows(rows, mappings, grossMapping, netMapping)
       : null;
+  const reconciliation = registerRows
+    ? reconcileRegister({
+        rows: registerRows,
+        decimals,
+        rowNumbers: employeeIdRows,
+        // Step 11b: an answered column sits on the side the admin said, here
+        // as on the dashboard. Without this the gate would keep reading a
+        // just-answered column as unplaced.
+        answeredCategories: options.answeredCategories,
+      })
+    : null;
 
   if (reconciliation) {
     for (const breach of reconciliation.breaches) {
@@ -308,6 +344,48 @@ export function validateRows(
     });
   }
 
+  /**
+   * The Payday Super check, when the caller said which company and which
+   * period. Gated inside `runPaydaySuperCheck` on two signals, so this call is
+   * a no-op for every company that is not Australian, and for an Australian
+   * register that carries no employer-super column.
+   *
+   * Everything it says is a **warning**, never an error. The distinction is the
+   * same one `unplacedColumns` draws and it matters more here: "your register
+   * does not add up" stops an upload, and "this register shows employer super
+   * below 12% of qualifying earnings" is a figure about the employer's own
+   * payroll that they are entitled to upload and look at.
+   */
+  const paydaySuperOptions = options.paydaySuper;
+  const paydaySuper =
+    registerRows && paydaySuperOptions
+      ? runPaydaySuperCheck({
+          company: paydaySuperOptions.company,
+          period: paydaySuperOptions.period,
+          rows: registerRows,
+          answeredCategories: options.answeredCategories,
+        })
+      : null;
+
+  if (paydaySuper) {
+    for (const warning of paydaySuper.warnings) {
+      warnings.push({ message: warning.message, severity: "warning" });
+    }
+    if (paydaySuper.status === "ran" && paydaySuper.totals.below > 0) {
+      warnings.push({
+        message: `${paydaySuper.message} ${paydaySuper.basis}`,
+        severity: "warning",
+      });
+      for (const employee of paydaySuper.employees) {
+        if (employee.outcome !== "below") continue;
+        warnings.push({
+          message: `${employee.employeeId}: ${employee.message}`,
+          severity: "warning",
+        });
+      }
+    }
+  }
+
   return {
     valid: errors.length === 0,
     totalRows: rows.length,
@@ -321,6 +399,7 @@ export function validateRows(
     controlTotals,
     controlTotalsMissing,
     openQuestions,
+    paydaySuper,
   };
 }
 
