@@ -99,8 +99,7 @@ export default function BillingPage() {
                  customer reading both must not find two stories. */
               <p className="m-0">
                 Clarivo is free while it is in beta, and no payment method is held. When billing
-                starts, every company that joined during the beta pays the founder price below for
-                24 months.
+                starts, the price goes by how many employees you pay — the plans below.
               </p>
             )}
 
@@ -168,7 +167,6 @@ export default function BillingPage() {
                 name={rung.name}
                 audience={rung.audience}
                 listPrice={rung.listPrice}
-                founderPrice={rung.founderPrice}
                 interval={rung.interval}
                 onRequest={rung.onRequest}
                 footnote={rung.footnote}
@@ -195,10 +193,10 @@ export default function BillingPage() {
             <p className="m-0 pt-2 text-[13px] leading-[18px] text-cv-ink-subtle">
               {PRICING.sizeLine}
             </p>
-            {/* The published terms, verbatim and in one place: VAT, cancellation,
-                how long the founder price lasts. Through `money()` because it is
-                prose quoted from the site rather than a figure this page
-                computed, so a `¤` added to it later still renders. */}
+            {/* The published terms, verbatim and in one place: cancellation and
+                the Bureau rule. Through `money()` because it is prose quoted
+                from the site rather than a figure this page computed, so a `¤`
+                added to it later still renders. */}
             <p className="m-0 text-[13px] leading-[18px] text-cv-ink-subtle">
               {money(PRICING.smallPrint, LIST_CURRENCY)}
             </p>

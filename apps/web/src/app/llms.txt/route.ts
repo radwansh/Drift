@@ -154,7 +154,7 @@ function body(): string {
     `- [${HERO.headline}](${url("/")}): The whole product on one page — the problem, the three-step upload, the salary KPIs, the anomaly alerts, the four audiences, data handling, pricing and nine questions with answers.`,
     `- [${HOW_IT_WORKS.headline}](${url("/#how-it-works")}): The three steps between exporting a payroll register and reading the dashboard, repeated in full under "How it works" below.`,
     `- [${FEATURES.headline}](${url("/#features")}): The KPI tiles Clarivo builds from one uploaded payroll file, each with the question it answers.`,
-    `- [${PRICING.headline}](${url("/#pricing")}): Plans by employee count, Enterprise and Bureau on request, the beta founder discount, and what every plan includes.`,
+    `- [${PRICING.headline}](${url("/#pricing")}): Plans by employee count, Enterprise and Bureau on request, and what every plan includes.`,
     `- [${SECURITY.headline}](${url("/#security")}): The data-handling points Clarivo states today.`,
     `- [${FAQ.headline}](${url("/#faq")}): Nine questions with answers, reproduced in full under "Questions and answers" below.`,
     `- [Clarivo in US dollars](${url("/us")}): The same page with US dollar list prices.`,
@@ -257,7 +257,7 @@ function body(): string {
 
   PRICING.plans.forEach((plan) =>
     push(
-      `- **${plan.name}** — ${plan.for}. List ${everyMarket(plan, "listMonthly")} per month or ${everyMarket(plan, "listYearly")} per year. Beta founder price ${everyMarket(plan, "founderMonthly")} per month or ${everyMarket(plan, "founderYearly")} per year. Euro / US dollars / Australian dollars, in that order.`,
+      `- **${plan.name}** — ${plan.for}. ${everyMarket(plan, "listMonthly")} per month or ${everyMarket(plan, "listYearly")} per year. Euro / US dollars / Australian dollars, in that order.`,
     ),
   );
   push(

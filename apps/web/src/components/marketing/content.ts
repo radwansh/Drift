@@ -47,17 +47,52 @@ import type { IconName } from "./ui";
  * therefore no FX rate policy and no small print about which currency is
  * actually charged.
  *
- * `AUD` renders `A$`, never a bare `$`: `/us` already uses `$`, and an
- * Australian price a reader takes for a US one is a 50% error in the number
- * that decides the sale.
+ * **A price and a sample figure take different symbols in Australia**, which is
+ * the one place the two readings of "the currency sign" come apart.
+ *
+ * A *price* says `A$49`. It is read beside `/us`'s `$49`, often by someone
+ * comparing the two pages, and a reader who takes an Australian price for a US
+ * one has a 50% error in the number that decides the sale.
+ *
+ * A *sample figure* — the demo dashboard's `+$18,420` and `−$860` — says plain
+ * `$`. Those stand in for the reader's **own** payroll, and nobody in Australia
+ * writes `A$` for a domestic amount; `A$` is a disambiguator for international
+ * contexts. Stamping it on twenty illustrative figures read as a foreign
+ * product describing Australian money from the outside. The currency is stated
+ * once, in the pricing small print, which is where it is load-bearing.
+ *
+ * So `money()` is for prices and `sampleAmount()` for sample amounts. They
+ * differ for `AUD` alone; for `EUR` and `USD` both substitute the same symbol,
+ * so a call site that picks the wrong one is only visibly wrong on `/au`. The
+ * two maps are deliberately separate rather than one map with a flag, because
+ * the choice is about what the number *is*, not about how to format it.
+ *
+ * Not named `figure()`: `sections/hero.tsx` wraps its sample in a `<figure>`
+ * element, and a function of that name sitting beside that tag is a trap for
+ * the next reader even though JSX resolves lowercase tags as strings.
  */
 export type Currency = "EUR" | "USD" | "AUD";
 
-const CURRENCY_SYMBOL: Record<Currency, string> = { EUR: "€", USD: "$", AUD: "A$" };
+/** For prices. Australia disambiguates against `/us`. */
+const PRICE_SYMBOL: Record<Currency, string> = { EUR: "€", USD: "$", AUD: "A$" };
 
-/** Substitutes the market's symbol into a stored figure. */
+/** For sample amounts standing in for the reader's own payroll. */
+const FIGURE_SYMBOL: Record<Currency, string> = { EUR: "€", USD: "$", AUD: "$" };
+
+/** Substitutes the market's price symbol into a stored price. */
 export function money(text: string, currency: Currency): string {
-  return text.split("¤").join(CURRENCY_SYMBOL[currency]);
+  return text.split("¤").join(PRICE_SYMBOL[currency]);
+}
+
+/**
+ * Substitutes the market's figure symbol into a stored sample amount.
+ *
+ * Used by the hero's headline variance and the KPI tiles. Everything else —
+ * the price cards, the pricing FAQ answer, the JSON-LD offers and `llms.txt` —
+ * is a price and goes through `money()`.
+ */
+export function sampleAmount(text: string, currency: Currency): string {
+  return text.split("¤").join(FIGURE_SYMBOL[currency]);
 }
 
 export const SITE = {
@@ -368,21 +403,33 @@ export const SECURITY = {
   ],
 } as const;
 
+/**
+ * **The beta founder discount is gone from every market.**
+ *
+ * Each plan carried two ladders — a list price and a founder price at half of
+ * it — and the page struck the list price through beside the founder one. One
+ * ladder is stored now, and it is the list price, because that is what the
+ * Polar checkout actually charges. The two had drifted: the page promised €14
+ * while the live checkout billed €29, so a visitor who followed the pricing
+ * section to the checkout paid double what the section quoted. Removing the
+ * second ladder removes the thing that could disagree.
+ *
+ * `founderMonthly` and `founderYearly` are therefore not fields any more, nor
+ * is `founderBadge`, and the yearly figure is ten times the monthly one (two
+ * months free) off the list price rather than the founder price.
+ */
 export const PRICING = {
   eyebrow: "Pricing",
-  headline: "Simple payroll dashboard pricing, 50% off for beta founders",
+  headline: "Simple payroll dashboard pricing",
   subHeadline:
-    "Clarivo is free while it's in beta. When billing starts, every company that joined during the beta pays the founder price for 24 months. Every plan includes every feature.",
+    "Clarivo is free while it's in beta. Every plan includes every feature, and the price goes by how many employees you pay.",
   toggle: { monthly: "Monthly", yearly: "Yearly (2 months free)" },
-  founderBadge: "Beta founder: −50% for 24 months",
   cta: "Get early access",
   plans: [
     {
       name: "Starter",
       for: "Up to 500 employees",
       listMonthly: "¤29",
-      founderMonthly: "¤14",
-      founderYearly: "¤140",
       listYearly: "¤290",
       highlighted: false,
     },
@@ -390,8 +437,6 @@ export const PRICING = {
       name: "Growth",
       for: "Up to 2,000 employees",
       listMonthly: "¤49",
-      founderMonthly: "¤24",
-      founderYearly: "¤240",
       listYearly: "¤490",
       highlighted: true,
       tag: "Best for growing teams",
@@ -401,7 +446,7 @@ export const PRICING = {
     name: "Enterprise",
     for: "Over 2,000 employees or several countries",
     price: "On request",
-    note: "Founder discount applies",
+    note: "Priced on your headcount and countries",
     cta: "Talk to us",
   },
   /**
@@ -448,12 +493,12 @@ export const PRICING = {
    * `sections/pricing.tsx`.
    *
    * One sentence moved rather than the whole object: a second copy of
-   * `PRICING` for Australia would put the plan limits, the founder terms and
-   * the Bureau rule in two places, and the next edit would land in one of
-   * them. Everything below is true in every market and is stated once.
+   * `PRICING` for Australia would put the plan limits and the Bureau rule in
+   * two places, and the next edit would land in one of them. Everything below
+   * is true in every market and is stated once.
    */
   smallPrint:
-    "Monthly billing, cancel anytime; yearly billing gets two months free. The founder price applies to companies that sign up during the beta and lasts 24 months from the first invoice. The Bureau plan is billed per client company, from five clients upwards; a client company over 200 employees takes the plan that matches its size. Fair use applies to AI summaries.",
+    "Monthly billing, cancel anytime; yearly billing gets two months free. The Bureau plan is billed per client company, from five clients upwards; a client company over 200 employees takes the plan that matches its size. Fair use applies to AI summaries.",
 } as const;
 
 /**
@@ -510,7 +555,7 @@ export const FAQ = {
     {
       id: "cost",
       q: "How much does Clarivo cost?",
-      a: "Clarivo is free during the beta, with no credit card. When billing starts, plans run from ¤29 to ¤49 a month by company size, and beta founders pay half: ¤14 to ¤24 a month for 24 months. Over 2,000 employees is Enterprise, priced on request.",
+      a: "Clarivo is free during the beta, with no credit card. When billing starts, plans run from ¤29 to ¤49 a month by company size. Over 2,000 employees is Enterprise, priced on request.",
     },
   ],
 } as const;
@@ -521,8 +566,13 @@ export const FINAL_CTA = {
     "Upload two payroll periods and see every salary KPI, and every alert, in minutes.",
   primary: "Get early access",
   secondary: "Sign in",
-  trust: "Free during the beta · No credit card · Founder price for 24 months",
-  /** Behind the founderLine switch, which is on. */
+  trust: "Free during the beta · No credit card · Cancel anytime",
+  /**
+   * Behind the founderLine switch, which is on.
+   *
+   * "Founder" here is Radwan, not a founder *price* — this line survived the
+   * removal of the beta discount because it is about who built the product.
+   */
   founderLine:
     "Built by Radwan Sheb, an SAP payroll lead who has delivered payroll projects across Europe and the Gulf, including a 12-country rollout.",
 } as const;
@@ -578,11 +628,17 @@ export const FOOTER = {
 type PlanName = (typeof PRICING.plans)[number]["name"];
 type FaqId = (typeof FAQ.items)[number]["id"];
 
-/** One plan's four figures, in the `¤` placeholder form `money()` reads. */
+/**
+ * One plan's two figures, in the `¤` placeholder form `money()` reads.
+ *
+ * Two, not four: the founder pair went with the beta discount. Dropping them
+ * from the interface rather than leaving them optional is deliberate — an
+ * optional `founderMonthly` would let a market reintroduce a second ladder
+ * without anything objecting, which is how the page and the checkout came to
+ * disagree in the first place.
+ */
 export interface PlanPrices {
   listMonthly: string;
-  founderMonthly: string;
-  founderYearly: string;
   listYearly: string;
 }
 
@@ -678,40 +734,44 @@ export const MARKETS: Record<Currency, MarketCopy> = {
      * recovery is an underpayment someone found, usually long after payday.
      * The labels say exactly that and claim nothing further.
      *
-     * Written with a literal `A$` rather than the `¤` placeholder, which is
-     * the one place in this file that is deliberate: the currency is a fact
-     * about the figure, not about the page. A$453m substituted into a dollar
-     * page would read as US$453m and be a different, wrong number.
+     * Written as a literal rather than the `¤` placeholder, and with a plain
+     * `$`. Plain, because `A$` is now reserved for prices: these are figures,
+     * and the rule is that a figure standing in a sentence an Australian reads
+     * takes the symbol an Australian writes. Literal, because the figure is
+     * published in Australian dollars by its source — it is not this page's
+     * currency choice, so it must not follow the market the way a price does.
+     * These live inside `MARKETS.AUD` and therefore render on `/au` alone,
+     * which is what makes a plain `$` unambiguous here.
      */
     problem: {
       stats: [
-        { value: "A$453m", label: "recovered for underpaid workers in 2025–26" },
+        { value: "$453m", label: "recovered for underpaid workers in 2025–26" },
         { value: "181,000", label: "workers were back-paid in that one year" },
-        { value: "A$217m", label: "of it from large employers alone" },
+        { value: "$217m", label: "of it from large employers alone" },
       ],
       source: "Source: Fair Work Ombudsman, annual report 2025–26, published 29 October 2026.",
       sourceHref:
         "https://www.fairwork.gov.au/newsroom/media-releases/2026-media-releases/october-2026/20261029-annual-report-2025-26-media-release",
     },
     /**
-     * The Australian ladder: A$49 and A$79 list, half of each for founders,
-     * ten times the monthly figure for a year — the same shape as the euro and
-     * dollar ladders, in Australia's own numerals. List prices per market, not
-     * conversions. A$24 off A$49 and A$39 off A$79 are both slightly more than
-     * the 50% the founder badge promises, which is the safe direction for a
-     * price claim to be wrong in.
+     * The Australian ladder: A$49 and A$79 list, ten times the monthly figure
+     * for a year — the same shape as the euro and dollar ladders, in
+     * Australia's own numerals. List prices per market, not conversions.
+     *
+     * **These two numerals are awaiting sign-off.** They were my choice, and
+     * the Polar account carries no AUD product to take them from — checked
+     * twice, on two fresh checkout sessions: one €29 Starter, no currency
+     * selector. Until an AUD product exists in Polar, an Australian who
+     * reaches checkout is billed in euro, whatever this page says. Changing
+     * the ladder is editing the four strings below and nothing else.
      */
     plans: {
       Starter: {
         listMonthly: "¤49",
-        founderMonthly: "¤24",
-        founderYearly: "¤240",
         listYearly: "¤490",
       },
       Growth: {
         listMonthly: "¤79",
-        founderMonthly: "¤39",
-        founderYearly: "¤390",
         listYearly: "¤790",
       },
     },
@@ -721,7 +781,7 @@ export const MARKETS: Record<Currency, MarketCopy> = {
           "Any system that exports to Excel or CSV: Xero, MYOB, Employment Hero, SAP, ADP or your own spreadsheets. Clarivo reads the file you export and connects to none of them, so nothing has to change in the system that pays your people.",
         "pay-frequencies":
           "Monthly, fortnightly, twice-a-month and weekly payrolls, in any currency. Inside the app the fortnightly cycle is called Bi-weekly. Clarivo never adds amounts in different currencies together; each currency is reported on its own.",
-        cost: "Clarivo is free during the beta, with no credit card. When billing starts, plans run from ¤49 to ¤79 a month by company size, and beta founders pay half: ¤24 to ¤39 a month for 24 months. Over 2,000 employees is Enterprise, priced on request.",
+        cost: "Clarivo is free during the beta, with no credit card. When billing starts, plans run from ¤49 to ¤79 a month by company size, excluding GST. Over 2,000 employees is Enterprise, priced on request.",
       },
       extra: [
         {

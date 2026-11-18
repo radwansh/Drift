@@ -50,17 +50,18 @@ describe("the ladder comes from PRICING", () => {
    * a non-breaking space, so `toBe("EUR 29.00")` typed with an ordinary space
    * fails on two strings that look identical in the diff.
    */
-  it("carries the 29/49 ladder and its founder half", () => {
+  it("carries the 29/49 ladder, and no second figure beside it", () => {
     expect(ladder[0]?.listPrice).toMatch(/^EUR\s29\.00$/);
-    expect(ladder[0]?.founderPrice).toMatch(/^EUR\s14\.00$/);
     expect(ladder[1]?.listPrice).toMatch(/^EUR\s49\.00$/);
-    expect(ladder[1]?.founderPrice).toMatch(/^EUR\s24\.00$/);
+    // The founder half is gone from every market: the site quoted €14 while
+    // the Polar checkout charged €29, and one ladder cannot disagree.
+    for (const rung of ladder) expect(rung).not.toHaveProperty("founderPrice");
+    expect(ladder[0]?.footnote).toBeNull();
   });
 
   it("prices Enterprise on request, with no figure at all", () => {
     const enterprise = ladder[2];
     expect(enterprise?.listPrice).toBeNull();
-    expect(enterprise?.founderPrice).toBeNull();
     expect(enterprise?.onRequest).toBe("On request");
   });
 
@@ -71,7 +72,7 @@ describe("the ladder comes from PRICING", () => {
    */
   it("shows the same numbers the marketing page does", () => {
     for (const plan of PRICING.plans) {
-      for (const stored of [plan.listMonthly, plan.founderMonthly]) {
+      for (const stored of [plan.listMonthly, plan.listYearly]) {
         const numerals = stored.replace(/[^\d]/g, "");
         expect(planPrice(stored)).toContain(numerals);
         expect(money(stored, LIST_CURRENCY)).toContain(numerals);
@@ -88,7 +89,7 @@ describe("money on the billing page (CLAUDE.md's formatter rule)", () => {
    */
   it("renders a currency code, never a symbol or the placeholder", () => {
     for (const rung of pricingLadder()) {
-      for (const figure of [rung.listPrice, rung.founderPrice]) {
+      for (const figure of [rung.listPrice]) {
         if (figure === null) continue;
         expect(figure).toContain(LIST_CURRENCY);
         expect(figure).not.toContain("¤");

@@ -14,10 +14,9 @@ import { EarlyAccessButton } from "../early-access-button";
  * clear that this is state and not a launch switch, so it lives in the
  * component rather than in launch.ts.
  *
- * List prices are struck through beside the founder price. The strike-through
- * is a <s> element rather than a line-through class so the "was" price is
- * announced as struck text, and each figure carries a visually hidden label,
- * because "€29 €14" read aloud in sequence is meaningless.
+ * One price per plan per cycle, and it is the list price. A founder price at
+ * half of it used to sit beside a struck-through list price; the discount is
+ * gone, because the page quoted €14 while the Polar checkout charged €29.
  *
  * The Annual Salaries line in "Every plan includes" is gated: promising it
  * while the dashboard is still being fixed would be selling something that is
@@ -94,10 +93,6 @@ export function Pricing({ currency }: { currency: Currency }) {
             const figures = planPrices(plan, currency);
             const cycles = (["monthly", "yearly"] as const).map((cycle) => ({
               cycle,
-              founder: money(
-                cycle === "yearly" ? figures.founderYearly : figures.founderMonthly,
-                currency,
-              ),
               list: money(cycle === "yearly" ? figures.listYearly : figures.listMonthly, currency),
               per: cycle === "yearly" ? "per year" : "per month",
             }));
@@ -118,23 +113,23 @@ export function Pricing({ currency }: { currency: Currency }) {
                   </div>
                   <p className="text-sm text-cv-ink-muted">{plan.for}</p>
 
+                  {/*
+                    One price per cycle. There used to be two — the list price
+                    struck through beside a founder price at half of it — with
+                    a `<s>` element and two visually hidden labels so a screen
+                    reader could tell the "was" from the "now". The founder
+                    discount is gone, so the strike-through, the second figure
+                    and both labels go with it: a lone price needs no label
+                    saying which price it is.
+                  */}
                   {cycles.map((c) => (
                     <div key={c.cycle} hidden={c.cycle !== billing}>
-                      <p className="flex flex-wrap items-baseline gap-2 font-cv-mono">
-                        <s className="text-base text-cv-ink-disabled">
-                          <span className="sr-only">List price </span>
-                          {c.list}
-                        </s>
-                        <span className="text-3xl font-medium tracking-[-0.02em] text-cv-ink">
-                          <span className="sr-only">Founder price </span>
-                          {c.founder}
-                        </span>
+                      <p className="font-cv-mono text-3xl font-medium tracking-[-0.02em] text-cv-ink">
+                        {c.list}
                       </p>
                       <p className="mt-2 text-xs text-cv-ink-subtle">{c.per}</p>
                     </div>
                   ))}
-
-                  <Badge tone="signal">{PRICING.founderBadge}</Badge>
 
                   <EarlyAccessButton
                     variant={plan.highlighted ? "accent" : "secondary"}
