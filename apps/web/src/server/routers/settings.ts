@@ -2,7 +2,14 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { users, companies } from "@saas/db";
-import { EDITOR_ROLES, editorProcedure, memberProcedure, protectedProcedure, router } from "../trpc";
+import {
+  EDITOR_ROLES,
+  billingEditorProcedure,
+  billingProcedure,
+  editorProcedure,
+  protectedProcedure,
+  router,
+} from "../trpc";
 import { TRIAL_SETTINGS_KEY_NAMES } from "@/lib/entitlement";
 import {
   companySettingsObject,
@@ -244,7 +251,10 @@ export const settingsRouter = router({
    * behind it, which needs both an access token on this deployment and a Polar
    * customer recorded against this company. Neither is true anywhere today.
    */
-  getBillingInfo: memberProcedure.query(async ({ ctx }) => {
+  // `billingProcedure`, not `memberProcedure`: the paywall reads this to decide
+  // what to offer, so gating it on entitlement would be a lock whose key is
+  // behind the lock.
+  getBillingInfo: billingProcedure.query(async ({ ctx }) => {
     const company = await ctx.db.query.companies.findFirst({
       where: eq(companies.id, ctx.companyId),
     });
@@ -292,7 +302,7 @@ export const settingsRouter = router({
    * company-wide write by any reading of CLAUDE.md's table, and a viewer should
    * not be able to open one.
    */
-  createBillingPortal: editorProcedure
+  createBillingPortal: billingEditorProcedure
     .input(z.object({ returnUrl: z.string().url().optional() }))
     .mutation(async ({ ctx, input }) => {
       const company = await ctx.db.query.companies.findFirst({
@@ -344,7 +354,10 @@ export const settingsRouter = router({
    * should be. `canCheckout` is that distinction, and the links are withheld
    * from a viewer rather than merely hidden by the page.
    */
-  getCheckout: memberProcedure.query(({ ctx }) => {
+  // Ungated for the same reason as `getBillingInfo`: this is the endpoint the
+  // paywall's "Continue to payment" button calls, and an expired company is
+  // exactly who needs it to work.
+  getCheckout: billingProcedure.query(({ ctx }) => {
     const canCheckout = EDITOR_ROLES.includes(
       ctx.currentUser.role as (typeof EDITOR_ROLES)[number],
     );

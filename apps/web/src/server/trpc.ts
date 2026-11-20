@@ -3,7 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { db, requireDb, users, companies } from "@saas/db";
 import { EDITOR_ROLES, PAY_DETAIL_ROLES } from "@/lib/roles";
-import type { CompanySettings } from "@/lib/entitlement";
+import { entitlementOf, type CompanySettings } from "@/lib/entitlement";
 import { ensureUser } from "./ensure-user";
 import { scrubSchemaDriftShape, translateSchemaDriftError } from "./schema-drift";
 
@@ -157,7 +157,53 @@ const withCurrentUser = isAuthenticated.unstable_pipe(async ({ ctx, next }) => {
   });
 });
 
-export const memberProcedure = baseProcedure.use(withCurrentUser);
+/**
+ * The company's trial or subscription must be live, or the data is refused.
+ *
+ * **This is the paywall, not the dialog.** `TrialPaywall` is a sentence a
+ * customer can read; deleting it in the browser unlocks nothing because this
+ * middleware answers the same `entitlementOf()` question on the server. The two
+ * cannot disagree, because there is one function and they both call it.
+ *
+ * `cause: "PAYMENT_REQUIRED"` rather than a bare FORBIDDEN so the client can
+ * tell "you have not paid" from "you are the wrong role" and open the paywall
+ * on the spot — which is what makes the dialog appear the moment a trial lapses
+ * under an open tab, without a reload.
+ *
+ * **It refuses `trial_ended` and `subscription_ended` only, and deliberately
+ * not `onboarding_incomplete`.** A company with no `onboardingCompletedAt` is
+ * one that existed before this release; the app layout sends its admin through
+ * onboarding once, pre-filled, and refusing its data as well would lock out
+ * every existing customer on release day for a trial they were never offered.
+ * The brief's own rule — nobody is locked out on release day — is this branch.
+ */
+const withEntitlement = withCurrentUser.unstable_pipe(async ({ ctx, next }) => {
+  const { access, reason } = entitlementOf(ctx.companySettings, new Date());
+  if (!access && (reason === "trial_ended" || reason === "subscription_ended")) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message:
+        reason === "trial_ended"
+          ? "Your free trial has ended. Choose a plan to keep using Clarivo."
+          : "Your subscription has ended. Choose a plan to keep using Clarivo.",
+      cause: "PAYMENT_REQUIRED",
+    });
+  }
+  return next({ ctx });
+});
+
+export const memberProcedure = baseProcedure.use(withEntitlement);
+
+/**
+ * A member procedure **without** the entitlement gate, for the few endpoints
+ * the paywall itself needs: `getBillingInfo`, `getCheckout` and
+ * `createBillingPortal`.
+ *
+ * Gating these would be a lock whose key is behind the lock — the customer
+ * would see a dialog asking them to choose a plan and every button on it would
+ * fail. Nothing that reads payroll data may use this.
+ */
+export const billingProcedure = baseProcedure.use(withCurrentUser);
 
 /**
  * Editor-only (step 22, finding A4).
@@ -171,6 +217,25 @@ export const editorProcedure = memberProcedure.use(async ({ ctx, next }) => {
     throw new TRPCError({
       code: "FORBIDDEN",
       message: "Changing company-wide annual settings requires the admin or manager role.",
+    });
+  }
+  return next({ ctx });
+});
+
+/**
+ * An editor procedure **without** the entitlement gate, for
+ * `createBillingPortal`.
+ *
+ * The portal is how a company with an ended subscription fixes it, so gating it
+ * on having a live subscription would be circular — the paywall's "Manage
+ * billing" button would fail for precisely the customer it is shown to. The
+ * role check stays: a viewer still may not open one.
+ */
+export const billingEditorProcedure = billingProcedure.use(async ({ ctx, next }) => {
+  if (!EDITOR_ROLES.includes(ctx.currentUser.role as (typeof EDITOR_ROLES)[number])) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Managing billing requires the admin or manager role.",
     });
   }
   return next({ ctx });
