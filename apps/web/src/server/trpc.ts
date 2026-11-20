@@ -1,7 +1,9 @@
 import { initTRPC, TRPCError } from "@trpc/server";
 import { auth } from "@clerk/nextjs/server";
-import { db, requireDb } from "@saas/db";
+import { eq } from "drizzle-orm";
+import { db, requireDb, users, companies } from "@saas/db";
 import { EDITOR_ROLES, PAY_DETAIL_ROLES } from "@/lib/roles";
+import type { CompanySettings } from "@/lib/entitlement";
 import { ensureUser } from "./ensure-user";
 import { scrubSchemaDriftShape, translateSchemaDriftError } from "./schema-drift";
 
@@ -88,20 +90,61 @@ export const protectedProcedure = baseProcedure.use(isAuthenticated);
 export { EDITOR_ROLES, PAY_DETAIL_ROLES };
 
 /**
- * Loads the caller's user row once and attaches it to the context.
+ * Loads the caller's user row **and their company's settings** once, and
+ * attaches both to the context.
  *
  * Every annual procedure previously re-queried the user to get its companyId,
  * which is part of the 13 round trips per page view (finding A5). Resolving it in
  * middleware means one query shared by the whole call.
+ *
+ * **The settings ride on that same query, by a join.** Entitlement — whether
+ * the company's trial or subscription is live — has to be checked by every data
+ * procedure, and reading `companies.settings` separately would have cost one
+ * request per call and broken the round-trip budgets that
+ * `test/annual-router.test.ts` and `test/employee-file-router.test.ts` assert.
+ * Those tests are exact rather than `<=`, so a second request would fail them
+ * rather than quietly costing money; they pass unchanged.
+ *
+ * This is the shape `server/current-account.ts` already uses for the plan, for
+ * the same reason, and `ensureUser` stays the authority on provisioning: it
+ * runs only when the join finds nothing, which is a first-ever sign-in. That
+ * path pays for the extra reads once per account instead of once per request.
  */
 const withCurrentUser = isAuthenticated.unstable_pipe(async ({ ctx, next }) => {
-  // Provisions the company and user on first use rather than 404ing (step 1 of
-  // docs/ANNUAL_PAGE_FIX_PLAN.md). Nothing else creates that row, so every
-  // member procedure used to fail for a freshly signed-up account. The lookup
-  // is unchanged for an account that already has one.
   let currentUser;
+  let companySettings: CompanySettings;
   try {
-    currentUser = await ensureUser(ctx.db, ctx.userId);
+    const [joined] = await ctx.db
+      .select({
+        id: users.id,
+        companyId: users.companyId,
+        email: users.email,
+        name: users.name,
+        role: users.role,
+        clerkUserId: users.clerkUserId,
+        settings: companies.settings,
+      })
+      .from(users)
+      .innerJoin(companies, eq(companies.id, users.companyId))
+      .where(eq(users.clerkUserId, ctx.userId))
+      .limit(1);
+
+    if (joined) {
+      const { settings, ...row } = joined;
+      currentUser = row;
+      companySettings = settings as CompanySettings;
+    } else {
+      // Provisions the company and user on first use rather than 404ing (step 1
+      // of docs/ANNUAL_PAGE_FIX_PLAN.md). Nothing else creates that row, so
+      // every member procedure used to fail for a freshly signed-up account.
+      currentUser = await ensureUser(ctx.db, ctx.userId);
+      const [company] = await ctx.db
+        .select({ settings: companies.settings })
+        .from(companies)
+        .where(eq(companies.id, currentUser.companyId))
+        .limit(1);
+      companySettings = company?.settings as CompanySettings;
+    }
   } catch (cause) {
     throw new TRPCError({
       code: "INTERNAL_SERVER_ERROR",
@@ -109,7 +152,9 @@ const withCurrentUser = isAuthenticated.unstable_pipe(async ({ ctx, next }) => {
       cause,
     });
   }
-  return next({ ctx: { ...ctx, currentUser, companyId: currentUser.companyId } });
+  return next({
+    ctx: { ...ctx, currentUser, companySettings, companyId: currentUser.companyId },
+  });
 });
 
 export const memberProcedure = baseProcedure.use(withCurrentUser);
@@ -190,4 +235,10 @@ export type ProtectedContext = { userId: string; db: NonNullable<typeof db> };
 export type MemberContext = ProtectedContext & {
   currentUser: { id: string; companyId: string; role: string };
   companyId: string;
+  /**
+   * The company's `companies.settings`, from the same join that resolved the
+   * user. Read it for entitlement rather than querying the column again — that
+   * is the whole reason it is here, and the round-trip budget tests are exact.
+   */
+  companySettings: CompanySettings;
 };

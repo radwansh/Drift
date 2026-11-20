@@ -1,9 +1,16 @@
+import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/shared/sidebar";
 import { Navbar } from "@/components/shared/navbar";
+import { TrialPaywall } from "@/components/billing/trial-paywall";
 import { PayrollStoreProvider } from "@/lib/payroll-store";
 import { SidebarProvider } from "@/lib/sidebar-context";
 import { currentAccount } from "@/server/current-account";
 import type { PlanId } from "@/lib/plans";
+import {
+  entitlementOf,
+  onboardingCompleted,
+  type CompanySettings,
+} from "@/lib/entitlement";
 
 // Every page below this layout is tenant-specific and auth-dependent. Without this
 // they build as static pages, which previously caused a cached-auth incident.
@@ -29,12 +36,23 @@ export const dynamic = "force-dynamic";
  * Through `currentAccount`, which is `cache()`d per request — so this and the
  * page it wraps resolve the same user once between them instead of once each.
  */
-async function resolveGating(): Promise<{ role: string | null; plan: PlanId | null }> {
+async function resolveGating(): Promise<{
+  role: string | null;
+  plan: PlanId | null;
+  settings: CompanySettings;
+  /** False only when the lookup failed, which must not be read as "onboarded". */
+  resolved: boolean;
+}> {
   try {
     const account = await currentAccount();
-    return { role: account?.role ?? null, plan: account?.plan ?? null };
+    return {
+      role: account?.role ?? null,
+      plan: account?.plan ?? null,
+      settings: account?.settings,
+      resolved: account !== null,
+    };
   } catch {
-    return { role: null, plan: null };
+    return { role: null, plan: null, settings: undefined, resolved: false };
   }
 }
 
@@ -45,7 +63,30 @@ async function resolveGating(): Promise<{ role: string | null; plan: PlanId | nu
  * with space-6 between (the `gap-6` on <main>).
  */
 export default async function MainLayout({ children }: { children: React.ReactNode }) {
-  const { role, plan } = await resolveGating();
+  const { role, plan, settings, resolved } = await resolveGating();
+
+  /**
+   * An admin whose company has not finished onboarding is sent to finish it.
+   *
+   * Server-side and here, rather than in each page: a check in one page is a
+   * check the next page forgets. `resolved` guards it — a failed lookup must
+   * not bounce somebody into onboarding, which would be a redirect loop for an
+   * account whose row cannot be read at all.
+   *
+   * Invited users never see onboarding: they join an existing company through
+   * `ensureUser`'s claim-by-email and inherit its trial, so the company's
+   * `onboardingCompletedAt` is already set by the time they sign in.
+   */
+  if (resolved && !onboardingCompleted(settings)) {
+    redirect("/onboarding");
+  }
+
+  /**
+   * The entitlement, computed once from the settings the same query already
+   * carried. `TrialPaywall` renders nothing while there is access, so the
+   * common path costs a function call and no markup.
+   */
+  const entitlement = entitlementOf(settings, new Date());
 
   return (
     <PayrollStoreProvider>
@@ -67,6 +108,11 @@ export default async function MainLayout({ children }: { children: React.ReactNo
             >
               {children}
             </main>
+            {/* Rendered from the server, so it is there on the first paint and
+                after any reload. It is not the security boundary: every data
+                procedure refuses on the same `entitlementOf()` answer, so
+                removing this in the browser unlocks nothing. */}
+            {!entitlement.access && <TrialPaywall entitlement={entitlement} role={role} />}
           </div>
         </div>
       </SidebarProvider>

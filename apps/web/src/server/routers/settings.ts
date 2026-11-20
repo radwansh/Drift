@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { users, companies } from "@saas/db";
 import { EDITOR_ROLES, editorProcedure, memberProcedure, protectedProcedure, router } from "../trpc";
+import { TRIAL_SETTINGS_KEY_NAMES } from "@/lib/entitlement";
 import {
   companySettingsObject,
   mergeCompanySettings,
@@ -45,7 +46,12 @@ import {
  * billing key added to the column next year is unwritable here until someone
  * adds it deliberately, which is the opposite of the way the replace behaved.
  */
-const WRITABLE_SETTINGS_KEYS = ["tolerances"] as const;
+/**
+ * `country` and `industry` join `tolerances` here: onboarding collects both,
+ * an editor may correct either afterwards, and neither gates anything. The
+ * trial keys below are the opposite case and are refused by name.
+ */
+const WRITABLE_SETTINGS_KEYS = ["tolerances", "country", "industry"] as const;
 
 /**
  * Keys that exist in the column and are refused here **by name**, so the error
@@ -57,6 +63,25 @@ const WRITABLE_SETTINGS_KEYS = ["tolerances"] as const;
  */
 const SETTINGS_OWNED_ELSEWHERE = new Map<string, string>([
   ["plan", "a company's plan is set by the Polar webhook on a paid order, not by this form"],
+  /**
+   * The five trial keys, refused outright.
+   *
+   * `trialEndsAt` is the one that matters: the trial is capped at
+   * `trialStartedAt + TRIAL_DAYS` by `trialEndOf()` precisely so a stored date
+   * cannot stretch it, and letting a form write the date would be handing an
+   * admin the other half of that lock. The rest go with it because a trial
+   * whose start, completion or email state can be edited is a trial anyone can
+   * restart.
+   *
+   * Three writers only: completing onboarding, the trial-ended email code, and
+   * the Polar webhook — all of them through `server/company-settings.ts`.
+   */
+  ...TRIAL_SETTINGS_KEY_NAMES.map(
+    (key): [string, string] => [
+      key,
+      "the trial is written by onboarding, the trial-ended email and the Polar webhook, not by this form",
+    ],
+  ),
   ...POLAR_SETTINGS_KEY_NAMES.map(
     (key): [string, string] => [key, "billing state is written by the Polar webhook, not by this form"],
   ),
