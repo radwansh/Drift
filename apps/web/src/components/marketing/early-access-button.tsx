@@ -5,12 +5,18 @@ import { launch } from "@/config/launch";
 import { useEarlyAccess } from "./early-access-provider";
 
 /**
- * The "Get early access" call to action — the header, the hero, each pricing
- * card and the final CTA all render this, so the four cannot drift apart.
+ * The page's primary call to action — the hero, both pricing cards, the final
+ * CTA and the blog article's closing aside all render this, so they cannot
+ * drift apart in where they lead.
  *
- * While `launch.waitlistMode` is on it opens the shared dialog owned by
- * `EarlyAccessProvider`; with the switch off it becomes a plain link to
- * /sign-up. One decision point for the whole page.
+ * `launch.waitlistMode` is **off**, so this is a plain link to /sign-up today.
+ * With the switch on it opens the early-access dialog owned by
+ * `EarlyAccessProvider` instead. One decision point for the whole page.
+ *
+ * The label is not decided here: callers pass it, from `content.ts`
+ * (`TRIAL_CTA`). The header is the one primary button that does not come
+ * through this component — it is a shorter label and it never opened the
+ * dialog's lead form, so it is a direct `<Button href="/sign-up">`.
  */
 export interface EarlyAccessButtonProps {
   children: React.ReactNode;

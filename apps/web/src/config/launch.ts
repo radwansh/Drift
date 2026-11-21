@@ -63,19 +63,29 @@ export interface LaunchSwitches {
   founderLine: boolean;
 
   /**
-   * On. The beta is closed, so every "Get early access" button opens the lead
-   * form (`EarlyAccessButton`) instead of linking to /sign-up.
+   * **Off. Sign-up is open and every primary button links to /sign-up.**
    *
-   * A submission writes three places: a trial_requests row, a Zoho lead, and a
-   * Clerk waitlist entry so the approval is one click. Clerk's own waitlist
-   * holds an email and nothing else, which is why the lead fields need the
-   * table and the CRM.
+   * While it was on, each one opened the early-access lead form
+   * (`EarlyAccessButton` → `EarlyAccessProvider`'s dialog) and a submission
+   * wrote three places: a `trial_requests` row, a Zoho lead and a Clerk
+   * waitlist entry. None of that is reached now. The table, the Zoho code and
+   * the form component are all still in the repository, unused, so turning
+   * this back on is a one-line change rather than a rebuild.
    *
-   * Sign-up mode must be set to "Waitlist" in the Clerk dashboard
-   * (Configure → Restrictions) for an invitation to be the only way in.
+   * Turning it off changes three things and nothing else:
    *
-   * Turn off the day the beta opens; all four buttons become /sign-up links
-   * and the modal stops being mounted.
+   * 1. `EarlyAccessButton` renders `<Button href="/sign-up">` instead of a
+   *    button that opens the dialog — the header, the hero, both pricing
+   *    cards, the final CTA and the blog article's closing aside.
+   * 2. `EarlyAccessProvider` stops mounting `EarlyAccessModal`, so the dialog
+   *    is no longer in the page at all.
+   * 3. Nothing else reads this switch. The button *labels* are copy and live
+   *    in `components/marketing/content.ts` (`TRIAL_CTA`), not here.
+   *
+   * **Clerk's sign-up mode must be "Public" rather than "Waitlist"** in the
+   * dashboard (Configure → Restrictions) for /sign-up to accept anyone. With
+   * the switch off and the dashboard still on Waitlist, every button leads to a
+   * form that refuses — which is the one state this file cannot detect.
    */
   waitlistMode: boolean;
 }
@@ -89,5 +99,5 @@ export const launch: LaunchSwitches = {
     deletedOnRequest: false,
   },
   founderLine: true,
-  waitlistMode: true,
+  waitlistMode: false,
 };

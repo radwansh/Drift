@@ -21,16 +21,21 @@ export const deployEnvironment: DeployEnvironment =
       : "development";
 
 /**
- * Whether the public pages advertise the way in — the header's "Sign in"
- * button, its mobile equivalent, and the final CTA's secondary button.
+ * `authEntryPointsVisible` is gone, and this note is here so nobody adds it
+ * back by accident.
  *
- * Off on production until launch, on everywhere else so preview and local
- * work stay usable.
+ * It was `deployEnvironment !== "production"`, and it hid the header's "Sign
+ * in" button, its mobile equivalent and the final CTA's secondary button on
+ * production — correct while the beta was closed, sign-up was by invitation and
+ * the landing page's only action was a lead form. Sign-up is open now, so the
+ * three links it hid are the product's conversion path and its way back in for
+ * an existing customer. They render on every deployment.
  *
- * Be clear about what this is: it hides links, so nothing on the landing page
- * invites a visitor to sign in. It is **not** access control — `/sign-in`
- * still resolves if somebody types it, and it has to, or there would be no way
- * into production at all. What stops a stranger getting an account is Clerk's
- * sign-up mode set to Waitlist.
+ * It was never access control: `/sign-in` resolved whether or not anything
+ * linked to it. What governs who may get an account is Clerk's sign-up mode in
+ * the dashboard, not this file.
+ *
+ * `deployEnvironment` stays — it is the honest reading of `VERCEL_ENV` and the
+ * next environment-shaped decision should build on it rather than on
+ * `process.env` read at the point of use.
  */
-export const authEntryPointsVisible = deployEnvironment !== "production";
