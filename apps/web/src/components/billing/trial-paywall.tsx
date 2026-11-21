@@ -298,17 +298,30 @@ function Paywall({ entitlement, role }: { entitlement: Entitlement; role: string
               </Notice>
             )}
 
-            <p className="m-0 text-[13px] leading-[18px] text-cv-ink-subtle">
-              {PRICING.enterprise.name} ({PRICING.enterprise.for.toLowerCase()}) and{" "}
-              {PRICING.bureau.name} are quoted rather than listed.{" "}
-              <a
-                className="text-cv-accent underline underline-offset-2"
-                href={`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent("Clarivo: Enterprise or Bureau plan")}`}
-              >
-                Talk to us
-              </a>
-              .
-            </p>
+            {/* Enterprise and Bureau have no checkout and never will from this
+                dialog: both are quoted rather than listed — Enterprise on
+                headcount and countries, Bureau per client company — which is
+                also why the marketing page pulled them out of its plan grid.
+                A row each with the one action that exists, rather than a card
+                with a dead button. */}
+            <div className="flex flex-col gap-2 rounded-cv-lg border border-cv-line p-3">
+              {[PRICING.enterprise, PRICING.bureau].map((quoted) => (
+                <div
+                  key={quoted.name}
+                  className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1"
+                >
+                  <p className="m-0 text-[13px] leading-[18px] text-cv-ink-muted">
+                    <span className="font-semibold text-cv-ink">{quoted.name}</span> — {quoted.for}
+                  </p>
+                  <a
+                    className="text-[13px] leading-[18px] text-cv-accent underline underline-offset-2"
+                    href={`mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(`Clarivo: ${quoted.name} plan`)}`}
+                  >
+                    {quoted.cta}
+                  </a>
+                </div>
+              ))}
+            </div>
           </>
         )}
 

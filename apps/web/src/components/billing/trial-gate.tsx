@@ -83,15 +83,17 @@ export function TrialGate() {
    * caught it within a minute would be a minute of a customer entering payroll
    * data the server has already started refusing.
    *
-   * `setTimeout` is capped at 2^31−1 ms (about 24.9 days), and a value over it
-   * fires immediately — which would refresh in a loop. A trial is 14 days, so a
-   * fresh one is inside the cap, but the delay is clamped anyway: this reads
-   * `trialEndsAt` out of a free-form jsonb column, and nothing here should
-   * depend on what is in it being sane.
+   * `setTimeout` is capped at 2^31−1 ms (about 24.9 days) and **fires
+   * immediately** for anything over it, which here would mean refreshing in a
+   * loop. A trial is 14 days, so a fresh one is inside the cap — but a date past
+   * it is simply not armed, because this reads `trialEndsAt` out of a free-form
+   * jsonb column and nothing here should depend on what is in it being sane.
    *
-   * It fires once. `fired` is a ref rather than state so a re-render cannot
-   * re-arm it, and it is reset when a *new* end date arrives — which happens
-   * when the refresh comes back with a subscription, or not at all.
+   * It fires once per end date: `fired` is a ref rather than state so a
+   * re-render cannot re-arm it. If a clock is a little fast the server will say
+   * there is still access and nothing happens — and the refusal path below is
+   * what catches it a moment later, when a data call is actually refused. The
+   * two mechanisms cover each other, which is why neither needs to be exact.
    */
   const fired = useRef<string | null>(null);
   useEffect(() => {
