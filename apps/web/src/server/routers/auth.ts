@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { users, companies, requireDb } from "@saas/db";
 import { protectedProcedure, publicProcedure, router } from "../trpc";
+import { sendClerkInvitation } from "../clerk-invitations";
 
 export const authRouter = router({
   getMe: protectedProcedure.query(async ({ ctx }) => {
@@ -54,9 +55,27 @@ export const authRouter = router({
       return { company, user };
     }),
 
+  /**
+   * Invites somebody into the caller's company — **and now actually tells
+   * them.**
+   *
+   * This inserted a `users` row and sent nothing. `ensureUser` claims that row
+   * by email when the person signs in, so this side of the plumbing was always
+   * right; the invitation itself was never sent, and an admin had no way to
+   * notice, because the row appears in the user list exactly as a successful
+   * invitation would. `server/clerk-invitations.ts` is the missing half, shared
+   * with onboarding's step 5.
+   *
+   * **Clerk first, the row second.** A Clerk invitation is retryable
+   * (`ignoreExisting`), while a row left behind by a failed invitation is a
+   * person in the user list who was never told. And because `users.email` is
+   * UNIQUE across the whole table, the clash is checked before anything is
+   * sent, so the common failure never leaves a sent invitation with no role
+   * recorded.
+   */
   inviteUser: protectedProcedure
     .input(z.object({
-      email: z.string().email(),
+      email: z.string().trim().toLowerCase().email(),
       name: z.string().min(1).max(200),
       role: z.enum(["admin", "manager", "viewer"]).default("admin"),
     }))
@@ -66,6 +85,33 @@ export const authRouter = router({
       });
       if (!currentUser) throw new TRPCError({ code: "NOT_FOUND", message: "User not found" });
       if (currentUser.role !== "admin") throw new TRPCError({ code: "FORBIDDEN" });
+
+      if (input.email === currentUser.email.trim().toLowerCase()) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "That is your own address.",
+        });
+      }
+
+      const existing = await ctx.db.query.users.findFirst({
+        where: eq(users.email, input.email),
+      });
+      if (existing) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message:
+            existing.companyId === currentUser.companyId
+              ? "That address is already on your company."
+              : "That address already has a Clarivo account.",
+        });
+      }
+
+      const sent = await sendClerkInvitation(input.email);
+      if (!sent.ok) {
+        // Nothing is written when nothing was sent: a row in the user list is
+        // what this procedure used to offer instead of an invitation.
+        throw new TRPCError({ code: "BAD_GATEWAY", message: sent.message });
+      }
 
       const [invited] = await ctx.db.insert(users).values({
         companyId: currentUser.companyId,
@@ -78,7 +124,15 @@ export const authRouter = router({
         clerkUserId: null,
       }).returning();
 
-      return invited;
+      if (!invited) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message:
+            "The invitation was sent, but the access level could not be recorded. Try again: a repeated invitation to the same address is accepted.",
+        });
+      }
+
+      return { ...invited, invitationId: sent.invitationId };
     }),
 
   getUsers: protectedProcedure.query(async ({ ctx }) => {
