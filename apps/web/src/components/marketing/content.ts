@@ -8,9 +8,45 @@
  *
  * Do not reword anything here without changing content.md: the headings carry
  * the keyword map, and the security points are claims about data handling.
+ *
+ * **Two exceptions have now accumulated, and both run the same way:** the beta
+ * founder discount (removed here, still written out in content.md) and the beta
+ * itself (replaced here by the 14-day free trial, still written out in
+ * content.md, which is titled "Beta" and quotes €14 founder prices). This file
+ * is what the site serves, so where the two disagree this one is current.
+ * content.md is the approved copy as approved, not a live mirror of the page.
  */
 
+import { TRIAL_DAYS } from "@/lib/entitlement";
 import type { IconName } from "./ui";
+
+/**
+ * The trial, written once, from the constant that defines it.
+ *
+ * `TRIAL_DAYS` in `lib/entitlement.ts` is what the stored end date, the
+ * entitlement check, the in-app banner and the trial-ended email all read. The
+ * page has to read the same thing: a headline that says 14 while the cap says
+ * 30 is exactly the failure that constant exists to prevent, and a literal
+ * "14-day" in this file would be a second copy of it with nobody to notice when
+ * one of them moved.
+ *
+ * Three strings rather than one, because the trial appears in three shapes —
+ * as a noun phrase inside a sentence, as the one button label on the page, and
+ * as the trust line under the buttons — and each is stated here once so the
+ * hero, the pricing cards, the FAQ, the final CTA and `/llms.txt` cannot
+ * disagree about the length of the trial they are all describing.
+ */
+export const TRIAL = `${TRIAL_DAYS}-day free trial`;
+
+/**
+ * The page's primary button, everywhere it appears: the hero, both pricing
+ * cards, the final CTA and the blog article's closing aside. The header's
+ * button is the one exception and has its own shorter label in `HEADER`.
+ */
+export const TRIAL_CTA = `Start ${TRIAL}`;
+
+/** Under every primary button. The same line in the hero and the final CTA. */
+export const TRUST_LINE = `${TRIAL} · No credit card · Cancel anytime`;
 
 /**
  * Markets, and why every figure below is written with `¤` rather than a
@@ -87,12 +123,10 @@ export const SITE = {
   email: "hello@clarivo-app.com",
   /** 47 characters. content.md keeps this under 60. */
   title: "Payroll Dashboard with Anomaly Alerts | Clarivo",
-  /** 146 characters. content.md keeps this under 155. */
-  description:
-    "Stop checking payroll in Excel. Clarivo turns your payroll file into one dashboard of salary KPIs and flags anomalies before payday. Free in beta.",
+  /** 151 characters. content.md keeps this under 155. */
+  description: `Stop checking payroll in Excel. Clarivo turns your payroll file into one dashboard of salary KPIs and flags anomalies before payday. ${TRIAL}.`,
   socialTitle: "See every payroll change before you approve it",
-  socialDescription:
-    "Salary KPIs in one click and alerts on payroll anomalies, before payday. Free during the beta.",
+  socialDescription: `Salary KPIs in one click and alerts on payroll anomalies, before payday. Start a ${TRIAL}.`,
   socialImageAlt: "Clarivo: see every payroll change before you approve it",
 } as const;
 
@@ -103,15 +137,40 @@ export const NAV = [
   { label: "FAQ", href: "#faq" },
 ] as const;
 
+/**
+ * The header's two buttons, in one place because they render twice each — the
+ * desktop row and the mobile `<details>` menu — and a label that differed
+ * between the two would be invisible to anyone not resizing the window.
+ *
+ * "Get started" rather than the hero's "Start 14-day free trial": the same
+ * destination, in the one place on the page where the button shares a row with
+ * a logo, four links and a second button. The hero is where the length of the
+ * trial belongs, and the pricing section and the FAQ both state it too.
+ */
+export const HEADER = {
+  signIn: "Sign in",
+  getStarted: "Get started",
+  signedIn: "Open Clarivo",
+} as const;
+
 export const HERO = {
-  eyebrow: "Payroll dashboard · Now in beta",
+  eyebrow: `Payroll dashboard · ${TRIAL}`,
   /** The only H1 on the page. */
   headline: "The payroll dashboard that catches mistakes before payday",
   subHeadline:
     "Drop in your payroll file and Clarivo shows every salary KPI in one click: total payroll cost, headcount, employer cost and every change since last period. Anything unusual is flagged before you approve, so mistakes never reach a payslip.",
-  primary: "Get early access",
+  primary: TRIAL_CTA,
   secondary: "See how it works",
-  trust: "Free during the beta · No credit card · Works with Excel or CSV from any payroll system",
+  /**
+   * The same trust line as the final CTA, from one string.
+   *
+   * It used to end "Works with Excel or CSV from any payroll system" in place
+   * of "Cancel anytime". That claim is not lost: step 1 of "How it works", the
+   * "Every plan includes" list and two FAQ answers all state it, and each of
+   * them says which formats and which systems. What the line under a sign-up
+   * button has to answer is what signing up costs and commits you to.
+   */
+  trust: TRUST_LINE,
   visualAlt:
     "Clarivo payroll dashboard showing salary KPIs and a flagged payroll anomaly (sample data)",
 } as const;
@@ -393,10 +452,9 @@ export const SECURITY = {
 export const PRICING = {
   eyebrow: "Pricing",
   headline: "Simple payroll dashboard pricing",
-  subHeadline:
-    "Clarivo is free while it's in beta. Every plan includes every feature, and the price goes by how many employees you pay.",
+  subHeadline: `Every plan starts with a ${TRIAL} and includes every feature. The price goes by how many employees you pay.`,
   toggle: { monthly: "Monthly", yearly: "Yearly (2 months free)" },
-  cta: "Get early access",
+  cta: TRIAL_CTA,
   plans: [
     {
       name: "Starter",
@@ -527,7 +585,7 @@ export const FAQ = {
     {
       id: "cost",
       q: "How much does Clarivo cost?",
-      a: "Clarivo is free during the beta, with no credit card. When billing starts, plans run from ¤29 to ¤49 a month by company size. Over 2,000 employees is Enterprise, priced on request.",
+      a: `Every plan starts with a ${TRIAL}, with no credit card. After the trial, plans run from ¤29 to ¤49 a month by company size. Over 2,000 employees is Enterprise, priced on request.`,
     },
   ],
 } as const;
@@ -536,9 +594,9 @@ export const FINAL_CTA = {
   headline: "Approve your next payroll with confidence",
   subHeadline:
     "Upload two payroll periods and see every salary KPI, and every alert, in minutes.",
-  primary: "Get early access",
+  primary: TRIAL_CTA,
   secondary: "Sign in",
-  trust: "Free during the beta · No credit card · Cancel anytime",
+  trust: TRUST_LINE,
   /**
    * Behind the founderLine switch, which is on.
    *
@@ -684,9 +742,8 @@ export const MARKETS: Record<Currency, MarketCopy> = {
     meta: {
       /** 57 characters. */
       title: "Payroll Dashboard with Anomaly Alerts | Clarivo Australia",
-      /** 149 characters. */
-      description:
-        "Payroll dashboard for Australian payroll teams. Upload your file, see every salary KPI and catch anomalies before payday. Free in beta, prices in A$.",
+      /** 154 characters. */
+      description: `Payroll dashboard for Australian payroll teams. Upload your file, see every salary KPI and catch anomalies before payday. ${TRIAL}, prices in A$.`,
     },
     taxLine: "Prices exclude GST.",
     uploadStep:
@@ -749,7 +806,7 @@ export const MARKETS: Record<Currency, MarketCopy> = {
           "Any system that exports to Excel or CSV: Xero, MYOB, Employment Hero, SAP, ADP or your own spreadsheets. Clarivo reads the file you export and connects to none of them, so nothing has to change in the system that pays your people.",
         "pay-frequencies":
           "Monthly, fortnightly, twice-a-month and weekly payrolls, in any currency. Inside the app the fortnightly cycle is called Bi-weekly. Clarivo never adds amounts in different currencies together; each currency is reported on its own.",
-        cost: "Clarivo is free during the beta, with no credit card. When billing starts, plans run from ¤49 to ¤79 a month by company size, excluding GST. Over 2,000 employees is Enterprise, priced on request.",
+        cost: `Every plan starts with a ${TRIAL}, with no credit card. After the trial, plans run from ¤49 to ¤79 a month by company size, excluding GST. Over 2,000 employees is Enterprise, priced on request.`,
       },
       extra: [
         {

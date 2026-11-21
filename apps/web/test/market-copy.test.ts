@@ -1,9 +1,15 @@
 import { describe, it, expect } from "vitest";
+import * as content from "@/components/marketing/content";
 import {
   FAQ,
+  FINAL_CTA,
+  HERO,
   MARKETS,
   MARKET_CURRENCIES,
   PRICING,
+  TRIAL,
+  TRIAL_CTA,
+  TRUST_LINE,
   highestMonthlyListPrice,
   market,
   marketFaq,
@@ -11,6 +17,8 @@ import {
   planPrices,
 } from "@/components/marketing/content";
 import { structuredData } from "@/components/marketing/landing";
+import { GET as llmsTxt } from "@/app/llms.txt/route";
+import { TRIAL_DAYS } from "@/lib/entitlement";
 
 /**
  * What a market page is allowed to say, and what it must not.
@@ -192,6 +200,116 @@ describe("the Australian market page", () => {
     // The euro page keeps its own range, from the same pricing table.
     expect(highestMonthlyListPrice("EUR")).toBe("49");
     expect(highestMonthlyListPrice("AUD")).toBe("79");
+  });
+});
+
+/**
+ * The trial, and the one number behind it.
+ *
+ * `TRIAL_DAYS` in `lib/entitlement.ts` decides how long a company may use
+ * Clarivo without paying. The page decides what a visitor was promised. When
+ * those two disagree the product is either taking the app away early or giving
+ * it away late, and the person who finds out is the customer — so the only
+ * defence is that no copy anywhere states a length of its own.
+ *
+ * The specific failure these assertions exist for already happened in this
+ * repo, in the shape of a price: the pricing section promised €14 while the
+ * Polar checkout charged €29, because two ladders were stored instead of one.
+ * A trial length is the same hazard with a worse ending, and the 30-day
+ * `sendTrialApprovedEmail` still sitting in `lib/resend.ts` from the Zoho flow
+ * is the proof that a second copy survives long after the flow around it dies.
+ */
+describe("the trial, on every public surface", () => {
+  /** Every string a visitor can read, from the one module that holds them. */
+  const everyCopyString = (): string[] => {
+    const found: string[] = [];
+    const walk = (value: unknown): void => {
+      if (typeof value === "string") {
+        found.push(value);
+      } else if (Array.isArray(value)) {
+        value.forEach(walk);
+      } else if (value !== null && typeof value === "object") {
+        Object.values(value).forEach(walk);
+      }
+    };
+    walk(content);
+    return found;
+  };
+
+  it("says what the brief says, word for word", () => {
+    expect(TRIAL).toBe("14-day free trial");
+    expect(TRIAL_CTA).toBe("Start 14-day free trial");
+    expect(TRUST_LINE).toBe("14-day free trial · No credit card · Cancel anytime");
+  });
+
+  it("builds all three from TRIAL_DAYS, not from a literal", () => {
+    // The point of the constant: change `TRIAL_DAYS` and the copy moves with
+    // it. A literal "14-day" in content.ts would pass the assertions above and
+    // fail this one.
+    expect(TRIAL).toContain(String(TRIAL_DAYS));
+    expect(TRIAL_CTA).toContain(String(TRIAL_DAYS));
+    expect(TRUST_LINE).toContain(String(TRIAL_DAYS));
+  });
+
+  it("uses one trust line and one sign-up label throughout", () => {
+    expect(HERO.trust).toBe(TRUST_LINE);
+    expect(FINAL_CTA.trust).toBe(TRUST_LINE);
+    expect(HERO.primary).toBe(TRIAL_CTA);
+    expect(FINAL_CTA.primary).toBe(TRIAL_CTA);
+    expect(PRICING.cta).toBe(TRIAL_CTA);
+  });
+
+  /**
+   * No other trial length may be visible, in any market.
+   *
+   * Written as "every day-count in the copy is the trial's" rather than as a
+   * search for "30", because the next wrong number will not be 30. Day counts
+   * spelled out in words — the AU note's "seven business days" — are not
+   * caught and do not need to be: they are about Payday Super, not about
+   * Clarivo's trial.
+   */
+  it("names no other number of days anywhere in the copy", () => {
+    const offenders = everyCopyString()
+      .flatMap((line) => [...line.matchAll(/(\d[\d,]*)[\s-]?days?\b/gi)])
+      .filter((match) => match[1] !== String(TRIAL_DAYS))
+      .map((match) => match[0]);
+
+    expect(offenders).toEqual([]);
+  });
+
+  it("states the trial in the FAQ answer every market reads", () => {
+    const answer = (currency: content.Currency) =>
+      marketFaq(currency).find((item) => item.id === "cost")?.a ?? "";
+
+    expect(money(answer("EUR"), "EUR")).toBe(
+      "Every plan starts with a 14-day free trial, with no credit card. After the trial, plans run from €29 to €49 a month by company size. Over 2,000 employees is Enterprise, priced on request.",
+    );
+    // Australia's own figures and its own tax, same trial.
+    expect(money(answer("AUD"), "AUD")).toBe(
+      "Every plan starts with a 14-day free trial, with no credit card. After the trial, plans run from A$49 to A$79 a month by company size, excluding GST. Over 2,000 employees is Enterprise, priced on request.",
+    );
+  });
+
+  /**
+   * And no surface still offers the beta instead.
+   *
+   * `/llms.txt` is the one that matters most here: an assistant quotes it to
+   * somebody who never visits the site, so "free during the beta" or "access is
+   * by invitation" there would turn away the one reader who was ready to start.
+   * The product is still described as being in beta, which is true and is not
+   * what this checks.
+   */
+  it("offers nobody a free beta or an invitation, on the page or in llms.txt", async () => {
+    const llms = await llmsTxt().text();
+    const surfaces = [...everyCopyString(), llms];
+
+    for (const line of surfaces) {
+      expect(line).not.toMatch(/free (during|in|while) the beta|free in beta/i);
+      expect(line).not.toMatch(/early access|waiting list|by invitation/i);
+    }
+
+    expect(llms).toContain(TRIAL);
+    expect(llms).toContain(`${content.SITE.url}/sign-up`);
   });
 });
 

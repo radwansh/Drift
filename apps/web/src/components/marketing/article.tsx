@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Button } from "./ui";
-import { SITE } from "./content";
+import { SITE, TRIAL, TRIAL_CTA } from "./content";
 import { EarlyAccessButton } from "./early-access-button";
 import type { Post } from "./posts";
 
@@ -106,7 +106,7 @@ export function Article({
       <aside className="mt-16 rounded-cv-lg border border-cv-line bg-cv-surface p-6">
         <p className="text-base leading-relaxed text-cv-ink">{closing}</p>
         <div className="mt-5 flex flex-wrap items-center gap-3">
-          <EarlyAccessButton>Get early access</EarlyAccessButton>
+          <EarlyAccessButton>{TRIAL_CTA}</EarlyAccessButton>
           <Button href="/" variant="secondary">
             See how Clarivo works
           </Button>
@@ -116,7 +116,7 @@ export function Article({
             copy to keep in step. This is why removing the founder discount
             needed no edit here. */}
         <p className="mt-4 text-sm leading-relaxed text-cv-ink-subtle">
-          Free during the beta, and no credit card.
+          Every plan starts with a {TRIAL}, and no credit card.
         </p>
       </aside>
     </article>
