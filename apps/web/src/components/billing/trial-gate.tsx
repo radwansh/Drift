@@ -53,10 +53,15 @@ const MAX_TIMEOUT_MS = 2 ** 31 - 1;
  */
 const BILLING_QUERY_KEY = [["settings", "getBillingInfo"]] as const;
 
+/** At most one entitlement re-check per refused call in this window. */
+const RECHECK_THROTTLE_MS = 5_000;
+
 export function TrialGate() {
   const router = useRouter();
   const pathname = usePathname();
   const queryClient = useQueryClient();
+  const utils = trpc.useUtils();
+  const lastRecheck = useRef(0);
 
   const billing = trpc.settings.getBillingInfo.useQuery(undefined, {
     retry: false,
@@ -135,8 +140,33 @@ export function TrialGate() {
     const onError = (error: unknown) => {
       const code = (error as { data?: { code?: unknown } } | null)?.data?.code;
       if (code !== "FORBIDDEN") return;
-      void queryClient.invalidateQueries({ queryKey: BILLING_QUERY_KEY });
-      router.refresh();
+
+      /**
+       * Throttled, because this is a loop shape: refresh re-renders the tree, a
+       * re-rendered query can fail again, and a FORBIDDEN that is about a role
+       * will fail every single time. One re-check every few seconds is all a
+       * lapse needs, and it makes the loop impossible rather than unlikely.
+       */
+      const sinceLast = Date.now() - lastRecheck.current;
+      if (sinceLast < RECHECK_THROTTLE_MS) return;
+      lastRecheck.current = Date.now();
+
+      /**
+       * **The server answers, not the error.** The refusal is only a prompt to
+       * ask again: the entitlement is refetched and the layout is refreshed only
+       * if it really says there is no access. A role refusal therefore costs one
+       * request and puts up nothing.
+       */
+      void (async () => {
+        try {
+          await utils.settings.getBillingInfo.invalidate();
+          const fresh = await utils.settings.getBillingInfo.fetch();
+          if (!fresh.entitlement.access) router.refresh();
+        } catch {
+          // The one endpoint that would have told us is itself unreachable.
+          // Nothing is asserted on a failed lookup.
+        }
+      })();
     };
 
     const queries = queryClient.getQueryCache().subscribe((event) => {
@@ -154,7 +184,7 @@ export function TrialGate() {
       queries();
       mutations();
     };
-  }, [queryClient, router]);
+  }, [queryClient, router, utils]);
 
   // No access: the paywall is up (or about to be, after the refresh above), and
   // a banner behind a modal is noise.
@@ -163,27 +193,36 @@ export function TrialGate() {
   if (entitlement.paymentFailed) return <PaymentFailedBanner />;
 
   if (entitlement.reason !== "trialing" || trialEndsAt === null) return null;
+  if (entitlement.trialDaysLeft === null) return null;
 
-  return <TrialBanner trialEndsAt={trialEndsAt} onBillingPage={pathname === BILLING_PATH} />;
+  return (
+    <TrialBanner
+      trialEndsAt={trialEndsAt}
+      daysLeft={entitlement.trialDaysLeft}
+      onBillingPage={pathname === BILLING_PATH}
+    />
+  );
 }
 
 /**
  * "N days left in your free trial · Choose a plan", and on the last day the hour
  * it ends.
  *
- * **The time is formatted in the browser, which is the point.** The brief wants
- * the reader's own time zone, and the server has no idea what it is — a trial
- * ending at 23:30 in Sydney is the 14th there and the 13th in Frankfurt, and
- * naming the wrong day on the last day of a trial is the one moment the figure
- * is read carefully. `toLocaleTimeString` with no locale argument uses the
- * browser's, so it is the reader's clock and their 12- or 24-hour habit.
- *
- * Split out of `TrialGate` so the date arithmetic is not mixed with the two
- * effects, and so `days` is computed from the same ISO string the gate armed its
- * timer with.
+ * **The count comes from the server and the time from the browser**, and the
+ * split is the point. "Days left" is a duration rounded up, so
+ * `trialDaysLeft()` in `lib/entitlement.ts` gives the same answer wherever it
+ * runs and is the single authority for the rounding — a second
+ * `Math.ceil(ms / 86400000)` here would be a copy that agrees until one of them
+ * is edited. The *time of day* genuinely depends on the reader: a trial ending
+ * at 23:30 in Sydney is the 14th there and the 13th in Frankfurt, and the last
+ * day of a trial is the one moment the figure is read carefully.
+ * `toLocaleTimeString` with no locale uses the browser's, so it is the reader's
+ * clock and their 12- or 24-hour habit.
  */
 function TrialBanner({
   trialEndsAt,
+  /** From `trialDaysLeft()`, through `getBillingInfo`. Never recomputed here. */
+  daysLeft,
   /**
    * On the billing page the banner shows however many days are left — the brief
    * asks for it there always — and drops its "Choose a plan" button, because the
@@ -192,24 +231,15 @@ function TrialBanner({
   onBillingPage,
 }: {
   trialEndsAt: string;
+  daysLeft: number;
   onBillingPage: boolean;
 }) {
   const endsAt = new Date(trialEndsAt);
   if (Number.isNaN(endsAt.getTime())) return null;
+  if (daysLeft <= 0) return null;
+  if (!onBillingPage && daysLeft > BANNER_FROM_DAYS_LEFT) return null;
 
-  const msLeft = endsAt.getTime() - Date.now();
-  if (msLeft <= 0) return null;
-
-  /**
-   * Rounded up, matching `trialDaysLeft()` in `lib/entitlement.ts` exactly —
-   * `Math.ceil` over 24-hour days. Recomputed here rather than imported because
-   * `trialDaysLeft` takes the settings object, which a client component does not
-   * have; the arithmetic is one line and the rounding rule is stated in both
-   * places on purpose.
-   */
-  const days = Math.ceil(msLeft / (24 * 60 * 60 * 1000));
-  if (!onBillingPage && days > BANNER_FROM_DAYS_LEFT) return null;
-
+  const days = daysLeft;
   const finalDay = days <= 1;
   const time = endsAt.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 

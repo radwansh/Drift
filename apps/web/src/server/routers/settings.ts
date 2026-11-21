@@ -13,6 +13,7 @@ import {
 import {
   TRIAL_SETTINGS_KEY_NAMES,
   entitlementOf,
+  trialDaysLeft,
   type CompanySettings,
 } from "@/lib/entitlement";
 import {
@@ -284,7 +285,8 @@ export const settingsRouter = router({
      * string. The one place that has bitten this repo is recorded in
      * CLAUDE.md's "alias and parse, never cast"; this is the same class of lie.
      */
-    const entitlement = entitlementOf(settings as CompanySettings, new Date());
+    const now = new Date();
+    const entitlement = entitlementOf(settings as CompanySettings, now);
 
     return {
       subscriptionId: (settings[POLAR_SETTINGS_KEYS.subscriptionId] as string) ?? null,
@@ -298,6 +300,16 @@ export const settingsRouter = router({
         reason: entitlement.reason,
         trialEndsAt: entitlement.trialEndsAt?.toISOString() ?? null,
         paymentFailed: entitlement.paymentFailed,
+        /**
+         * Days left, **from `trialDaysLeft()` rather than recomputed by the
+         * banner.** It is a duration in milliseconds rounded up, not a calendar
+         * date, so the server's clock gives the same answer as the reader's —
+         * and a second `Math.ceil(ms / 86400000)` in a client component is a
+         * second copy of a rounding rule, which is the kind of pair that agrees
+         * until one of them is edited. The *time of day* is still formatted in
+         * the browser, because that one genuinely depends on the reader's zone.
+         */
+        trialDaysLeft: trialDaysLeft(settings as CompanySettings, now),
       },
     };
   }),

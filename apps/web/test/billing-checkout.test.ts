@@ -180,6 +180,9 @@ describe("settings.getBillingInfo carries the entitlement", () => {
     // A string, not a Date: this app's tRPC client has no transformer, so a Date
     // would be typed as one and arrive as a string.
     expect(typeof info.entitlement.trialEndsAt).toBe("string");
+    // 12 of the 14 days left, from `trialDaysLeft()` — the banner never rounds
+    // this itself.
+    expect(info.entitlement.trialDaysLeft).toBe(12);
   });
 
   it("reports a trial that has ended, which is what the paywall is mounted on", async () => {

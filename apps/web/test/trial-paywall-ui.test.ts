@@ -224,7 +224,32 @@ describe("the trial banner", () => {
     const code = read(GATE);
     expect(code).toContain("BANNER_FROM_DAYS_LEFT = 7");
     expect(code).toContain('BILLING_PATH = "/settings/billing"');
-    expect(code).toContain("!onBillingPage && days > BANNER_FROM_DAYS_LEFT");
+    expect(code).toContain("!onBillingPage && daysLeft > BANNER_FROM_DAYS_LEFT");
+  });
+
+  /**
+   * "Days left" is a duration rounded up, so it has one authority —
+   * `trialDaysLeft()` — and the banner takes it from the server rather than
+   * keeping a second `Math.ceil` of its own.
+   */
+  it("takes the day count from trialDaysLeft rather than recomputing it", () => {
+    const code = stripComments(read(GATE));
+    expect(code).toContain("entitlement.trialDaysLeft");
+    expect(code).not.toContain("Math.ceil");
+    expect(stripComments(read("src/server/routers/settings.ts"))).toContain(
+      "trialDaysLeft(settings as CompanySettings, now)",
+    );
+  });
+
+  /**
+   * The loop shape this guards: a refresh re-renders the tree, a re-rendered
+   * query can fail again, and a FORBIDDEN about a *role* fails every time. The
+   * refusal only prompts a re-check, and the server's answer decides.
+   */
+  it("re-checks with the server on a refusal, throttled, instead of refreshing blindly", () => {
+    const code = stripComments(read(GATE));
+    expect(code).toContain("RECHECK_THROTTLE_MS");
+    expect(code).toContain("if (!fresh.entitlement.access) router.refresh()");
   });
 
   it("says the days left, and on the final day the time", () => {

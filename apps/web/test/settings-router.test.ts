@@ -160,6 +160,7 @@ describe("settings.getBillingInfo", () => {
         reason: "onboarding_incomplete",
         trialEndsAt: null,
         paymentFailed: false,
+        trialDaysLeft: null,
       },
     });
   });
