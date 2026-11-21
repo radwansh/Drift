@@ -1,13 +1,82 @@
 import { Resend } from "resend";
 
-const RESEND_API_KEY = process.env.RESEND_API_KEY ?? "";
-const FROM_EMAIL = "onboarding@resend.dev";
+/**
+ * Resend, read from the environment at call time, with the sender configurable.
+ *
+ * **The sender was a real bug, not a placeholder.** This module hard-coded
+ * `from: "onboarding@resend.dev"`, which is Resend's shared test address: it
+ * delivers **only to the Resend account owner's own inbox** and is dropped for
+ * every other recipient. So every customer email this app has ever sent — the
+ * trial approval above all — went nowhere, silently, with a 200 and an id in
+ * the log. The address now comes from `EMAIL_FROM` and nothing is sent without
+ * it; `clarivo-app.com` has to be verified as a sending domain in Resend for
+ * deliveries to that sender to leave at all.
+ *
+ * **Everything here is read inside a function rather than at module scope**, the
+ * way `server/polar.ts` reads its own variables. Two reasons: a value captured
+ * at import is fixed for the life of the process, so a test that sets the key
+ * cannot be made to see it; and a blank variable — a Vercel environment
+ * variable created and left empty, which is the common way one of these arrives
+ * — must read as unset rather than be sent as an empty `from`.
+ *
+ * Missing either variable logs a warning and skips the email. Per CLAUDE.md's
+ * "optional services degrade, never break", email is optional: onboarding, the
+ * paywall and the Polar webhook must all complete without it.
+ */
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://clarivo-app.com";
 const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? "Clarivo";
 
-function getClient(): Resend | null {
-  if (!RESEND_API_KEY) return null;
-  return new Resend(RESEND_API_KEY);
+/** A trimmed environment variable, or null for unset-or-blank. */
+function env(name: string): string | null {
+  const value = process.env[name];
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * The address every email is sent from, or null when it is not configured.
+ *
+ * No default and no fallback: `onboarding@resend.dev` is what this replaced, and
+ * falling back to it would restore a sender that delivers to one inbox while
+ * reporting success for every other recipient.
+ */
+export function emailFrom(): string | null {
+  return env("EMAIL_FROM");
+}
+
+/** Whether an email can be sent at all: a key to send with and an address to send from. */
+export function isEmailConfigured(): boolean {
+  return env("RESEND_API_KEY") !== null && emailFrom() !== null;
+}
+
+/**
+ * A Resend client, or null when `RESEND_API_KEY` is unset.
+ *
+ * Exported so `server/trial-email.ts` shares one place that decides whether
+ * email is configured. The key being read here rather than at import is what
+ * lets a test stub it.
+ */
+export function resendClient(): Resend | null {
+  const key = env("RESEND_API_KEY");
+  if (key === null) return null;
+  return new Resend(key);
+}
+
+/**
+ * The client and the sender together, or null with a warning naming the missing
+ * variable. Every caller in this repo starts here.
+ */
+export function emailSender(purpose: string): { resend: Resend; from: string } | null {
+  const from = emailFrom();
+  const resend = resendClient();
+  if (resend === null || from === null) {
+    console.warn(
+      `[email] ${purpose} skipped: ${resend === null ? "RESEND_API_KEY" : "EMAIL_FROM"} is not set.`,
+    );
+    return null;
+  }
+  return { resend, from };
 }
 
 export interface TrialRequestEmailInput {
@@ -17,14 +86,12 @@ export interface TrialRequestEmailInput {
 }
 
 export async function sendTrialApprovedEmail(input: TrialRequestEmailInput) {
-  const resend = getClient();
-  if (!resend) {
-    console.warn("Resend not configured — skipping trial approval email");
-    return;
-  }
+  const sender = emailSender("the trial approval email");
+  if (!sender) return;
+  const { resend, from } = sender;
   try {
     const result = await resend.emails.send({
-      from: FROM_EMAIL,
+      from,
       to: input.email,
       subject: `Your 30-Day Clarivo Trial is Ready!`,
       html: `<!DOCTYPE html>
@@ -85,10 +152,11 @@ export async function sendTrialRequestNotification(input: {
   companyName: string;
   companySize: string;
 }) {
-  const resend = getClient();
-  if (!resend) return;
+  const sender = emailSender("the trial request notification");
+  if (!sender) return;
+  const { resend, from } = sender;
   await resend.emails.send({
-    from: FROM_EMAIL,
+    from,
     to: process.env.ADMIN_EMAIL || "admin@drift.money",
     subject: `New Trial Request: ${input.firstName} ${input.lastName} — ${input.companyName}`,
     html: `<h2>New Trial Request</h2>
