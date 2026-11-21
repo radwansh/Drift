@@ -143,6 +143,24 @@ describe("settings.getBillingInfo", () => {
       periodEnd: null,
       // No Polar token and no customer, which is every environment today.
       portalAvailable: false,
+      /**
+       * The entitlement rides on this procedure because it is the one ungated
+       * billing read, and both the paywall and the trial banner need it: the
+       * paywall closes on `access` turning true and the banner counts the last
+       * seven days from `trialEndsAt`. `test/billing-checkout.test.ts` covers
+       * the live-trial, ended-trial and past-due shapes.
+       *
+       * A company with no trial keys at all reads `onboarding_incomplete`, not
+       * `trial_ended` — the distinction exists so the paywall never tells
+       * somebody their trial expired before it began, and this is the state
+       * every company that existed before the trial release is in.
+       */
+      entitlement: {
+        access: false,
+        reason: "onboarding_incomplete",
+        trialEndsAt: null,
+        paymentFailed: false,
+      },
     });
   });
 
