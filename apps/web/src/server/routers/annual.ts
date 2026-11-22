@@ -9,6 +9,7 @@ import {
   annualBudgetPhasing,
   annualInsightCaches,
   annualAuditLog,
+  type DbClient,
 } from "@saas/db";
 import {
   computeSummary,
@@ -382,6 +383,54 @@ const summaryMemo = new Map<string, { at: number; value: SummaryContext }>();
 
 function memoKey(companyId: string, input: SummaryInput): string {
   return [companyId, input.year, input.periodType ?? "", input.currency ?? "", input.forecastMethod ?? ""].join("|");
+}
+
+/**
+ * The bounds on a fiscal start month, as one schema.
+ *
+ * Exported because onboarding's step 4 collects the same value and must not
+ * carry its own copy of `1..12`: `fiscal.ts` labels a fiscal year by the
+ * calendar year it starts in, and a month outside the range makes every
+ * boundary in the engine nonsense.
+ */
+export const FiscalStartMonthSchema = z.number().int().min(1).max(12);
+
+/**
+ * Writes the company's fiscal-year start month, and drops the summary memo.
+ *
+ * **The only path to that key.** `routers/settings.ts` refuses
+ * `fiscalStartMonth` by name and points here, `annual.setFiscalStartMonth` is
+ * this function with the editor gate in front of it, and onboarding's step 4
+ * calls the same function — so the bound, the one-statement merge and the memo
+ * clear cannot be had by one caller and missed by another. Extracted rather
+ * than copied for exactly that reason: a second writer that forgot
+ * `summaryMemo.clear()` would leave the annual dashboard drawing the old year
+ * boundaries for up to thirty seconds after the month changed, which looks like
+ * a forecasting bug rather than a stale cache.
+ *
+ * **One statement.** This read `companies.settings`, spread the month into the
+ * object and wrote the whole thing back, which drops a concurrent write to any
+ * *other* key of that column — `aiEnabled` below, the connectors, the billing
+ * state — because the object it writes back is the one it read before the other
+ * UPDATE ran. `mergeCompanySettings` does it as a `jsonb ||` under the row lock
+ * instead, and the lookup goes with the read: two round trips rather than
+ * three.
+ */
+export async function writeFiscalStartMonth(
+  db: Pick<DbClient, "update">,
+  companyId: string,
+  month: number,
+): Promise<{ month: number }> {
+  await db.update(companies)
+    .set({
+      settings: mergeCompanySettings({ fiscalStartMonth: month }),
+      updatedAt: new Date(),
+    })
+    .where(eq(companies.id, companyId));
+  // The memo keys on inputs, not on settings, so it must be dropped when a
+  // setting that changes every boundary is edited.
+  summaryMemo.clear();
+  return { month };
 }
 
 async function loadSummaryContext(ctx: MemberContext, input: SummaryInput): Promise<SummaryContext> {
@@ -1201,19 +1250,8 @@ export const annualRouter = router({
    * rather than three.
    */
   setFiscalStartMonth: editorProcedure
-    .input(z.object({ month: z.number().int().min(1).max(12) }))
-    .mutation(async ({ ctx, input }) => {
-      await ctx.db.update(companies)
-        .set({
-          settings: mergeCompanySettings({ fiscalStartMonth: input.month }),
-          updatedAt: new Date(),
-        })
-        .where(eq(companies.id, ctx.companyId));
-      // The memo keys on inputs, not on settings, so it must be dropped when a
-      // setting that changes every boundary is edited.
-      summaryMemo.clear();
-      return { month: input.month };
-    }),
+    .input(z.object({ month: FiscalStartMonthSchema }))
+    .mutation(({ ctx, input }) => writeFiscalStartMonth(ctx.db, ctx.companyId, input.month)),
 
   /**
    * Step 41: a company-level switch that turns AI off entirely.

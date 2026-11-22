@@ -1,7 +1,7 @@
 # Product Marketing Context
 
-**Document version:** v5
-**Last updated:** 2026-11-17
+**Document version:** v6
+**Last updated:** 2026-11-21
 
 Sources for this draft: `apps/web/src/components/marketing/content.ts` (the shipped copy),
 `docs/landing/content.md` (approved copy, SEO table, keyword map), `docs/landing/README.md`
@@ -18,17 +18,27 @@ It never changes payroll data.
 **Product category:** Payroll dashboard (the main keyword). Marked up as schema.org
 `SoftwareApplication`, `applicationCategory: BusinessApplication`,
 `applicationSubCategory: Payroll dashboard`.
-**Product type:** B2B SaaS, multi-tenant web app. Public beta.
-**Business model:** Free during the beta, no credit card. When billing starts there are **two**
-paid plans, not three: Starter (up to 500 employees) and Growth (up to 2,000), with Enterprise
-and Bureau on request. Companies that join during the beta pay half for 24 months. Yearly
-billing gets two months free (a year is ten times the month). Every plan includes every feature;
-the value metric is employees per uploaded payroll file.
+**Product type:** B2B SaaS, multi-tenant web app. Public beta, open to sign up.
+**Business model:** **A 14-day free trial, no credit card**, then one of **two** paid plans, not
+three: Starter (up to 500 employees) and Growth (up to 2,000), with Enterprise and Bureau on
+request. Yearly billing gets two months free (a year is ten times the month). Every plan
+includes every feature; the value metric is employees per uploaded payroll file.
+
+There is **no beta founder discount**, and there is **no "free during the beta"** any more.
+The founder ladder was removed from every market on 2026-11-19 (PR #29) because the page quoted
+€14 while the Polar checkout charged €29; the free beta was replaced by the trial on 2026-11-21.
+One ladder is stored now, the list price, which is what the checkout actually charges.
+
+**The trial's length is a constant, not a copy decision.** `TRIAL_DAYS` in
+`apps/web/src/lib/entitlement.ts` is read by the stored end date, the entitlement check, the
+in-app banner, the trial-ended email and the marketing copy alike. Never write "14" into copy:
+`content.ts` exports `TRIAL`, `TRIAL_CTA` and `TRUST_LINE` built from it, and
+`test/market-copy.test.ts` fails on any other day count anywhere in the copy.
 
 | Plan | `/` euro | `/us` dollars | `/au` Australian dollars |
 |---|---|---|---|
-| Starter list / founder, monthly | €29 / €14 | $29 / $14 | A$49 / A$24 |
-| Growth list / founder, monthly | €49 / €24 | $49 / $24 | A$79 / A$39 |
+| Starter, monthly | €29 | $29 | A$49 |
+| Growth, monthly | €49 | $49 | A$79 |
 
 Read a price from `PRICING.plans` and `MARKETS` in
 `apps/web/src/components/marketing/content.ts`, never from this table. The three-plan ladder
@@ -188,7 +198,7 @@ rather than pretending the product uses the local word. Never "VAT" on `/au`.
 | Cadence | Pay frequency: Monthly, Bi-monthly, Bi-weekly, Weekly |
 | Column mapping | Matching the customer's spreadsheet columns to Clarivo's components, confirmed once |
 | Detailed View | The per-employee screen inside the app |
-| Beta founder price | Half price for 24 months for companies that sign up during the beta |
+| Free trial | 14 days, from completing onboarding, no credit card. The length is `TRIAL_DAYS` |
 
 ## Brand Voice
 Brand: **Ink & Signal**. The interface stays quiet in ink, slate and paper so the one thing that
@@ -241,7 +251,8 @@ citable as what they are — industry research on payroll error rates, with the 
 the source line on the page — but they cannot be used to tell a 40-person company how often
 *it* gets payroll wrong. The disclosure is already in place; what needs review is the sentence
 the figures are attached to.
-**Customers:** None public. The beta is invitation-only via the early-access form.
+**Customers:** None public. Sign-up is open to anyone and starts with the 14-day trial; there is
+no invitation and no waiting list any more.
 **Testimonials:** None. Do not write one.
 **Value themes:**
 | Theme | Proof |
@@ -253,19 +264,20 @@ the figures are attached to.
 | Credible author | Founder line (switch on): "Built by Radwan Sheb, an SAP payroll lead who has delivered payroll projects across Europe and the Gulf, including a 12-country rollout." |
 
 ## Goals
-**Business goal:** Fill the beta with small and mid-sized companies that become founder-priced
-paying customers, starting in the United States, Australia, New Zealand and Malta.
-**Conversion action:** "Get early access" — the lead form (waitlist mode is on, so every
-sign-up button opens the form rather than linking to `/sign-up`). Secondary: "Talk to us" by
-email for Enterprise and Bureau.
-**Founder-price deadline:** **31 January 2027** (confirmed by Radwan 2026-10-30). Companies that
-sign up before it pay the founder price for 24 months from their first invoice.
+**Business goal:** Trial starts from small and mid-sized companies that convert to a paid plan,
+starting in the United States, Australia, New Zealand and Malta.
+**Conversion action:** **"Start 14-day free trial" → `/sign-up` → `/onboarding`.** Every primary
+button on every public page leads there: the hero, both pricing cards, the final CTA and the
+blog aside, plus "Get started" in the header (shorter label, same destination). Secondary:
+"Sign in" for existing customers, and "Talk to us" by email for Enterprise and Bureau.
 
-The site does not say this yet. `PRICING.founderBadge` reads "Beta founder: −50% for 24 months"
-and `smallPrint` says "companies that sign up during the beta" — true but undated, so a reader
-cannot tell whether they have a week or a year. A date is a real deadline rather than a
-manufactured one, so it can be stated plainly. It is a public commercial commitment, so the
-wording is Radwan's call, not a skill's: do not add it to copy without asking.
+**Founder-price deadline — superseded, and Radwan's to settle.** v2 recorded 31 January 2027 as
+the date before which a company would get the founder price for 24 months, confirmed by Radwan
+on 2026-10-30. There is no founder price on the site any more (PR #29) and no beta pricing of
+any kind (2026-11-21), so there is nothing for the deadline to govern. It is left recorded
+rather than deleted because it was a commercial commitment somebody may have been given: if any
+early-access lead was promised it, honouring it is a decision, not a copy edit. Do not write a
+founder price or that date into copy.
 
 **Current metrics:** [ASK RADWAN] — no traffic, signup or conversion numbers available in the repo.
 
@@ -280,7 +292,7 @@ From `apps/web/src/config/launch.ts`, read before writing any claim:
 | `securityPoints.accessByRole` | off | "Access by role" |
 | `securityPoints.deletedOnRequest` | off | "Deleted on request" |
 | `founderLine` | **on** | The Radwan Sheb founder line |
-| `waitlistMode` | **on** | Early-access buttons open the lead form |
+| `waitlistMode` | **off** (since 2026-11-21) | With it off, every primary button is a `/sign-up` link and no early-access dialog is mounted. The lead form, the `trial_requests` table and the Zoho code are still in the repository, unused |
 
 True today without a switch: encrypted in transit and at rest; each company's data kept
 separate; payroll data never used to train AI models.
@@ -290,6 +302,8 @@ separate; payroll data never used to train AI models.
 
 | Date | Learning | Evidence | Applies to | Status |
 |------|----------|----------|------------|--------|
+| 2026-11-21 | The offer is a 14-day free trial, self-serve, and the waiting list is over. `launch.waitlistMode` is off, so every primary button links to `/sign-up`, a new sign-up lands on `/onboarding`, and `/waitlist` 308s to `/sign-up`. Two rules follow for any copy written from here: the trial's length is never written as a literal — `content.ts` exports `TRIAL`, `TRIAL_CTA` and `TRUST_LINE` from `TRIAL_DAYS`, and a test fails on any other day count — and "free during the beta", "early access" and "invitation" are gone as *access and pricing* claims. "Clarivo is in beta" stays, because the product is: it is a statement about maturity, which the security and terms pages still make and should. | Shipped on `feat/public-site-signin-signup`; `apps/web/test/market-copy.test.ts` pins the three strings, their derivation from `TRIAL_DAYS`, the FAQ answer in both ladders, and the absence of beta-pricing wording on the page and in `/llms.txt` | copywriting, copy-editing, cro, signup, pricing, emails, launch, ai-seo, seo | active |
+| 2026-11-21 | A prebuilt Clerk `<SignIn>` will sign people up unless told not to. When an OAuth identity matches no user, Clerk's API answers `firstFactorVerification.status === "transferable"` rather than failing, and the prebuilt UI then calls `signUp.create({ transfer: true })` — an account created from the sign-in page with no sign-up form shown. Clerk's own type calls the result an "opaque sign up". `transferable={false}` prevents it; `withSignUp={false}` separately turns off the combined sign-in-or-up flow. Both are now set on `/sign-in`. Matters to marketing because "sign in" and "start a trial" become the same event otherwise: a trial would start without anyone reading the offer, and the funnel would count it as a sign-in. | `TransferableOption` in `@clerk/types` 4.101.25; set in `app/(auth)/sign-in/[[...sign-in]]/page.tsx`. **Not exercised** — there is no Clerk key in this environment, so the behaviour is read from the typed API and its documentation rather than measured | signup, cro, analytics, launch | watch — confirm on a real Clerk instance before trusting the funnel numbers |
 | 2026-11-17 | A market page is a copy decision, not a currency setting. `/au` differs from `/us` in nine places beyond the symbol: list prices with their own numerals, GST for VAT, fortnightly for bi-weekly, Xero/MYOB/Employment Hero as export sources, Australian statistics, a superannuation section, a cross-border sentence under the EU hosting point, its own title and meta description, and one extra FAQ. The mechanism is `MARKETS` in `content.ts` — a market overrides only the lines that are wrong in it, EUR and USD share one object so they cannot drift. | Shipped on `feat/au-market-page`; `apps/web/test/market-copy.test.ts` pins each of them | copywriting, seo, seo-hreflang, pricing, programmatic-seo, content-strategy | active |
 | 2026-11-17 | The EY payroll-error statistic has an Australian replacement, and it is a different kind of number. Fair Work Ombudsman annual report 2025–26: A$453m recovered for more than 181,000 underpaid workers, A$217.3m of it from large employers. These are recoveries a regulator obtained, not a survey error rate, and the labels on the page say so. The alternative, had no Australian source been found, was deleting the statistics from `/au` rather than reusing or vaguening the US ones. | fairwork.gov.au media release for the 2025–26 annual report, 29 Oct 2026 | copywriting, ads, content-strategy, ai-seo | active |
 | 2026-11-17 | Payday Super has been in force since **1 July 2026**: super goes with each pay run, 12% of qualifying earnings, into the fund within seven business days of payday. Australian copy must treat it as something a payroll manager already does, never as "coming in July 2026". Clarivo does **not** check Payday Super compliance and cannot — nothing reads a payment date, a payroll file cannot show that money reached a fund, and `classify.ts` still has no vocabulary for superannuation. What is true today is the generic period-over-period comparison of a super column. | ATO Payday Super guidance; `packages/payroll-core/src/annual/classify.ts` has no super entry (re-checked 2026-11-17) | copywriting, ads, launch, product | active |
@@ -313,6 +327,7 @@ separate; payroll data never used to train AI models.
 
 ## Changelog
 
+- v6 (2026-11-21) — **The offer changed.** Free-during-the-beta and the early-access waiting list are replaced by a 14-day free trial with self-serve sign-up, so Business model, Proof Points (Customers), Goals (business goal and conversion action), the glossary and the switch table were rewritten against what ships. The 31 January 2027 founder-price deadline is marked superseded rather than deleted, because it may have been promised to a lead. Two Learnings rows added: the trial offer with its one-constant rule, and Clerk's OAuth transfer flow, which signs people up from a sign-in page unless `transferable={false}` is set. Downstream skills now generate against a trial, not a beta.
 - v5 (2026-11-17) — `/au` shipped: Australian list prices (A$49/A$79, founders A$24/A$39), GST in place of VAT, fortnightly vocabulary, Xero/MYOB/Employment Hero as export sources, Fair Work Ombudsman figures in place of EY's US survey, and a superannuation section stating what Clarivo does not do about Payday Super. Rewrote Business model, which still carried the three-plan €59/€99/€299 ladder that was replaced on 2026-11-13, and Proof Points, which now carries both regions' figures with the warning that recoveries and error rates are not the same number. Four Learnings rows added, one of them a live copy claim (the zero-value alert card) that the product stopped supporting.
 - v4 (2026-10-31) — Per-market URLs shipped: `/` euro, `/us` dollars, full hreflang mesh, EU disclaimer on both. USD list prices 59/99/299 set by Radwan. Four Learnings rows added, two of them bugs that typecheck could not catch.
 *Newest first. One line per revision: what changed and why.*

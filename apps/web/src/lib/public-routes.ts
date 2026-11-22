@@ -51,6 +51,20 @@ export const PUBLIC_ROUTE_PATTERNS = [
   "/api/trpc(.*)",
   "/api/webhooks(.*)",
   /**
+   * The cron routes, listed for the same reason as everything else here: no dot
+   * in the path, so an unlisted one answers a 307 to `/sign-in` — and Vercel's
+   * scheduler follows no redirect and holds no session, so the job would simply
+   * never run while looking configured.
+   *
+   * Public to the matcher is **not** public to a caller. `/api/cron/trial-ended`
+   * authorises itself on `CRON_SECRET` — Vercel sends it as
+   * `Authorization: Bearer <secret>` — answering 401 to a wrong or missing
+   * bearer and 503 when no secret is configured at all, the way the Polar
+   * webhook refuses every delivery without its signing secret. A cron route
+   * that cannot authenticate its caller must do nothing rather than trust them.
+   */
+  "/api/cron/(.*)",
+  /**
    * The schema-drift status route, and it has to be listed for the same reason
    * `/us` does: no dot in the path, so it reaches this middleware.
    *

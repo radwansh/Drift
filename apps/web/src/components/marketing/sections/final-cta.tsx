@@ -1,7 +1,6 @@
 import { Button, DriftStrip } from "../ui";
 import { FINAL_CTA } from "../content";
 import { launch } from "@/config/launch";
-import { authEntryPointsVisible } from "@/config/environment";
 import { EarlyAccessButton } from "../early-access-button";
 
 /**
@@ -37,13 +36,13 @@ export function FinalCta() {
           <EarlyAccessButton variant="accent" size="lg" iconRight="arrow-right">
             {FINAL_CTA.primary}
           </EarlyAccessButton>
-          {/* Hidden on production until launch, like the header's. A server
-              component, so the env read happens here directly. */}
-          {authEntryPointsVisible && (
-            <Button href="/sign-in" variant="secondary" size="lg">
-              {FINAL_CTA.secondary}
-            </Button>
-          )}
+          {/* Shown on every deployment. It was behind the same VERCEL_ENV flag
+              as the header's "Sign in" while sign-up was by invitation; with
+              sign-up open, the page's last section is the wrong place to make
+              an existing customer hunt for the way in. */}
+          <Button href="/sign-in" variant="secondary" size="lg">
+            {FINAL_CTA.secondary}
+          </Button>
         </div>
 
         <p className="mt-6 text-sm text-cv-ink-subtle">{FINAL_CTA.trust}</p>

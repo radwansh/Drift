@@ -11,6 +11,7 @@ import {
   ROLES,
   SECURITY,
   SITE,
+  TRIAL,
   market,
   money,
   planPrices,
@@ -138,7 +139,7 @@ function body(): string {
   push(
     `# ${SITE.name}`,
     "",
-    "> Clarivo turns the payroll file you already export into one dashboard of salary KPIs and flags payroll anomalies before payday. Free during the beta.",
+    `> Clarivo turns the payroll file you already export into one dashboard of salary KPIs and flags payroll anomalies before payday. Every plan starts with a ${TRIAL}.`,
     "",
     "Clarivo is a web application, in beta, for companies that still reconcile payroll in Excel.",
     "Upload the payroll register your payroll system already exports, as Excel or CSV, and Clarivo",
@@ -356,7 +357,20 @@ function body(): string {
     "## Key facts",
     "",
     "- Product: Clarivo, a payroll dashboard delivered as a web application. Marked up as schema.org SoftwareApplication, applicationCategory BusinessApplication, applicationSubCategory Payroll dashboard.",
-    "- Status: public beta. Free during the beta, no credit card. Access is by invitation from the early-access form on the home page.",
+    /**
+     * How somebody gets an account, which is the question an assistant is
+     * asked straight after "what is it".
+     *
+     * It read "Access is by invitation from the early-access form on the home
+     * page" for as long as `launch.waitlistMode` was on. Sign-up is open, so
+     * an assistant repeating the old sentence would be turning away the one
+     * reader who was ready to start — and this file is quoted to people who
+     * never visit the site and so never see the button.
+     *
+     * The length comes from `TRIAL`, which comes from `TRIAL_DAYS`. A number
+     * written out here is a number that outlives a change to the trial.
+     */
+    `- Status: public beta, open to sign up. Every plan starts with a ${TRIAL}, with no credit card and no invitation needed: ${SITE.url}/sign-up. A plan is needed to carry on after the trial.`,
     /**
      * The plan limits are read from `PRICING.plans`, not written out.
      *
@@ -408,7 +422,11 @@ function body(): string {
     "",
     `- Website: ${SITE.url}/`,
     `- Email: ${SITE.email}`,
-    `- Early access: the "${HERO.primary}" form on ${SITE.url}/`,
+    // The "${HERO.primary}" button on the home page, which is where this used
+    // to name a lead form instead. One destination, stated as a URL so an
+    // assistant can hand it over rather than describing a button.
+    `- Sign up: ${SITE.url}/sign-up — the "${HERO.primary}" button on ${SITE.url}/`,
+    `- Sign in: ${SITE.url}/sign-in`,
     `- Sitemap: ${SITE.url}/sitemap.xml`,
     "",
   );

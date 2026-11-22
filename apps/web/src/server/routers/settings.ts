@@ -2,7 +2,20 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { users, companies } from "@saas/db";
-import { EDITOR_ROLES, editorProcedure, memberProcedure, protectedProcedure, router } from "../trpc";
+import {
+  EDITOR_ROLES,
+  billingEditorProcedure,
+  billingProcedure,
+  editorProcedure,
+  protectedProcedure,
+  router,
+} from "../trpc";
+import {
+  TRIAL_SETTINGS_KEY_NAMES,
+  entitlementOf,
+  trialDaysLeft,
+  type CompanySettings,
+} from "@/lib/entitlement";
 import {
   companySettingsObject,
   mergeCompanySettings,
@@ -45,7 +58,12 @@ import {
  * billing key added to the column next year is unwritable here until someone
  * adds it deliberately, which is the opposite of the way the replace behaved.
  */
-const WRITABLE_SETTINGS_KEYS = ["tolerances"] as const;
+/**
+ * `country` and `industry` join `tolerances` here: onboarding collects both,
+ * an editor may correct either afterwards, and neither gates anything. The
+ * trial keys below are the opposite case and are refused by name.
+ */
+const WRITABLE_SETTINGS_KEYS = ["tolerances", "country", "industry"] as const;
 
 /**
  * Keys that exist in the column and are refused here **by name**, so the error
@@ -57,6 +75,25 @@ const WRITABLE_SETTINGS_KEYS = ["tolerances"] as const;
  */
 const SETTINGS_OWNED_ELSEWHERE = new Map<string, string>([
   ["plan", "a company's plan is set by the Polar webhook on a paid order, not by this form"],
+  /**
+   * The five trial keys, refused outright.
+   *
+   * `trialEndsAt` is the one that matters: the trial is capped at
+   * `trialStartedAt + TRIAL_DAYS` by `trialEndOf()` precisely so a stored date
+   * cannot stretch it, and letting a form write the date would be handing an
+   * admin the other half of that lock. The rest go with it because a trial
+   * whose start, completion or email state can be edited is a trial anyone can
+   * restart.
+   *
+   * Three writers only: completing onboarding, the trial-ended email code, and
+   * the Polar webhook — all of them through `server/company-settings.ts`.
+   */
+  ...TRIAL_SETTINGS_KEY_NAMES.map(
+    (key): [string, string] => [
+      key,
+      "the trial is written by onboarding, the trial-ended email and the Polar webhook, not by this form",
+    ],
+  ),
   ...POLAR_SETTINGS_KEY_NAMES.map(
     (key): [string, string] => [key, "billing state is written by the Polar webhook, not by this form"],
   ),
@@ -219,7 +256,10 @@ export const settingsRouter = router({
    * behind it, which needs both an access token on this deployment and a Polar
    * customer recorded against this company. Neither is true anywhere today.
    */
-  getBillingInfo: memberProcedure.query(async ({ ctx }) => {
+  // `billingProcedure`, not `memberProcedure`: the paywall reads this to decide
+  // what to offer, so gating it on entitlement would be a lock whose key is
+  // behind the lock.
+  getBillingInfo: billingProcedure.query(async ({ ctx }) => {
     const company = await ctx.db.query.companies.findFirst({
       where: eq(companies.id, ctx.companyId),
     });
@@ -228,6 +268,26 @@ export const settingsRouter = router({
     const settings = (company.settings ?? {}) as Record<string, unknown>;
     const customerId = (settings[POLAR_SETTINGS_KEYS.customerId] as string) ?? null;
 
+    /**
+     * The entitlement, on the one endpoint the paywall and the trial banner can
+     * both reach while the company has no access.
+     *
+     * **Added here rather than given its own procedure**, because this is
+     * already the ungated billing read and both clients already needed it:
+     * the paywall polls this after a checkout and must close on `access`
+     * turning true, and the banner needs `trialEndsAt` to count the last seven
+     * days and to arm its own timer. One procedure means one react-query cache
+     * entry shared between them rather than two queries per page view.
+     *
+     * `trialEndsAt` is an **ISO string, not a `Date`**: this app's tRPC client
+     * has no transformer (`app/providers.tsx` uses a bare `httpBatchLink`), so
+     * a `Date` would be typed as a Date on the client and actually arrive as a
+     * string. The one place that has bitten this repo is recorded in
+     * CLAUDE.md's "alias and parse, never cast"; this is the same class of lie.
+     */
+    const now = new Date();
+    const entitlement = entitlementOf(settings as CompanySettings, now);
+
     return {
       subscriptionId: (settings[POLAR_SETTINGS_KEYS.subscriptionId] as string) ?? null,
       status: (settings[POLAR_SETTINGS_KEYS.subscriptionStatus] as string) ?? "inactive",
@@ -235,6 +295,22 @@ export const settingsRouter = router({
       periodEnd: (settings[POLAR_SETTINGS_KEYS.currentPeriodEnd] as string) ?? null,
       /** Whether `createBillingPortal` can actually produce a URL. */
       portalAvailable: isPolarConfigured() && customerId !== null,
+      entitlement: {
+        access: entitlement.access,
+        reason: entitlement.reason,
+        trialEndsAt: entitlement.trialEndsAt?.toISOString() ?? null,
+        paymentFailed: entitlement.paymentFailed,
+        /**
+         * Days left, **from `trialDaysLeft()` rather than recomputed by the
+         * banner.** It is a duration in milliseconds rounded up, not a calendar
+         * date, so the server's clock gives the same answer as the reader's —
+         * and a second `Math.ceil(ms / 86400000)` in a client component is a
+         * second copy of a rounding rule, which is the kind of pair that agrees
+         * until one of them is edited. The *time of day* is still formatted in
+         * the browser, because that one genuinely depends on the reader's zone.
+         */
+        trialDaysLeft: trialDaysLeft(settings as CompanySettings, now),
+      },
     };
   }),
 
@@ -267,7 +343,7 @@ export const settingsRouter = router({
    * company-wide write by any reading of CLAUDE.md's table, and a viewer should
    * not be able to open one.
    */
-  createBillingPortal: editorProcedure
+  createBillingPortal: billingEditorProcedure
     .input(z.object({ returnUrl: z.string().url().optional() }))
     .mutation(async ({ ctx, input }) => {
       const company = await ctx.db.query.companies.findFirst({
@@ -318,14 +394,30 @@ export const settingsRouter = router({
    * and a line telling them who can buy, not a FORBIDDEN error where the page
    * should be. `canCheckout` is that distinction, and the links are withheld
    * from a viewer rather than merely hidden by the page.
+   *
+   * **The URL withholding is the security boundary, and it is server-side.** A
+   * viewer receives `url: null` for every plan — not a hidden button over a URL
+   * that is in the response anyway — so the paywall and the billing page can
+   * both read `canCheckout` to decide what to render rather than re-deriving the
+   * role in the browser, and neither can disagree with this. `test/billing-checkout.test.ts`
+   * pins the null for every plan with the links configured, which is the only
+   * state in which the assertion means anything.
+   *
+   * **`customer_email` rides on the link.** The buyer's address comes from the
+   * middleware's own user row, never from an input: taking it from the client
+   * would let a caller pre-fill somebody else's address on a checkout that
+   * carries their company's `reference_id`.
    */
-  getCheckout: memberProcedure.query(({ ctx }) => {
+  // Ungated for the same reason as `getBillingInfo`: this is the endpoint the
+  // paywall's "Continue to payment" button calls, and an expired company is
+  // exactly who needs it to work.
+  getCheckout: billingProcedure.query(({ ctx }) => {
     const canCheckout = EDITOR_ROLES.includes(
       ctx.currentUser.role as (typeof EDITOR_ROLES)[number],
     );
 
     const plans = SELLABLE_PLAN_IDS.map((plan) => {
-      const link = checkoutLinkForCompany(plan, ctx.companyId);
+      const link = checkoutLinkForCompany(plan, ctx.companyId, ctx.currentUser.email);
       return { plan, url: canCheckout ? link : null, available: link !== null };
     });
 

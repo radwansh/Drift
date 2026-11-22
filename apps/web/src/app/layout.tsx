@@ -3,6 +3,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 import { geistMono, instrumentSans } from "./fonts";
 import { Providers } from "./providers";
+import { clerkLocalization } from "@/lib/clerk-localization";
 
 /**
  * Root layout.
@@ -36,9 +37,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     // redirect to them in middleware. These props must name the new paths or
     // Clerk sends visitors to the redirect and they take an extra hop.
     //
-    // waitlistUrl is what makes Clerk's own screens link to our page: with
-    // sign-up mode set to Waitlist, <SignIn /> grows a "Join the waitlist"
-    // link, and without this prop it points at Clerk's hosted page instead.
+    // waitlistUrl still names /waitlist, which is now a 308 to /sign-up
+    // (app/waitlist/route.ts). It only renders a link at all when Clerk's
+    // sign-up mode is Waitlist, which it no longer is, so it is one hop on a
+    // path nobody is on rather than a stale destination.
+    //
+    // localization is where the sign-in screen's "there is no account for this
+    // email" wording lives, and the "Get started" link in the card's footer.
+    // SignInProps has appearance but no localization, so it has to be here —
+    // see lib/clerk-localization.ts for which keys and why.
     //
     // Fallback, not force: the middleware sends a signed-out visitor to
     // /sign-in with a redirect_url so they land back on the page they asked
@@ -52,6 +59,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
       waitlistUrl="/waitlist"
+      localization={clerkLocalization}
     >
       <html
         lang="en"

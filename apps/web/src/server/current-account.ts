@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { companies, requireDb, users, type DbClient } from "@saas/db";
 import { planOfSettings, type PlanId } from "@/lib/plans";
+import type { CompanySettings } from "@/lib/entitlement";
 import { ensureUser, type CurrentUserRow } from "./ensure-user";
 
 /**
@@ -40,6 +41,16 @@ export type CurrentAccount = CurrentUserRow & {
    * the capability.
    */
   plan: PlanId | null;
+  /**
+   * The whole `companies.settings` object, from the same query.
+   *
+   * Carried as well as `plan` because the app layout has a second question to
+   * ask of it: whether onboarding is finished, and whether the trial or
+   * subscription still grants access. Both go through `lib/entitlement.ts`.
+   * Reading the column again for that would cost a request per page view,
+   * which is the thing this function exists to avoid.
+   */
+  settings: CompanySettings;
 };
 
 /**
@@ -80,7 +91,7 @@ export async function loadAccount(db: DbClient, clerkUserId: string): Promise<Cu
 
   if (joined) {
     const { settings, ...row } = joined;
-    return { ...row, plan: planOfSettings(settings) };
+    return { ...row, plan: planOfSettings(settings), settings: settings as CompanySettings };
   }
 
   // No row for this Clerk id, so provision — then read the plan the new (or
@@ -92,7 +103,11 @@ export async function loadAccount(db: DbClient, clerkUserId: string): Promise<Cu
     .where(eq(companies.id, provisioned.companyId))
     .limit(1);
 
-  return { ...provisioned, plan: planOfSettings(company?.settings) };
+  return {
+    ...provisioned,
+    plan: planOfSettings(company?.settings),
+    settings: company?.settings as CompanySettings,
+  };
 }
 
 export const currentAccount = cache(async (): Promise<CurrentAccount | null> => {

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { requireDb } from "@saas/db";
 import { eq } from "drizzle-orm";
-import { uploadSessions, users } from "@saas/db";
+import { companies, uploadSessions, users } from "@saas/db";
+import { entitlementOf, type CompanySettings } from "@/lib/entitlement";
 
 export async function POST(req: NextRequest) {
   const db = requireDb();
@@ -28,6 +29,43 @@ export async function POST(req: NextRequest) {
     });
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    /**
+     * The entitlement gate, here as well as on `memberProcedure`.
+     *
+     * This route is not tRPC, so the middleware that refuses every data
+     * procedure does not cover it — and it is the one endpoint that would
+     * otherwise let a company whose trial has ended keep putting payroll into
+     * Clarivo. It reads the same `entitlementOf()` the paywall and the
+     * procedures read, so the three cannot disagree.
+     *
+     * `402` rather than `403`: the cause is payment, the caller is who they
+     * say they are, and the upload wizard keys its paywall on this.
+     *
+     * Only `trial_ended` and `subscription_ended` refuse, matching the tRPC
+     * gate — a company that never onboarded is a pre-release company, and
+     * blocking its uploads would lock out every existing customer on release
+     * day. The settings come from the company row rather than a second
+     * entitlement query, so this costs one read it was already going to make.
+     */
+    const [company] = await db
+      .select({ settings: companies.settings })
+      .from(companies)
+      .where(eq(companies.id, user.companyId))
+      .limit(1);
+    const { access, reason } = entitlementOf(company?.settings as CompanySettings, new Date());
+    if (!access && (reason === "trial_ended" || reason === "subscription_ended")) {
+      return NextResponse.json(
+        {
+          error:
+            reason === "trial_ended"
+              ? "Your free trial has ended. Choose a plan to keep using Clarivo."
+              : "Your subscription has ended. Choose a plan to keep using Clarivo.",
+          cause: "PAYMENT_REQUIRED",
+        },
+        { status: 402 },
+      );
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());

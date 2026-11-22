@@ -1,7 +1,6 @@
 import { MarketingHeader } from "@/components/marketing/header";
 import { MarketingFooter } from "@/components/marketing/footer";
 import { EarlyAccessProvider } from "@/components/marketing/early-access-provider";
-import { authEntryPointsVisible } from "@/config/environment";
 
 /**
  * Layout for the public pages: /, /privacy, /terms, /security, /dpa.
@@ -26,12 +25,11 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
       data-theme="light"
       className="flex min-h-screen flex-col bg-cv-bg font-cv-sans text-cv-ink antialiased"
     >
-      {/* One dialog for the page, inside the themed wrapper so it inherits the
-          cv- tokens and the font variables. */}
+      {/* The provider stays while `launch.waitlistMode` is a switch somebody
+          could turn back on; with it off it mounts no dialog at all, and the
+          buttons inside are plain /sign-up links. */}
       <EarlyAccessProvider>
-        {/* Read here, in a server component, and passed down: VERCEL_ENV is not
-            available to client code, and the header is a client component. */}
-        <MarketingHeader showAuth={authEntryPointsVisible} />
+        <MarketingHeader />
         <main className="flex-1">{children}</main>
         <MarketingFooter />
       </EarlyAccessProvider>
