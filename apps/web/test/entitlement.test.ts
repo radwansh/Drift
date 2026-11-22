@@ -174,6 +174,24 @@ describe("every status, on both sides of its date", () => {
     expect(entitlementOf(withSubscription("incomplete"), inTrial).access).toBe(true);
     expect(entitlementOf(started(COMPLETED), inTrial).reason).toBe("trialing");
   });
+
+  /**
+   * `paused`, pinned on both sides, because it is the one status whose answer
+   * comes from branch *ordering* rather than from a branch of its own.
+   *
+   * Polar's `subscription.paused` revokes benefits, so it is not live — but a
+   * customer inside their trial keeps access, because the trial has not ended
+   * and that is the only promise it makes. After the trial it reads as an
+   * ended subscription. Grouping it with `canceled`/`revoked` would deny
+   * access with no period end on record and cut a live trial short.
+   */
+  it("lets a paused subscription fall through to the trial, then end with it", () => {
+    const paused = withSubscription("paused");
+    expect(entitlementOf(paused, inTrial).access).toBe(true);
+    expect(entitlementOf(paused, inTrial).reason).toBe("trialing");
+    expect(entitlementOf(paused, afterTrial).access).toBe(false);
+    expect(entitlementOf(paused, afterTrial).reason).toBe("subscription_ended");
+  });
 });
 
 describe("plans granted by hand", () => {

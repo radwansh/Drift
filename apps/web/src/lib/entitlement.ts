@@ -187,6 +187,22 @@ export function entitlementOf(settings: CompanySettings, now: Date): Entitlement
     return { ...base, access: true, reason: "subscription_past_due", paymentFailed: true };
   }
 
+  /**
+   * `paused` is deliberately **not** in the list below, and this is the one
+   * branch where the ordering is worth stating.
+   *
+   * Polar's `subscription.paused` revokes benefits, so it is not a live
+   * subscription — it falls through to the trial check. During a live trial
+   * that means the customer keeps access, because **their trial has not
+   * ended**, which is the only promise the trial makes; once the trial is over
+   * it reaches the unrecognised-status branch at the bottom and reads as
+   * `subscription_ended`, which is right.
+   *
+   * Putting it alongside `canceled`/`revoked` would be worse: with no
+   * `polarCurrentPeriodEnd` on record it would deny access, cutting short a
+   * trial the customer is still inside. Left explicit here rather than as an
+   * accident of which strings the list happens to contain.
+   */
   // Cancelled or revoked, but the period already paid for has not run out yet.
   if (subscriptionStatus === "canceled" || subscriptionStatus === "revoked") {
     const periodEnd = readDate(settings, "polarCurrentPeriodEnd");
