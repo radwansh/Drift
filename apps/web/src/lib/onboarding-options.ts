@@ -98,6 +98,9 @@ export function isIndustry(value: unknown): value is Industry {
  */
 export const COUNTRIES = [
   { code: "AF", name: "Afghanistan" },
+  // Å sorts as A, so the Åland Islands belong here rather than after Zimbabwe —
+  // which is where a code-point sort puts them, and where nobody would look.
+  { code: "AX", name: "Åland Islands" },
   { code: "AL", name: "Albania" },
   { code: "DZ", name: "Algeria" },
   { code: "AS", name: "American Samoa" },
@@ -323,10 +326,11 @@ export const COUNTRIES = [
   { code: "TO", name: "Tonga" },
   { code: "TT", name: "Trinidad and Tobago" },
   { code: "TN", name: "Tunisia" },
+  // Likewise Ü sorts as U: Türkiye reads between Tunisia and Turkmenistan.
+  { code: "TR", name: "Türkiye" },
   { code: "TM", name: "Turkmenistan" },
   { code: "TC", name: "Turks and Caicos Islands" },
   { code: "TV", name: "Tuvalu" },
-  { code: "TR", name: "Türkiye" },
   { code: "UG", name: "Uganda" },
   { code: "UA", name: "Ukraine" },
   { code: "AE", name: "United Arab Emirates" },
@@ -345,7 +349,6 @@ export const COUNTRIES = [
   { code: "YE", name: "Yemen" },
   { code: "ZM", name: "Zambia" },
   { code: "ZW", name: "Zimbabwe" },
-  { code: "AX", name: "Åland Islands" },
 ] as const;
 
 export type CountryCode = (typeof COUNTRIES)[number]["code"];
@@ -480,6 +483,34 @@ export function companyNameError(raw: string): string | null {
   if (name.length > COMPANY_NAME_MAX) {
     return `A company name is at most ${COMPANY_NAME_MAX} characters.`;
   }
+  return null;
+}
+
+/**
+ * The refusal when an admin types their own address into step 5.
+ *
+ * One constant because two sides refuse it: the step, under the field, and
+ * `onboarding.inviteAccountant`, which must refuse it whatever the client did.
+ * Inviting yourself would send you an invitation to join a company you are
+ * already the admin of, and the `users.email` UNIQUE constraint would then
+ * refuse the row — so the readable refusal has to come first.
+ */
+export const OWN_EMAIL_REFUSAL =
+  "That is your own address. Invite your accountant's address instead.";
+
+/**
+ * Why an invitation address is not acceptable, or null when it is.
+ *
+ * Deliberately a shape check and nothing more: an address either parses or it
+ * does not, and whether anybody reads it is Clerk's question, answered when the
+ * invitation is actually sent. `sendClerkInvitation`'s refusal is what surfaces
+ * an address Clerk will not take.
+ */
+export function inviteEmailError(raw: string, ownEmail: string): string | null {
+  const email = raw.trim().toLowerCase();
+  if (email.length === 0) return "Enter their email address, or tick “I’ll do this later”.";
+  if (!/^[^@\s]+@[^@\s.]+(?:\.[^@\s.]+)+$/.test(email)) return "That is not an email address.";
+  if (email === ownEmail.trim().toLowerCase()) return OWN_EMAIL_REFUSAL;
   return null;
 }
 

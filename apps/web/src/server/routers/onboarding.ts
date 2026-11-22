@@ -19,6 +19,7 @@ import {
   INVITE_LEVELS,
   ONBOARDING_STEP_COUNT,
   ONBOARDING_STEP_KEY,
+  OWN_EMAIL_REFUSAL,
   defaultCurrencyForCountry,
   defaultFiscalMonthForCountry,
   isCountryCode,
@@ -378,10 +379,7 @@ export const onboardingRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       if (input.email === ctx.currentUser.email.trim().toLowerCase()) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "That is your own address. Invite your accountant's address instead.",
-        });
+        throw new TRPCError({ code: "BAD_REQUEST", message: OWN_EMAIL_REFUSAL });
       }
 
       const [clash] = await ctx.db
@@ -518,11 +516,21 @@ export const onboardingRouter = router({
     const trialEndsAt = trialEndOf(stored);
 
     if (trialEndsAt !== null) {
+      /**
+       * **Scheduling cannot fail onboarding.** The trial is already written by
+       * the time this runs, so a throw here would show the customer a failed
+       * sign-up for a company that is, in fact, set up — and send them back to
+       * a flow that now refuses to finish. `server/trial-email.ts` says in as
+       * many words that it must never block onboarding; this is the caller's
+       * half of that promise, so it holds even if the implementation one day
+       * forgets. The daily `/api/cron/trial-ended` backup is what picks up a
+       * company whose email was never scheduled.
+       */
       const emailId = await scheduleTrialEndedEmail({
         db: ctx.db,
         companyId: ctx.companyId,
         trialEndsAt,
-      });
+      }).catch(() => null);
       if (emailId !== null) {
         /**
          * A second statement, because the id does not exist until the email is
