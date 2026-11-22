@@ -338,7 +338,9 @@ if (preview && !bypass) {
   console.log("");
   console.log(
     "NOTE: --preview without VERCEL_AUTOMATION_BYPASS_SECRET. Vercel's Deployment " +
-      "Protection covers every preview URL, so a 401 above is the protection, not the app.",
+      "Protection covers every preview URL, so a 302 to vercel.com/sso-api above " +
+      "(or a 401) is the protection, not the app. Set the secret and run it again; " +
+      "without it this run says nothing about the deployment.",
   );
 }
 
