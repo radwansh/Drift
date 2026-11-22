@@ -17,3 +17,9 @@ coverage/
 # The design kit is a delivery vehicle, not part of the app. Its files are
 # copied to their real paths in phase 0 of docs/design/CLAUDE_CODE_BRIEF.md.
 clarivo-claude-code-kit/
+
+# Playwright output. apps/web/e2e/ holds the specs; these are run artefacts.
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
