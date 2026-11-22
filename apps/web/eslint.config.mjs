@@ -41,4 +41,22 @@ export default tseslint.config(
       "@typescript-eslint/no-require-imports": "off",
     },
   },
+  {
+    /**
+     * `scripts/` is plain Node ESM, not TypeScript.
+     *
+     * `tseslint.configs.recommended` above applies the TypeScript parser to
+     * every file it is given, and on a `.mjs` file its scope analysis reports
+     * every top-level binding as "assigned a value but only used as a type" —
+     * 63 false positives for one 300-line script, which is enough noise to
+     * bury a real warning. The base `no-unused-vars` is correct on this file,
+     * so the script is still linted for the thing that matters; it is the
+     * TypeScript-aware version of the rule that cannot read it.
+     */
+    files: ["scripts/**/*.{mjs,js}"],
+    rules: {
+      "@typescript-eslint/no-unused-vars": "off",
+      "no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+    },
+  },
 );

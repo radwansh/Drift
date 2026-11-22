@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "check:crawl": "node scripts/check-crawlable.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

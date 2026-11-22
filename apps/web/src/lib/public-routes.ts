@@ -3,39 +3,57 @@
  *
  * Kept in its own module rather than exported from `middleware.ts`: Next
  * expects a middleware file to export a default and `config`, and a test that
- * wants this list should not have to import the middleware entry point and
- * everything Clerk pulls in behind it. `test/public-routes.test.ts` reads it
- * from here.
+ * wants these lists should not have to import the middleware entry point and
+ * everything Clerk pulls in behind it. `test/public-routes.test.ts` and
+ * `test/marketing-crawlable.test.ts` read them from here.
  */
+
 /**
- * Public routes: the marketing pages, the auth screens, the waiting-list
- * form, the tRPC endpoint (which does its own authorisation per procedure) and
- * the webhooks. Everything else is behind sign-in.
+ * **The marketing site: the pages a search engine has to be able to crawl.**
+ *
+ * One list, and it is the only one. It is spread into
+ * `PUBLIC_ROUTE_PATTERNS` below, so a page cannot be crawlable-but-protected
+ * or protected-but-crawlable; `middleware.ts` matches it to skip Clerk
+ * altogether, and `test/marketing-crawlable.test.ts` checks every URL in
+ * `sitemap.xml` against it, so a new post or market page is covered without an
+ * edit here.
+ *
+ * **Being listed as public was not enough, and that is the whole point of this
+ * list existing separately.** `clerkMiddleware` authenticates before it calls
+ * our handler, so `isPublicRoute` never ran on the request that mattered — see
+ * the comment above the bypass in `middleware.ts` for the redirect loop that
+ * produced, and what it cost.
+ *
+ * What is **not** marketing: `/sign-in`, `/sign-up`, `/waitlist`, `/login`,
+ * `/signup`, `/onboarding` and every `/api/*` path. They are public (or
+ * protected) for reasons of their own, they are `Disallow`ed in `robots.txt`,
+ * and several of them need Clerk to run. They keep the behaviour they have.
  */
-export const PUBLIC_ROUTE_PATTERNS = [
+export const MARKETING_ROUTE_PATTERNS = [
   "/",
   /**
    * The dollar landing page. It must be listed, unlike `/llms.txt`,
-   * `/robots.txt` and `/sitemap.xml`: the matcher below excludes any path
-   * containing a dot, so those three never reach this middleware at all, while
-   * `/us` has no dot and does.
+   * `/robots.txt` and `/sitemap.xml`: the matcher in `middleware.ts` excludes
+   * any path containing a dot, so those three never reach the middleware at
+   * all, while `/us` has no dot and does.
    *
    * Without this line every visitor to `/us` is redirected to sign-in — which
    * is what happened when the page was first added, and what the whole US
    * campaign would have landed on. Any future market page (`/nz`) needs an
-   * entry here too.
+   * entry here too, and `sitemap.ts` plus `next.config.ts`'s `PUBLIC_PATHS`
+   * want it as well; the sitemap test is what reports the one you forget.
    */
   "/us",
   /**
    * The Australian landing page, listed for exactly the reason above: no dot
-   * in the path, so it reaches this middleware, and an unlisted route answers
-   * a 307 to `/sign-in` — unreachable from a search result and unindexable.
+   * in the path, so it reaches the middleware, and an unlisted route answers a
+   * 307 to `/sign-in` — unreachable from a search result and unindexable.
    */
   "/au",
   /**
    * The blog index and every post. Same reason as `/us`: no dot in the path,
-   * so these do reach this middleware and would otherwise redirect a reader
-   * who followed a link from search straight to a sign-in form.
+   * so these do reach the middleware and would otherwise redirect a reader who
+   * followed a link from search straight to a sign-in form.
    */
   "/blog",
   "/blog/(.*)",
@@ -43,6 +61,20 @@ export const PUBLIC_ROUTE_PATTERNS = [
   "/terms",
   "/security",
   "/dpa",
+] as const;
+
+/**
+ * Public routes: the marketing pages above, the auth screens, the old
+ * waiting-list path, the tRPC endpoint (which does its own authorisation per
+ * procedure) and the webhooks. Everything else is behind sign-in.
+ *
+ * Everything in this list that is **not** in `MARKETING_ROUTE_PATTERNS` still
+ * goes through `clerkMiddleware`, which is deliberate: these paths either need
+ * Clerk's request state (the auth screens) or authorise themselves (tRPC, the
+ * webhooks, the cron routes).
+ */
+export const PUBLIC_ROUTE_PATTERNS = [
+  ...MARKETING_ROUTE_PATTERNS,
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/waitlist",
