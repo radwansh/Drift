@@ -10,7 +10,12 @@ import {
   protectedProcedure,
   router,
 } from "../trpc";
-import { TRIAL_SETTINGS_KEY_NAMES } from "@/lib/entitlement";
+import {
+  TRIAL_SETTINGS_KEY_NAMES,
+  entitlementOf,
+  trialDaysLeft,
+  type CompanySettings,
+} from "@/lib/entitlement";
 import {
   companySettingsObject,
   mergeCompanySettings,
@@ -263,6 +268,26 @@ export const settingsRouter = router({
     const settings = (company.settings ?? {}) as Record<string, unknown>;
     const customerId = (settings[POLAR_SETTINGS_KEYS.customerId] as string) ?? null;
 
+    /**
+     * The entitlement, on the one endpoint the paywall and the trial banner can
+     * both reach while the company has no access.
+     *
+     * **Added here rather than given its own procedure**, because this is
+     * already the ungated billing read and both clients already needed it:
+     * the paywall polls this after a checkout and must close on `access`
+     * turning true, and the banner needs `trialEndsAt` to count the last seven
+     * days and to arm its own timer. One procedure means one react-query cache
+     * entry shared between them rather than two queries per page view.
+     *
+     * `trialEndsAt` is an **ISO string, not a `Date`**: this app's tRPC client
+     * has no transformer (`app/providers.tsx` uses a bare `httpBatchLink`), so
+     * a `Date` would be typed as a Date on the client and actually arrive as a
+     * string. The one place that has bitten this repo is recorded in
+     * CLAUDE.md's "alias and parse, never cast"; this is the same class of lie.
+     */
+    const now = new Date();
+    const entitlement = entitlementOf(settings as CompanySettings, now);
+
     return {
       subscriptionId: (settings[POLAR_SETTINGS_KEYS.subscriptionId] as string) ?? null,
       status: (settings[POLAR_SETTINGS_KEYS.subscriptionStatus] as string) ?? "inactive",
@@ -270,6 +295,22 @@ export const settingsRouter = router({
       periodEnd: (settings[POLAR_SETTINGS_KEYS.currentPeriodEnd] as string) ?? null,
       /** Whether `createBillingPortal` can actually produce a URL. */
       portalAvailable: isPolarConfigured() && customerId !== null,
+      entitlement: {
+        access: entitlement.access,
+        reason: entitlement.reason,
+        trialEndsAt: entitlement.trialEndsAt?.toISOString() ?? null,
+        paymentFailed: entitlement.paymentFailed,
+        /**
+         * Days left, **from `trialDaysLeft()` rather than recomputed by the
+         * banner.** It is a duration in milliseconds rounded up, not a calendar
+         * date, so the server's clock gives the same answer as the reader's —
+         * and a second `Math.ceil(ms / 86400000)` in a client component is a
+         * second copy of a rounding rule, which is the kind of pair that agrees
+         * until one of them is edited. The *time of day* is still formatted in
+         * the browser, because that one genuinely depends on the reader's zone.
+         */
+        trialDaysLeft: trialDaysLeft(settings as CompanySettings, now),
+      },
     };
   }),
 
@@ -353,6 +394,19 @@ export const settingsRouter = router({
    * and a line telling them who can buy, not a FORBIDDEN error where the page
    * should be. `canCheckout` is that distinction, and the links are withheld
    * from a viewer rather than merely hidden by the page.
+   *
+   * **The URL withholding is the security boundary, and it is server-side.** A
+   * viewer receives `url: null` for every plan — not a hidden button over a URL
+   * that is in the response anyway — so the paywall and the billing page can
+   * both read `canCheckout` to decide what to render rather than re-deriving the
+   * role in the browser, and neither can disagree with this. `test/billing-checkout.test.ts`
+   * pins the null for every plan with the links configured, which is the only
+   * state in which the assertion means anything.
+   *
+   * **`customer_email` rides on the link.** The buyer's address comes from the
+   * middleware's own user row, never from an input: taking it from the client
+   * would let a caller pre-fill somebody else's address on a checkout that
+   * carries their company's `reference_id`.
    */
   // Ungated for the same reason as `getBillingInfo`: this is the endpoint the
   // paywall's "Continue to payment" button calls, and an expired company is
@@ -363,7 +417,7 @@ export const settingsRouter = router({
     );
 
     const plans = SELLABLE_PLAN_IDS.map((plan) => {
-      const link = checkoutLinkForCompany(plan, ctx.companyId);
+      const link = checkoutLinkForCompany(plan, ctx.companyId, ctx.currentUser.email);
       return { plan, url: canCheckout ? link : null, available: link !== null };
     });
 

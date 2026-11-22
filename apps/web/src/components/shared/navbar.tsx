@@ -6,6 +6,7 @@ import { trpc } from "@/lib/trpc";
 import { useSidebar } from "@/lib/sidebar-context";
 import { getClerkAppearance } from "@/lib/clerk-appearance";
 import { Icon } from "@/components/cv";
+import { TrialGate } from "@/components/billing/trial-gate";
 import { ThemeToggle, useIsDark } from "./theme-toggle";
 
 /**
@@ -33,6 +34,7 @@ export function Navbar() {
   const companyName = company.data?.name ?? null;
 
   return (
+    <>
     <header className="sticky top-0 z-20 flex h-16 flex-none items-center gap-2 border-b border-cv-line bg-cv-surface px-4 font-cv-sans lg:px-8">
       <button
         type="button"
@@ -63,5 +65,17 @@ export function Navbar() {
         <UserButton afterSignOutUrl="/login" appearance={getClerkAppearance(isDark)} />
       </div>
     </header>
+
+    {/* The trial banner, and the watcher that makes the paywall appear without a
+        reload if the trial lapses under an open tab.
+
+        Here rather than in `app/(main)/layout.tsx` because the layout mounts
+        `TrialPaywall` only while the server says there is no access — so a tab
+        opened during a live trial has no paywall in it to wake up. Something
+        always-mounted has to notice, and this bar is the only component the
+        layout renders on every route. Below the sticky header, so the banner
+        scrolls away with the page instead of eating the 64px bar. */}
+    <TrialGate />
+    </>
   );
 }

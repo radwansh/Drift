@@ -22,8 +22,18 @@ const SRC = path.join(WEB_ROOT, "src");
 /**
  * Files allowed to hold literal colours for good. Clerk's appearance API computes shades
  * from concrete values, so it cannot take var(--cv-...): the hex there mirror the tokens.
+ *
+ * `server/trial-ended-template.ts` is exempt for the same reason, one medium further out:
+ * it is an email, and an email client is not a browser. Gmail's web client strips
+ * `<style>` and every CSS custom property with it, so `var(--cv-ink)` resolves to nothing
+ * and the text renders in whatever the client's default is — black on black in a
+ * dark-mode inbox. Its hex values mirror the Light theme of `app/clarivo-tokens.css` and
+ * each is commented with the token it stands for.
  */
-const EXEMPT = new Set<string>(["src/lib/clerk-appearance.ts"]);
+const EXEMPT = new Set<string>([
+  "src/lib/clerk-appearance.ts",
+  "src/server/trial-ended-template.ts",
+]);
 
 const PALETTE =
   "(?:red|green|amber|yellow|blue|indigo|purple|emerald|orange|rose|sky|teal|gray|slate|zinc|neutral|stone|violet|pink|lime|cyan|fuchsia)";

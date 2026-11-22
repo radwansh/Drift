@@ -7,6 +7,8 @@ import {
   polarEventSchema,
   settingsPatchForEvent,
 } from "@/server/polar-events";
+import { entitlementOf } from "@/lib/entitlement";
+import { cancelScheduledTrialEmailFor } from "@/server/trial-email";
 
 /**
  * Polar's webhook, and the only thing in this product that writes
@@ -99,7 +101,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const applied = await applyPolarSettingsPatch(requireDb(), outcome.companyId, outcome.patch);
+    const db = requireDb();
+    const applied = await applyPolarSettingsPatch(db, outcome.companyId, outcome.patch);
 
     if (!applied) {
       // A `reference_id` naming no company: a stale checkout link, or somebody
@@ -113,6 +116,29 @@ export async function POST(req: NextRequest) {
       `[polar-webhook] applied ${event.type}` +
         (outcome.plan ? ` (plan: ${outcome.plan})` : " (plan unchanged: unknown product)"),
     );
+
+    /**
+     * They paid, so the trial-ended email must not arrive.
+     *
+     * **The question asked is of the patch, not of the merged row**, and that is
+     * the right one: "does this event, on its own, say the company has access?"
+     * `entitlementOf` is the single authority on that — the same function the
+     * paywall, `memberProcedure` and `/api/upload` call — so a paid order
+     * (`polarSubscriptionStatus: "active"`) reads as access while a
+     * `subscription.revoked` (status `canceled`, `plan: "free"`) does not, and
+     * neither needs a second read of the column. Evaluating the patch also means
+     * a redelivery of an access-ending event can never cancel anything.
+     *
+     * **Awaited, and it cannot fail this response.** `cancelScheduledTrialEmailFor`
+     * swallows and logs every failure, including Resend being unconfigured and a
+     * message Resend has already sent. The write above has happened; answering
+     * non-2xx now would have Polar retry a delivery whose work is done, and ten
+     * failures disable the endpoint.
+     */
+    if (entitlementOf(outcome.patch, new Date()).access) {
+      await cancelScheduledTrialEmailFor(db, outcome.companyId);
+    }
+
     return NextResponse.json({ received: true, applied: true }, { status: 202 });
   } catch (err) {
     console.error("[polar-webhook] could not record the event:", err);

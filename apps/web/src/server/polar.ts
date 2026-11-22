@@ -189,23 +189,59 @@ export function planForPolarProduct(productId: string | null | undefined): PlanI
 }
 
 /**
- * A checkout link with this company's id attached as `reference_id`.
+ * A checkout link with this company's id attached as `reference_id`, and the
+ * buyer's address as `customer_email`.
  *
  * `reference_id` is Polar's own query parameter: it is copied into the checkout
  * session's metadata and travels on to the resulting order and subscription, so
  * it is what lets the webhook map a payment back to a row in this database
- * without trusting an email address to be unique.
+ * without trusting an email address to be unique. It is the identifier; the
+ * email is not, and nothing keys on it.
+ *
+ * `customer_email` pre-fills Polar's own email field. Two reasons it is worth
+ * the parameter: the customer does not retype an address they just signed up
+ * with, which is one fewer step between the paywall and a payment; and Polar
+ * matches an existing customer on it, so a company that buys twice does not end
+ * up as two Polar customers with one `polarCustomerId` overwriting the other.
+ *
+ * It is **validated, not trusted**. The value lands in a URL that a person then
+ * opens, so a string carrying a newline or a second parameter would be a
+ * header- or query-injection shape; `URLSearchParams` escapes it, and anything
+ * that is not a single plausible address is simply left off rather than sent.
+ * A missing email costs a pre-filled field and nothing else.
  *
  * Polar's guidance is to link to the Checkout Link itself rather than to a
  * generated session URL, because sessions are short-lived and the link mints a
  * fresh one per visit. That is what this returns.
  */
-export function checkoutLinkForCompany(plan: PlanId, companyId: string): string | null {
+export function checkoutLinkForCompany(
+  plan: PlanId,
+  companyId: string,
+  customerEmail?: string | null,
+): string | null {
   const link = polarCheckoutLink(plan);
   if (link === null) return null;
   const url = new URL(link);
   url.searchParams.set("reference_id", companyId);
+  const email = normaliseEmail(customerEmail);
+  if (email !== null) url.searchParams.set("customer_email", email);
   return url.toString();
+}
+
+/**
+ * An address plausible enough to pre-fill with, or null.
+ *
+ * Deliberately narrow rather than RFC-complete: one `@`, no whitespace, a dot in
+ * the domain, and short enough to be real. This is not validation of the
+ * customer's identity — Polar does that — it is a check that the value is one
+ * field and not two.
+ */
+function normaliseEmail(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.length > 254) return null;
+  if (/\s/.test(trimmed)) return null;
+  return /^[^@]+@[^@]+\.[^@]+$/.test(trimmed) ? trimmed : null;
 }
 
 /**
