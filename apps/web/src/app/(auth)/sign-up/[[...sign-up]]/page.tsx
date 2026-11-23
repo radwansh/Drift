@@ -1,6 +1,7 @@
 "use client";
-import { SignUp } from "@clerk/nextjs";
+import { ClerkFailed, ClerkLoaded, ClerkLoading, SignUp } from "@clerk/nextjs";
 import { AuthFrame } from "@/components/shared/auth-frame";
+import { AuthFormSkeleton, AuthFormUnavailable } from "@/components/shared/auth-form-fallback";
 import { useIsDark } from "@/components/shared/theme-toggle";
 import { getClerkAppearance } from "@/lib/clerk-appearance";
 
@@ -26,6 +27,12 @@ import { getClerkAppearance } from "@/lib/clerk-appearance";
  * Registration Form from the sign-up diagram (step 7 of the rename plan) would
  * replace it, and `launch.securityPoints.verifiedSignIn` stays off until it
  * ships. /signup redirects here in middleware.
+ *
+ * **`<SignUp>` is wrapped rather than rendered bare**, because it mounts in the
+ * browser and until it does, `AuthFrame`'s right-hand column is empty — ~0.9s
+ * unthrottled, ~3.4s on fast-3G, measured cold against production. That is the
+ * first thing a visitor sees after clicking "Start 14-day free trial", so it
+ * gets a skeleton rather than nothing; see `auth-form-fallback.tsx`.
  */
 export default function SignUpPage() {
   const isDark = useIsDark();
@@ -34,11 +41,19 @@ export default function SignUpPage() {
       title="Create your company account"
       lede="Upload two payroll periods and Clarivo shows every change between them: who, which component, and by how much."
     >
-      <SignUp
-        appearance={getClerkAppearance(isDark)}
-        forceRedirectUrl="/onboarding"
-        signInUrl="/sign-in"
-      />
+      <ClerkLoading>
+        <AuthFormSkeleton />
+      </ClerkLoading>
+      <ClerkLoaded>
+        <SignUp
+          appearance={getClerkAppearance(isDark)}
+          forceRedirectUrl="/onboarding"
+          signInUrl="/sign-in"
+        />
+      </ClerkLoaded>
+      <ClerkFailed>
+        <AuthFormUnavailable />
+      </ClerkFailed>
     </AuthFrame>
   );
 }

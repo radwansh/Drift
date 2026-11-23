@@ -1,6 +1,7 @@
 "use client";
-import { SignIn } from "@clerk/nextjs";
+import { ClerkFailed, ClerkLoaded, ClerkLoading, SignIn } from "@clerk/nextjs";
 import { AuthFrame } from "@/components/shared/auth-frame";
+import { AuthFormSkeleton, AuthFormUnavailable } from "@/components/shared/auth-form-fallback";
 import { useIsDark } from "@/components/shared/theme-toggle";
 import { getClerkAppearance } from "@/lib/clerk-appearance";
 
@@ -60,12 +61,20 @@ export default function SignInPage() {
       title="See what changed in your payroll, by how much, and where."
       lede="Compare two payroll periods and every change in net pay and salary components is in one place, with the employee and the amount."
     >
-      <SignIn
-        appearance={getClerkAppearance(isDark)}
-        transferable={false}
-        withSignUp={false}
-        signUpUrl="/sign-up"
-      />
+      <ClerkLoading>
+        <AuthFormSkeleton />
+      </ClerkLoading>
+      <ClerkLoaded>
+        <SignIn
+          appearance={getClerkAppearance(isDark)}
+          transferable={false}
+          withSignUp={false}
+          signUpUrl="/sign-up"
+        />
+      </ClerkLoaded>
+      <ClerkFailed>
+        <AuthFormUnavailable />
+      </ClerkFailed>
     </AuthFrame>
   );
 }
